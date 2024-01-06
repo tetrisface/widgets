@@ -265,7 +265,6 @@ function builderIteration(n)
         end
       end
 
-      log('ms '.. tostring(isMetalStalling) .. ' el ' .. tostring(isEnergyLeaking) .. ' es ' .. tostring(isEnergyStalling) .. ' ml ' .. tostring(isMetalLeaking))
       -- 90 == reclaim cmd
       if ((isMetalStalling and not isEnergyLeaking) or (isEnergyStalling and not isMetalLeaking))
         and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
