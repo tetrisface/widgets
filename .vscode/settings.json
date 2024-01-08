@@ -1,0 +1,10 @@
+{
+  "Lua.diagnostics.globals": [
+    "Spring"
+  ],
+  "Lua.diagnostics.disable": [
+    "undefined-global",
+    "lowercase-global",
+    "duplicate-set-field"
+  ]
+}
