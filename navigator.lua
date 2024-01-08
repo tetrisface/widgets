@@ -213,7 +213,6 @@ function widget:MousePress(x, y, button)
     return false
   end
 
-  local _, pos = TraceScreenRay(x, y, true)
   -- log('press ' .. x .. ' ' .. y .. ' == ' .. math.floor(pos[1]) .. ' ' .. math.floor(pos[3]))
 
   isNavigatorActive = true
