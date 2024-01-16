@@ -249,9 +249,9 @@ function builderIteration(n)
       --    log(isEnergyLeaking)
       --    log('positiveMMLevel, not regnege or eleak === ' .. tostring(positiveMMLevel) .. ', ' .. tostring((regularizedPositiveEnergy or isEnergyLeaking) ))
       --  end
-      log(
-        builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
-      )
+      -- log(
+      --   builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
+      -- )
       if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
         -- log(
         --   'targetUnitE > 0 ' .. tostring(targetUnitE > 0 ) ..
@@ -330,7 +330,7 @@ function builderForceAssist(assistType, builderId, targetId, targetDefID, neighb
 
   if bestCandidate and targetDefID ~= bestCandidate[2] then
     -- GetUnitDefID not a number arg one
-    log('repair bestCandidate ' .. bestCandidate[1] .. ' ' .. bestCandidate[3].translatedHumanName)
+    -- log('repair bestCandidate ' .. bestCandidate[1] .. ' ' .. bestCandidate[3].translatedHumanName)
     repair(builderId, bestCandidate[1])
   end
 end
@@ -386,9 +386,9 @@ function getBestCandidate(candidatesOriginal, assistType)
     local candidateDefId = GetUnitDefID(candidateId)
     local candidateDef = UnitDefs[candidateDefId]
     local MMEff = getMetalMakingEfficiencyDef(candidateDef)
-    if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
-      log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
-    end
+    -- if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
+    --   log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
+    -- end
     if
     --    candidateDef and (assistType == 'mm' and MMEff) and
         (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
