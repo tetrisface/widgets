@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name      = "test",
+    name      = "(test)",
     desc      = "",
     author    = "tetrisface",
     version   = "",
@@ -42,7 +42,7 @@ function widget:MouseMove(x, y, dx, dy, button)
   --   return
   -- end
   -- log('move ' .. x .. ' ' .. y)
-  
+
 
   -- if math.abs(x-keyPressMouseX) > 50 or math.abs(y-keyPressMouseY) > 50 then
   --   log('moved ' .. x-keyPressMouseX ' and ' .. y-keyPressMouseY)
@@ -82,7 +82,7 @@ end
 
 --   local mouse_x, mouse_y = GetMouseState ( )
 --   -- local mouse_x, mouse_y = GetMouseStartPosition(0)
---   -- local wrecksInRange = GetFeaturesInCylinder(mpx, mpz, builderDef.buildDistance)     
+--   -- local wrecksInRange = GetFeaturesInCylinder(mpx, mpz, builderDef.buildDistance)
 --   local desc, args = TraceScreenRay(mouse_x, mouse_y, true)
 --   if nil == desc then return end -- off map
 --   local x = args[1]
@@ -122,8 +122,8 @@ end
 --   --   visibleUnits[unitId] = GetUnitViewPosition(unitId)
 --   -- end
 
---   -- boundaries = 
-  
+--   -- boundaries =
+
 
 -- end
 
@@ -137,8 +137,8 @@ end
 --     local point = points[i]
 --     xMin = xMin < point.x and xMin or point.x
 --     xMax = xMax > point.x and xMax or point.x
---     zMin = zMin < point.z and zMin or point.z 
---     zMax = zMax > point.z and zMax or point.z 
+--     zMin = zMin < point.z and zMin or point.z
+--     zMax = zMax > point.z and zMax or point.z
 --   end
 --   return xMin, xMax, yMin, yMax
 -- end

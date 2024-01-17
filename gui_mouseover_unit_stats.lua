@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name = "Mouse Over Unit Stats",
+    name = "GUI Build cost recovery",
     desc = "Shows detailed unit stats",
     author = "Niobium, Nixtux",
     date = "Jan 11, 2009",

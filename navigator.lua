@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name    = "navigator",
+    name    = "(wip) navigator",
     desc    = "",
     author  = "tetrisface",
     version = "",
