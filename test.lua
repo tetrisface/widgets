@@ -1,14 +1,14 @@
 function widget:GetInfo()
   return {
-    name      = "(test)",
-    desc      = "",
-    author    = "tetrisface",
-    version   = "",
-    date      = "jan, 2024",
-    license   = "",
-    layer     = -99990,
-    enabled   = false,
-	}
+    name    = "(test)",
+    desc    = "",
+    author  = "tetrisface",
+    version = "",
+    date    = "jan, 2024",
+    license = "",
+    layer   = -99990,
+    enabled = false,
+  }
 end
 
 local GetCameraPosition = Spring.GetCameraPosition
@@ -29,15 +29,17 @@ local GetUnitCommands = Spring.GetUnitCommands
 
 
 function widget:MouseRelease(x, y, button)
-  log('mouse release ' .. x .. " " .. y .. " " .. button)
-  return false
+  -- log('mouse release ' .. x .. " " .. y .. " " .. button)
+  -- return false
 end
+
 function widget:MousePress(x, y, button)
-  log('mouse press ' .. x .. " " .. y .. " " .. button)
-  return false
+  -- log('mouse press ' .. x .. " " .. y .. " " .. button)
+  -- return false
 end
+
 function widget:MouseMove(x, y, dx, dy, button)
-  log('move1 ' .. x .. ' ' .. y .. " " .. button)
+  -- log('move1 ' .. x .. ' ' .. y .. " " .. button)
   -- if not keyHold then
   --   return
   -- end
@@ -47,7 +49,7 @@ function widget:MouseMove(x, y, dx, dy, button)
   -- if math.abs(x-keyPressMouseX) > 50 or math.abs(y-keyPressMouseY) > 50 then
   --   log('moved ' .. x-keyPressMouseX ' and ' .. y-keyPressMouseY)
   -- end
-  return false
+  -- return false
 end
 
 -- function getReclaimableFeature(x , z, radius)
@@ -144,39 +146,39 @@ end
 -- end
 
 
-  -- for printing tables
--- function table.val_to_str(v)
---   if "string" == type(v) then
---     v = string.gsub(v, "\n", "\\n" )
---     if string.match(string.gsub(v,"[^'\"]",""), '^"+$' ) then
---       return "'" .. v .. "'"
---     end
---     return '"' .. string.gsub(v,'"', '\\"' ) .. '"'
---   else
---     return "table" == type(v) and table.tostring(v) or
---       tostring(v)
---   end
--- end
+-- for printing tables
+function table.val_to_str(v)
+  if "string" == type(v) then
+    v = string.gsub(v, "\n", "\\n")
+    if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
+      return "'" .. v .. "'"
+    end
+    return '"' .. string.gsub(v, '"', '\\"') .. '"'
+  else
+    return "table" == type(v) and table.tostring(v) or
+        tostring(v)
+  end
+end
 
--- function table.key_to_str(k)
---   if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$" ) then
---     return k
---   else
---     return "[" .. table.val_to_str(k) .. "]"
---   end
--- end
+function table.key_to_str(k)
+  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
+    return k
+  else
+    return "[" .. table.val_to_str(k) .. "]"
+  end
+end
 
--- function table.tostring(tbl)
---   local result, done = {}, {}
---   for k, v in ipairs(tbl ) do
---     table.insert(result, table.val_to_str(v) )
---     done[ k ] = true
---   end
---   for k, v in pairs(tbl) do
---     if not done[ k ] then
---       table.insert(result,
---         table.key_to_str(k) .. "=" .. table.val_to_str(v) )
---     end
---   end
---   return "{" .. table.concat(result, "," ) .. "}"
--- end
+function table.tostring(tbl)
+  local result, done = {}, {}
+  for k, v in ipairs(tbl) do
+    table.insert(result, table.val_to_str(v))
+    done[k] = true
+  end
+  for k, v in pairs(tbl) do
+    if not done[k] then
+      table.insert(result,
+        table.key_to_str(k) .. "=" .. table.val_to_str(v))
+    end
+  end
+  return "{" .. table.concat(result, ",") .. "}"
+end

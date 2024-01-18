@@ -34,8 +34,8 @@ local mainIterationModuloLimit = 5
 local myTeamId = GetMyTeamID()
 local regularizedNegativeEnergy = false
 local regularizedPositiveEnergy = true
-local regularizedResourceDerivativesEnergy = {true}
-local regularizedResourceDerivativesMetal = {true}
+local regularizedResourceDerivativesEnergy = { true }
+local regularizedResourceDerivativesMetal = { true }
 local SetTeamRulesParam = Spring.SetTeamRulesParam
 
 function widget:Initialize()
@@ -54,17 +54,16 @@ function widget:KeyPress(key, mods, isRepeat)
   if (key == 100 or key == 115 or key == 97) and mods['alt'] then -- 'd' shift from queue
     local selected_units = GetSelectedUnits()
     -- for i, unit_id in ipairs(selected_units) do
-    for i=1,#selected_units do
+    for i = 1, #selected_units do
       local unit_id = selected_units[i]
       local cmd_queue = GetUnitCommands(unit_id, 100)
       if cmd_queue and #cmd_queue > 1 then
-        if key == 115 then -- s
+        if key == 115 then     -- s
           removeFirstCommand(unit_id)
         elseif key == 100 then -- d
           removeLastCommand(unit_id)
-
         elseif key == 97 and #cmd_queue > 1 then -- a
-            reverseQueue(unit_id)
+          reverseQueue(unit_id)
         end
         -- does not seem to stop when removing to an empty queue, therefore:
         if #cmd_queue == 2 then
@@ -150,99 +149,96 @@ end
 
 -- TODO
 function reverseQueue(unit_id)
+  --  local states = Spring.GetUnitStates(targetID)
 
---  local states = Spring.GetUnitStates(targetID)
-
---  if (states ~= nil) then
---    Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { states.firestate }, 0)
---    Spring.GiveOrderToUnit(unitID, CMD.MOVE_STATE, { states.movestate }, 0)
---    Spring.GiveOrderToUnit(unitID, CMD.REPEAT,     { states['repeat']  and 1 or 0 }, 0)
---    Spring.GiveOrderToUnit(unitID, CMD.ONOFF,      { states.active     and 1 or 0 }, 0)
---    Spring.GiveOrderToUnit(unitID, CMD.CLOAK,      { states.cloak      and 1 or 0 }, 0)
---    Spring.GiveOrderToUnit(unitID, CMD.TRAJECTORY, { states.trajectory and 1 or 0 }, 0)
---  end
+  --  if (states ~= nil) then
+  --    Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { states.firestate }, 0)
+  --    Spring.GiveOrderToUnit(unitID, CMD.MOVE_STATE, { states.movestate }, 0)
+  --    Spring.GiveOrderToUnit(unitID, CMD.REPEAT,     { states['repeat']  and 1 or 0 }, 0)
+  --    Spring.GiveOrderToUnit(unitID, CMD.ONOFF,      { states.active     and 1 or 0 }, 0)
+  --    Spring.GiveOrderToUnit(unitID, CMD.CLOAK,      { states.cloak      and 1 or 0 }, 0)
+  --    Spring.GiveOrderToUnit(unitID, CMD.TRAJECTORY, { states.trajectory and 1 or 0 }, 0)
+  --  end
 
   local queue = Spring.GetCommandQueue(unit_id, 10000);
   GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { "alt" })
---  local build_queue = Spring.GetRealBuildQueue(unit_id)
+  --  local build_queue = Spring.GetRealBuildQueue(unit_id)
 
   -- log(table.tostring(queue))
   if queue then
     -- rm queue
-    for k,v in ipairs(queue) do  --  in order
---    GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { "alt" })
+    for k, v in ipairs(queue) do --  in order
+      --    GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { "alt" })
     end
 
---    for int k,v in ipairs(queue) do  --  in order
---    for k,v in ipairs(queue) do  --  in order
-    for i=#queue, 1, -1 do
+    --    for int k,v in ipairs(queue) do  --  in order
+    --    for k,v in ipairs(queue) do  --  in order
+    for i = #queue, 1, -1 do
       local v = queue[i]
       local options = v.options
       if not options.internal then
         local new_options = {}
-        if (options.alt)   then table.insert(new_options, "alt")   end
-        if (options.ctrl)  then table.insert(new_options, "ctrl")  end
+        if (options.alt) then table.insert(new_options, "alt") end
+        if (options.ctrl) then table.insert(new_options, "ctrl") end
         if (options.right) then table.insert(new_options, "right") end
         table.insert(new_options, "shift")
         --        Spring.GiveOrderToUnit(unit_id, v.id, v.params, options.coded)
-        log(v.id)
-        log(v.params)
---        table.insert(v.params, 1, 0)
-        log(v.params)
-        log(options.coded)
-        Spring.GiveOrderToUnit(unit_id, v.id,-1, v.params, options.coded)
+        --         log(v.id)
+        --         log(v.params)
+        -- --        table.insert(v.params, 1, 0)
+        --         log(v.params)
+        --         log(options.coded)
+        Spring.GiveOrderToUnit(unit_id, v.id, -1, v.params, options.coded)
       end
     end
   end
 
   if (build_queue ~= nil) then
-    for udid,buildPair in ipairs(build_queue) do
+    for udid, buildPair in ipairs(build_queue) do
       local udid, count = next(buildPair, nil)
       Spring.AddBuildOrders(unit_id, udid, count)
     end
   end
-
 end
-
 
 function log(s)
   Spring.Echo(s)
 end
 
 function table.has_value(tab, val)
-    for _, value in ipairs (tab) do
-        if value == val then
-            return true
-        end
+  for _, value in ipairs(tab) do
+    if value == val then
+      return true
     end
-    return false
+  end
+  return false
 end
 
 function table.full_of(tab, val)
-    for _, value in ipairs (tab) do
-        if value ~= val then
-            return false
-        end
+  for _, value in ipairs(tab) do
+    if value ~= val then
+      return false
     end
-    return true
+  end
+  return true
 end
 
 -- for printing tables
 function table.val_to_str(v)
   if "string" == type(v) then
-    v = string.gsub(v, "\n", "\\n" )
-    if string.match(string.gsub(v,"[^'\"]",""), '^"+$' ) then
+    v = string.gsub(v, "\n", "\\n")
+    if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
       return "'" .. v .. "'"
     end
-    return '"' .. string.gsub(v,'"', '\\"' ) .. '"'
+    return '"' .. string.gsub(v, '"', '\\"') .. '"'
   else
     return "table" == type(v) and table.tostring(v) or
-      tostring(v)
+        tostring(v)
   end
 end
 
 function table.key_to_str(k)
-  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$" ) then
+  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
     return k
   else
     return "[" .. table.val_to_str(k) .. "]"
@@ -251,15 +247,15 @@ end
 
 function table.tostring(tbl)
   local result, done = {}, {}
-  for k, v in ipairs(tbl ) do
-    table.insert(result, table.val_to_str(v) )
-    done[ k ] = true
+  for k, v in ipairs(tbl) do
+    table.insert(result, table.val_to_str(v))
+    done[k] = true
   end
   for k, v in pairs(tbl) do
-    if not done[ k ] then
+    if not done[k] then
       table.insert(result,
-        table.key_to_str(k) .. "=" .. table.val_to_str(v) )
+        table.key_to_str(k) .. "=" .. table.val_to_str(v))
     end
   end
-  return "{" .. table.concat(result, "," ) .. "}"
+  return "{" .. table.concat(result, ",") .. "}"
 end

@@ -100,7 +100,6 @@ function refreshunit(unitID, unitDefID, unitDef)
   }
   fighters[unitID] = unit
   fighter_ids[#fighter_ids + 1] = unit
-  log('added fighter', unitID)
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
@@ -115,13 +114,11 @@ function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
   end
 end
 
-
 function widget:GameFrame(n)
   if n % mainIterationModuloLimit == 0 then
     mainIteration(n)
   end
 end
-
 
 function mainIteration(n)
   for i = 1, #fighter_ids do
@@ -142,7 +139,6 @@ function mainIteration(n)
           --          log('free LOF', unitID, in_range_unit_id, GetUnitWeaponHaveFreeLineOfFire(unitID, 1, in_range_unit_id), TargetCanBeReached(unitID, {1}, in_range_unit_id))
           log('free LOF', unitID, in_range_unit_id, TargetCanBeReached(unitID, { 1 }, in_range_unit_id))
           if target_ids[in_range_unit_id] == nil and TargetCanBeReached(unitID, 1, in_range_unit_id) then
-
             local health, _ = GetUnitHealth(in_range_unit_id)
 
             local target = {
@@ -182,9 +178,8 @@ function TargetCanBeReached(unitID, weaponList, target)
   --    end
   --  end
   return Spring.GetUnitWeaponTryTarget(unitID, 1, target) and Spring.GetUnitWeaponTestTarget(unitID, 1, target) and Spring.GetUnitWeaponTestRange(unitID, 1, target) and
-          Spring.GetUnitWeaponHaveFreeLineOfFire(unitID, 1, target)
+      Spring.GetUnitWeaponHaveFreeLineOfFire(unitID, 1, target)
 end
-
 
 function sortHealth(a, b)
   if a.health ~= nil and b.health ~= nil and a.health < b.health then
@@ -195,9 +190,8 @@ end
 
 function attack(source, dest)
   Spring.GiveOrderToUnit(source, 34923, { dest }, 0)
---  Spring.SetUnitTarget(source, dest, false)
+  --  Spring.SetUnitTarget(source, dest, false)
 end
-
 
 -- utils
 
@@ -215,7 +209,6 @@ function deepcopy(orig)
   end
   return copy
 end
-
 
 -- for debug
 

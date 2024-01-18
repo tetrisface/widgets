@@ -11,14 +11,11 @@ function widget:GetInfo()
   }
 end
 
-local GetAllyTeamList = Spring.GetAllyTeamList
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
-local GetMyTeamID = Spring.GetMyTeamID
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetTeamResources = Spring.GetTeamResources
 local GetTeamRulesParam = Spring.GetTeamRulesParam
-local GetTeamRulesParams = Spring.GetTeamRulesParams
 local GetTeamUnits = Spring.GetTeamUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitDefID = Spring.GetUnitDefID
@@ -27,16 +24,13 @@ local GetUnitIsBuilding = Spring.GetUnitIsBuilding
 local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitResources = Spring.GetUnitResources
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
-local GetUnitsInSphere = Spring.GetUnitsInSphere
 local GiveOrderToUnit = Spring.GiveOrderToUnit
 local UnitDefs = UnitDefs
 
 local abandonedTargetIDs = {}
 local builders = {}
-local conversionLevelHistory = {}
 local log = Spring.Echo
 local mainIterationModuloLimit = 5
-local metalMakers = {}
 local myTeamId = Spring.GetMyTeamID()
 local possibleMetalMakersProduction = 0
 local possibleMetalMakersUpkeep = 0
@@ -44,7 +38,7 @@ local regularizedResourceDerivativesEnergy = { true }
 local regularizedResourceDerivativesMetal = { true }
 local releasedMetal = 0
 local selectedUnits
-local t0 = Spring.GetTimer()
+-- local t0 = Spring.GetTimer()
 local tidalStrength = Game.tidal
 local totalSavedTime = 0
 
@@ -59,10 +53,10 @@ local metalLevel = 0.5
 local metalMakingLevel = 0.5
 local positiveMMLevel = true
 local regularizedNegativeEnergy = false
-local regularizedNegativeMetal = false
+-- local regularizedNegativeMetal = false
 local regularizedPositiveEnergy = true
 local regularizedPositiveMetal = true
-local willStall = false
+-- local willStall = false
 local windMax = Game.windMax
 local windMin = Game.windMin
 
@@ -98,7 +92,7 @@ function registerUnit(unitID, unitDefID)
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-  registerUnit(unitID, unitDefID, unitTeam)
+  registerUnit(unitID, unitDefID)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
@@ -184,17 +178,17 @@ function builderIteration(n)
       local targetDef = UnitDefs[targetDefID]
 
       -- if n % 3 == 0 then
-        table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
-        table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
-        if #regularizedResourceDerivativesMetal > 7 then
-          table.remove(regularizedResourceDerivativesMetal)
-          table.remove(regularizedResourceDerivativesEnergy)
-        end
-        regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
-        regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-        regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
-        regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
-        updateFastResourceStatus()
+      table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
+      table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
+      if #regularizedResourceDerivativesMetal > 7 then
+        table.remove(regularizedResourceDerivativesMetal)
+        table.remove(regularizedResourceDerivativesEnergy)
+      end
+      regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
+      regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
+      regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
+      regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
+      updateFastResourceStatus()
       -- end
 
       -- queue fast forwarder
@@ -272,11 +266,22 @@ function builderIteration(n)
       end
 
       -- 90 == reclaim cmd
-      if ((isMetalStalling and not isEnergyLeaking) or (isEnergyStalling and not isMetalLeaking))
-          and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
-        local featureId = getReclaimableFeature(mpx, mpz, builderDef.buildDistance)
-        if featureId then
-          GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + featureId }, { 'alt' })
+      if (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
+        local features = getReclaimableFeature(mpx, mpz, builderDef.buildDistance)
+        if features then
+          if isMetalStalling and isEnergyStalling and #features['metalenergy'] > 0 then
+            GiveOrderToUnit(builderId, CMD.INSERT,
+              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
+              { 'alt' })
+          elseif isMetalStalling and not isEnergyLeaking and #features['metal'] > 0 then
+            GiveOrderToUnit(builderId, CMD.INSERT,
+              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
+              { 'alt' })
+          elseif isEnergyStalling and not isMetalLeaking and #features['energy'] > 0 then
+            GiveOrderToUnit(builderId, CMD.INSERT,
+              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
+              { 'alt' })
+          end
         end
       end
 
@@ -405,8 +410,8 @@ function getBestCandidate(candidatesOriginal, assistType)
   if #candidates == 1 then
     return candidates[1]
     -- todo investigate why number
-  -- elseif type(candidates[1]) == "number" or type(candidates[2]) == "number" then
-  --   return false
+    -- elseif type(candidates[1]) == "number" or type(candidates[2]) == "number" then
+    --   return false
   elseif #candidates == 0 then
     return false
   end
@@ -710,19 +715,32 @@ function getReclaimableFeature(x, z, radius)
     return
   end
 
-  -- for i=1, #wrecksInRange do
-  --   local metal, _, energy = GetFeatureResources(featureId)
-  --   if metal + energy == 0 then
-  --     goto continue
-  --   end
-  --   local featureId = wrecksInRange[i]
-  --   local featureId = wrecksInRange[i]
-  --   ::continue::
-  -- end
-  local featureId = wrecksInRange[1]
-  -- local metal, _, energy = GetFeatureResources(featureId)
-  -- log('feature metal ' .. metal, ' energy ' .. energy)
-  return featureId
+  local features = {
+    ['metalenergy'] = {},
+    ['metal'] = {},
+    ['energy'] = {},
+  }
+  for i = 1, #wrecksInRange do
+    local featureId = wrecksInRange[i]
+    local metal, _, energy = GetFeatureResources(featureId)
+
+    if metal > 0 and energy then
+      table.insert(features['metalenergy'], featureId)
+    elseif metal > 0 then
+      table.insert(features['metal'], featureId)
+    elseif energy > 0 then
+      table.insert(features['energy'], featureId)
+    end
+
+
+    -- if metal + energy == 0 then
+    --   goto continue
+    -- end
+    -- local featureId = wrecksInRange[i]
+    -- local featureId = wrecksInRange[i]
+    -- ::continue::
+  end
+  return features
 end
 
 -- for debug

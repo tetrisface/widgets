@@ -136,7 +136,7 @@ local blue = '\255\128\128\255'
 
 local metalColor = '\255\48\48\128'
 local energyColor = '\255\255\255\128' -- Light yellow
-local buildColor = '\255\128\255\128' -- Light green
+local buildColor = '\255\128\255\128'  -- Light green
 
 -- all yellow
 -- white = '\255\255\255\1'
@@ -247,7 +247,6 @@ local function DrawTextBuffer()
 end
 
 local function GetTeamColorCode(teamID)
-
   if not teamID then return "\255\255\255\255" end
 
   local R, G, B = spGetTeamColor(teamID)
@@ -266,7 +265,6 @@ local function GetTeamColorCode(teamID)
 end
 
 local function GetTeamName(teamID)
-
   if not teamID then return 'Error:NoTeamID' end
 
   local _, teamLeader = spGetTeamInfo(teamID)
@@ -289,7 +287,6 @@ end
 -- Code
 ------------------------------------------------------------------------------------
 function widget:Initialize()
-
   if not WG["background_opacity_custom"] then
     WG["background_opacity_custom"] = { 0, 0, 0, 0.5 }
   end
@@ -326,7 +323,6 @@ function mysplit(inputstr, sep)
   end
   return t
 end
-
 
 function split(pString, pPattern)
   local Table = {} -- NOTE: use {n = 0} in Lua-5.0
@@ -368,8 +364,8 @@ function widget:Update(deltaTime)
 
   -- log(table.tostring(unitDefHumanNamesIds))
   -- log('uDefID ' ..tostring(uDefID))
---  local expMorphPat = "UnitDefID (%d+)\n"
---  uDefID = tonumber(text:match(expMorphPat)) or nil
+  --  local expMorphPat = "UnitDefID (%d+)\n"
+  --  uDefID = tonumber(text:match(expMorphPat)) or nil
   local OrderID = WG["cmdID"] or nil
   if OrderID and OrderID < 0 then
     OrderID = math.abs(OrderID)
@@ -480,16 +476,10 @@ function widget:DrawScreen()
   end
 
   local unitFilter = not (#uDef.weapons > 0) or uDef.isBuilding or pplants[uDef.name]
-  log(uDef)
-  log(tostring(uDef))
-  log(table.tostring(uDef))
   if unitFilter then
-    log('name ' .. tostring(uDef.name) .. ' energy ' .. energyUpkeepMake)
-
     if ((uDef.extractsMetal and uDef.extractsMetal > 0) or (uDef.metalMake and uDef.metalMake > 0) or (energyUpkeepMake and energyUpkeepMake > 0) or (uDef.tidalGenerator and uDef.tidalGenerator > 0) or (uDef.windGenerator and uDef.windGenerator > 0)) then
       -- Powerplants
       --DrawText(metalColor .. "Total metal generation efficiency", '')
-      log('make the recovery time')
       DrawText(white .. "Estimated time of recovering 100% of cost:", '')
 
       local totalMOut = uDef.metalMake or 0
@@ -515,7 +505,6 @@ function widget:DrawScreen()
       end
 
       if (uDef.windGenerator > 0) then
-
         local mult = 1 -- DEFAULT
         if uDef.customParams then
           mult = uDef.customParams.energymultiplier or mult
@@ -527,7 +516,6 @@ function widget:DrawScreen()
       end
 
       if (totalEOut * avgCR + totalMOut > 0) then
-
         local avgSec = (uDef.metalCost + uDef.energyCost * avgCR) / (totalEOut * avgCR + totalMOut)
         local currSec = (uDef.metalCost + uDef.energyCost * curAvgEffi) / (totalEOut * curAvgEffi + totalMOut)
 
@@ -550,8 +538,8 @@ function widget:DrawScreen()
   --DrawText('Height:', uDefs[spGetUnitDefID(uID)].height)
 
   DrawText("Cost:", format(metalColor .. '%d' .. white .. ' / ' ..
-          energyColor .. '%d' .. white .. ' / ' ..
-          buildColor .. '%d', uDef.metalCost, uDef.energyCost, uDef.buildTime))
+    energyColor .. '%d' .. white .. ' / ' ..
+    buildColor .. '%d', uDef.metalCost, uDef.energyCost, uDef.buildTime))
 
   if not (uDef.isBuilding or uDef.isFactory) then
     DrawText("Move:", format("%.1f / %.1f / %.0f (Speed / Accel / Turn)", uDef.speed, 900 * uDef.maxAcc, simSpeed * uDef.turnRate * (180 / 32767)))
@@ -612,7 +600,7 @@ function widget:DrawScreen()
   ------------------------------------------------------------------------------------
   -- Weapons
   ------------------------------------------------------------------------------------
-  local wepCounts = {} -- wepCounts[wepDefID] = #
+  local wepCounts = {}   -- wepCounts[wepDefID] = #
   local wepsCompact = {} -- uWepsCompact[1..n] = wepDefID
 
   local uWeps = uDef.weapons
@@ -645,12 +633,10 @@ function widget:DrawScreen()
   end
 
   for i = 1, #wepsCompact do
-
     local wDefId = wepsCompact[i]
     local uWep = wDefs[wDefId]
 
     if uWep.range > 16 and not uWep.name:find("teleport", 1, true) then
-
       local oBurst = uWep.salvoSize * uWep.projectiles
       local oRld = max(1 / 30, uWep.stockpile and uWep.stockpileTime or uWep.reload)
       if useExp and not (uWep.stockpile and uWep.stockpileTime) then
@@ -732,7 +718,6 @@ function widget:DrawScreen()
       end
 
       if uWep.metalCost > 0 or uWep.energyCost > 0 then
-
         -- Stockpiling weapons are weird
         -- They take the correct amount of resources overall
         -- They take the correct amount of time
@@ -740,9 +725,9 @@ function widget:DrawScreen()
         local drainAdjust = uWep.stockpile and (simSpeed + 2) / simSpeed or 1
 
         DrawText('Cost:', format(metalColor .. '%d' .. white .. ', ' ..
-                energyColor .. '%d' .. white .. ' = ' ..
-                metalColor .. '-%d' .. white .. ', ' ..
-                energyColor .. '-%d' .. white .. ' per second',
+          energyColor .. '%d' .. white .. ' = ' ..
+          metalColor .. '-%d' .. white .. ', ' ..
+          energyColor .. '-%d' .. white .. ' per second',
           uWep.metalCost,
           uWep.energyCost,
           drainAdjust * uWep.metalCost / oRld,
