@@ -537,15 +537,15 @@ function widget:DrawScreen()
 
   --DrawText('Height:', uDefs[spGetUnitDefID(uID)].height)
 
-  DrawText("Cost:", format(metalColor .. '%d' .. white .. ' / ' ..
-    energyColor .. '%d' .. white .. ' / ' ..
-    buildColor .. '%d', uDef.metalCost, uDef.energyCost, uDef.buildTime))
+  -- DrawText("Cost:", format(metalColor .. '%d' .. white .. ' / ' ..
+  --   energyColor .. '%d' .. white .. ' / ' ..
+  --   buildColor .. '%d', uDef.metalCost, uDef.energyCost, uDef.buildTime))
 
-  if not (uDef.isBuilding or uDef.isFactory) then
-    DrawText("Move:", format("%.1f / %.1f / %.0f (Speed / Accel / Turn)", uDef.speed, 900 * uDef.maxAcc, simSpeed * uDef.turnRate * (180 / 32767)))
-  end
+  -- if not (uDef.isBuilding or uDef.isFactory) then
+  --   DrawText("Move:", format("%.1f / %.1f / %.0f (Speed / Accel / Turn)", uDef.speed, 900 * uDef.maxAcc, simSpeed * uDef.turnRate * (180 / 32767)))
+  -- end
 
-  cY = cY - fontSize
+  -- cY = cY - fontSize
 
   -- Buildoptions
   -- if uDef.buildOptions and #uDef.buildOptions > 0 then
@@ -562,40 +562,40 @@ function widget:DrawScreen()
   -- end
   -- cY = cY - fontSize
 
-  if uDef.buildSpeed > 0 then DrawText('Build:', yellow .. uDef.buildSpeed) end
-  if uDef.buildDistance > 0 then DrawText("B Dist:", format(yellow .. "%d", uDef.buildDistance)) end
-  if (uDef.repairSpeed > 0 and uDef.repairSpeed ~= uDef.buildSpeed) then DrawText("Repair:", format(yellow .. "%d", uDef.repairSpeed)) end
-  if (uDef.reclaimSpeed > 0 and uDef.reclaimSpeed ~= uDef.buildSpeed) then DrawText("Reclaim:", format(yellow .. "%d", uDef.reclaimSpeed)) end
-  if (uDef.resurrectSpeed > 0 and uDef.resurrectSpeed ~= uDef.buildSpeed) then DrawText("Resurrect:", format(yellow .. "%d", uDef.resurrectSpeed)) end
-  if (uDef.captureSpeed > 0 and uDef.captureSpeed ~= uDef.buildSpeed) then DrawText("Capture:", format(yellow .. "%d", uDef.captureSpeed)) end
-  if (uDef.terraformSpeed > 0 and uDef.terraformSpeed ~= uDef.buildSpeed) then DrawText("Capture:", format(yellow .. "%d", uDef.terraformSpeed)) end
+  -- if uDef.buildSpeed > 0 then DrawText('Build:', yellow .. uDef.buildSpeed) end
+  -- if uDef.buildDistance > 0 then DrawText("B Dist:", format(yellow .. "%d", uDef.buildDistance)) end
+  -- if (uDef.repairSpeed > 0 and uDef.repairSpeed ~= uDef.buildSpeed) then DrawText("Repair:", format(yellow .. "%d", uDef.repairSpeed)) end
+  -- if (uDef.reclaimSpeed > 0 and uDef.reclaimSpeed ~= uDef.buildSpeed) then DrawText("Reclaim:", format(yellow .. "%d", uDef.reclaimSpeed)) end
+  -- if (uDef.resurrectSpeed > 0 and uDef.resurrectSpeed ~= uDef.buildSpeed) then DrawText("Resurrect:", format(yellow .. "%d", uDef.resurrectSpeed)) end
+  -- if (uDef.captureSpeed > 0 and uDef.captureSpeed ~= uDef.buildSpeed) then DrawText("Capture:", format(yellow .. "%d", uDef.captureSpeed)) end
+  -- if (uDef.terraformSpeed > 0 and uDef.terraformSpeed ~= uDef.buildSpeed) then DrawText("Capture:", format(yellow .. "%d", uDef.terraformSpeed)) end
 
-  if uDef.isTransport and uDef.transportMass > 0 then DrawText("Transporter Max Mass:", format(orange .. "%d", uDef.transportMass)) end
+  -- if uDef.isTransport and uDef.transportMass > 0 then DrawText("Transporter Max Mass:", format(orange .. "%d", uDef.transportMass)) end
 
-  cY = cY - fontSize
+  -- cY = cY - fontSize
 
   ------------------------------------------------------------------------------------
   -- Sensors and Jamming
   ------------------------------------------------------------------------------------
 
-  if uDef.stealth then DrawText("Other:", "Stealth") end
+  -- if uDef.stealth then DrawText("Other:", "Stealth") end
 
-  cY = cY - fontSize
+  -- cY = cY - fontSize
 
   ------------------------------------------------------------------------------------
   -- Armor
   ------------------------------------------------------------------------------------
 
-  DrawText("Armor:", "Class " .. Game.armorTypes[uDef.armorType or 0] or '???')
+  -- DrawText("Armor:", "Class " .. Game.armorTypes[uDef.armorType or 0] or '???')
 
-  local maxHP = uDef.health
-  if ctrl then
-    maxHP = uMaxHp
-  end
-  DrawText("Open:", format("maxHP: %d", maxHP))
-  if uDef.armoredMultiple ~= 1 then DrawText("Closed:", format(" +%d%%, maxHP: %d", (1 / uDef.armoredMultiple - 1) * 100, maxHP / uDef.armoredMultiple)) end
+  -- local maxHP = uDef.health
+  -- if ctrl then
+  --   maxHP = uMaxHp
+  -- end
+  -- DrawText("Open:", format("maxHP: %d", maxHP))
+  -- if uDef.armoredMultiple ~= 1 then DrawText("Closed:", format(" +%d%%, maxHP: %d", (1 / uDef.armoredMultiple - 1) * 100, maxHP / uDef.armoredMultiple)) end
 
-  cY = cY - fontSize
+  -- cY = cY - fontSize
 
   ------------------------------------------------------------------------------------
   -- Weapons
@@ -632,118 +632,118 @@ function widget:DrawScreen()
     wepsCompact[selfDWeaponIndex] = selfDWeaponID
   end
 
-  for i = 1, #wepsCompact do
-    local wDefId = wepsCompact[i]
-    local uWep = wDefs[wDefId]
+  -- for i = 1, #wepsCompact do
+  --   local wDefId = wepsCompact[i]
+  --   local uWep = wDefs[wDefId]
 
-    if uWep.range > 16 and not uWep.name:find("teleport", 1, true) then
-      local oBurst = uWep.salvoSize * uWep.projectiles
-      local oRld = max(1 / 30, uWep.stockpile and uWep.stockpileTime or uWep.reload)
-      if useExp and not (uWep.stockpile and uWep.stockpileTime) then
-        oRld = spGetUnitWeaponState(uID, weaponNums[i] or -1, "reloadTime") or oRld
-      end
-      local wepCount = wepCounts[wDefId]
+  --   if uWep.range > 16 and not uWep.name:find("teleport", 1, true) then
+  --     local oBurst = uWep.salvoSize * uWep.projectiles
+  --     local oRld = max(1 / 30, uWep.stockpile and uWep.stockpileTime or uWep.reload)
+  --     if useExp and not (uWep.stockpile and uWep.stockpileTime) then
+  --       oRld = spGetUnitWeaponState(uID, weaponNums[i] or -1, "reloadTime") or oRld
+  --     end
+  --     local wepCount = wepCounts[wDefId]
 
-      local typeName = uWep.type
-      if i == deathWeaponIndex then
-        typeName = "Death explosion"
-        oRld = 1
-      elseif i == selfDWeaponIndex then
-        typeName = "Self Destruct"
-        oRld = uDef.selfDCountdown
-      end
-      if wepCount > 1 then
-        DrawText("Weap:", format(yellow .. "%dx" .. white .. " %s", wepCount, typeName))
-      else
-        DrawText("Weap:", typeName)
-      end
+  --     local typeName = uWep.type
+  --     if i == deathWeaponIndex then
+  --       typeName = "Death explosion"
+  --       oRld = 1
+  --     elseif i == selfDWeaponIndex then
+  --       typeName = "Self Destruct"
+  --       oRld = uDef.selfDCountdown
+  --     end
+  --     if wepCount > 1 then
+  --       DrawText("Weap:", format(yellow .. "%dx" .. white .. " %s", wepCount, typeName))
+  --     else
+  --       DrawText("Weap:", typeName)
+  --     end
 
-      DrawText("Info:", format("%d range, %d aoe, %d%% edge", uWep.range, uWep.damageAreaOfEffect, 100 * uWep.edgeEffectiveness))
+  --     DrawText("Info:", format("%d range, %d aoe, %d%% edge", uWep.range, uWep.damageAreaOfEffect, 100 * uWep.edgeEffectiveness))
 
-      if uWep.coverageRange and uWep.stockpile then
-        DrawText("Anti:", format("%d Interceptor Range", uWep.coverageRange))
-      end
+  --     if uWep.coverageRange and uWep.stockpile then
+  --       DrawText("Anti:", format("%d Interceptor Range", uWep.coverageRange))
+  --     end
 
-      if uWep.coverageRange and uWep.interceptor == 16 then
-        DrawText("MDS:", format("%d Interceptor Range", uWep.coverageRange))
-      end
+  --     if uWep.coverageRange and uWep.interceptor == 16 then
+  --       DrawText("MDS:", format("%d Interceptor Range", uWep.coverageRange))
+  --     end
 
-      if uWep.targetable == 16 then
-        DrawText("MDS:", "Is Targetable", '')
-      end
+  --     if uWep.targetable == 16 then
+  --       DrawText("MDS:", "Is Targetable", '')
+  --     end
 
-      local reload = uWep.reload
-      local accuracy = uWep.accuracy
-      local moveError = uWep.targetMoveError
-      local reloadBonus = reload ~= 0 and (uWep.reload / reload - 1) or 0
-      local accuracyBonus = accuracy ~= 0 and (uWep.accuracy / accuracy - 1) or 0
-      local moveErrorBonus = moveError ~= 0 and (uWep.targetMoveError / moveError - 1) or 0
-      local range = uWep.range
-      local rangeBonus = range ~= 0 and (range / uWep.range - 1) or 0
-      if uExp ~= 0 then
-        DrawText("Exp:", format("+%d%% accuracy, +%d%% aim, +%d%% firerate, +%d%% range", accuracyBonus * 100, moveErrorBonus * 100, reloadBonus * 100, rangeBonus * 100))
-      end
-      local infoText = format("%d range, %d aoe, %d%% edge", useExp and range or uWep.range, uWep.damageAreaOfEffect, 100 * uWep.edgeEffectiveness)
-      if uWep.damages.paralyzeDamageTime > 0 then
-        infoText = format("%s, %ds paralyze", infoText, uWep.damages.paralyzeDamageTime)
-      end
-      if uWep.damages.impulseBoost > 0 then
-        infoText = format("%s, %d impulse", infoText, uWep.damages.impulseBoost * 100)
-      end
-      if uWep.damages.craterBoost > 0 then
-        infoText = format("%s, %d crater", infoText, uWep.damages.craterBoost * 100)
-      end
-      DrawText("Info:", infoText)
+  --     local reload = uWep.reload
+  --     local accuracy = uWep.accuracy
+  --     local moveError = uWep.targetMoveError
+  --     local reloadBonus = reload ~= 0 and (uWep.reload / reload - 1) or 0
+  --     local accuracyBonus = accuracy ~= 0 and (uWep.accuracy / accuracy - 1) or 0
+  --     local moveErrorBonus = moveError ~= 0 and (uWep.targetMoveError / moveError - 1) or 0
+  --     local range = uWep.range
+  --     local rangeBonus = range ~= 0 and (range / uWep.range - 1) or 0
+  --     if uExp ~= 0 then
+  --       DrawText("Exp:", format("+%d%% accuracy, +%d%% aim, +%d%% firerate, +%d%% range", accuracyBonus * 100, moveErrorBonus * 100, reloadBonus * 100, rangeBonus * 100))
+  --     end
+  --     local infoText = format("%d range, %d aoe, %d%% edge", useExp and range or uWep.range, uWep.damageAreaOfEffect, 100 * uWep.edgeEffectiveness)
+  --     if uWep.damages.paralyzeDamageTime > 0 then
+  --       infoText = format("%s, %ds paralyze", infoText, uWep.damages.paralyzeDamageTime)
+  --     end
+  --     if uWep.damages.impulseBoost > 0 then
+  --       infoText = format("%s, %d impulse", infoText, uWep.damages.impulseBoost * 100)
+  --     end
+  --     if uWep.damages.craterBoost > 0 then
+  --       infoText = format("%s, %d crater", infoText, uWep.damages.craterBoost * 100)
+  --     end
+  --     DrawText("Info:", infoText)
 
-      local defaultDamage = uWep.damages[0]
-      for cat = 0, #uWep.damages do
-        local oDmg = uWep.damages[cat]
-        local catName = Game.armorTypes[cat]
-        if catName and oDmg and (oDmg ~= defaultDamage or cat == 0) then
-          local dmgString
-          if oBurst > 1 then
-            dmgString = format(yellow .. "%d (x%d)" .. white .. " / " .. yellow .. "%.2f\s" .. white .. " = " .. yellow .. "%.2f \d\p\s", oDmg, oBurst, oRld, oBurst * oDmg / oRld)
-          else
-            dmgString = format(yellow .. "%d" .. white .. " / " .. yellow .. "%.2f\s" .. white .. " = " .. yellow .. "%.2f \d\p\s", oDmg, oRld, oDmg / oRld)
-          end
+  --     local defaultDamage = uWep.damages[0]
+  --     for cat = 0, #uWep.damages do
+  --       local oDmg = uWep.damages[cat]
+  --       local catName = Game.armorTypes[cat]
+  --       if catName and oDmg and (oDmg ~= defaultDamage or cat == 0) then
+  --         local dmgString
+  --         if oBurst > 1 then
+  --           dmgString = format(yellow .. "%d (x%d)" .. white .. " / " .. yellow .. "%.2f\s" .. white .. " = " .. yellow .. "%.2f \d\p\s", oDmg, oBurst, oRld, oBurst * oDmg / oRld)
+  --         else
+  --           dmgString = format(yellow .. "%d" .. white .. " / " .. yellow .. "%.2f\s" .. white .. " = " .. yellow .. "%.2f \d\p\s", oDmg, oRld, oDmg / oRld)
+  --         end
 
-          if wepCount > 1 then
-            dmgString = dmgString .. white .. " (Each)"
-          end
+  --         if wepCount > 1 then
+  --           dmgString = dmgString .. white .. " (Each)"
+  --         end
 
-          dmgString = dmgString .. white .. " (" .. catName .. ")"
+  --         dmgString = dmgString .. white .. " (" .. catName .. ")"
 
-          DrawText("Dmg:", dmgString)
-        end
-      end
+  --         DrawText("Dmg:", dmgString)
+  --       end
+  --     end
 
-      if uWep.metalCost > 0 or uWep.energyCost > 0 then
-        -- Stockpiling weapons are weird
-        -- They take the correct amount of resources overall
-        -- They take the correct amount of time
-        -- They drain ((simSpeed+2)/simSpeed) times more resources than they should (And the listed drain is real, having lower income than listed drain WILL stall you)
-        local drainAdjust = uWep.stockpile and (simSpeed + 2) / simSpeed or 1
+  --     if uWep.metalCost > 0 or uWep.energyCost > 0 then
+  --       -- Stockpiling weapons are weird
+  --       -- They take the correct amount of resources overall
+  --       -- They take the correct amount of time
+  --       -- They drain ((simSpeed+2)/simSpeed) times more resources than they should (And the listed drain is real, having lower income than listed drain WILL stall you)
+  --       local drainAdjust = uWep.stockpile and (simSpeed + 2) / simSpeed or 1
 
-        DrawText('Cost:', format(metalColor .. '%d' .. white .. ', ' ..
-          energyColor .. '%d' .. white .. ' = ' ..
-          metalColor .. '-%d' .. white .. ', ' ..
-          energyColor .. '-%d' .. white .. ' per second',
-          uWep.metalCost,
-          uWep.energyCost,
-          drainAdjust * uWep.metalCost / oRld,
-          drainAdjust * uWep.energyCost / oRld))
-      end
+  --       DrawText('Cost:', format(metalColor .. '%d' .. white .. ', ' ..
+  --         energyColor .. '%d' .. white .. ' = ' ..
+  --         metalColor .. '-%d' .. white .. ', ' ..
+  --         energyColor .. '-%d' .. white .. ' per second',
+  --         uWep.metalCost,
+  --         uWep.energyCost,
+  --         drainAdjust * uWep.metalCost / oRld,
+  --         drainAdjust * uWep.energyCost / oRld))
+  --     end
 
-      -- if (weaponInfo[wDefId]) then
-      --   local radius = weaponInfo[wDefId].radius
-      --   local damage = weaponInfo[wDefId].damage
-      --   local duration = weaponInfo[wDefId].duration
-      --   DrawText("Area Dmg:", format(white .. "%d aoe, %d max damage per second , %d seconds", radius, damage * 30 / DAMAGE_PERIOD, duration / 30))
-      -- end
+  --     -- if (weaponInfo[wDefId]) then
+  --     --   local radius = weaponInfo[wDefId].radius
+  --     --   local damage = weaponInfo[wDefId].damage
+  --     --   local duration = weaponInfo[wDefId].duration
+  --     --   DrawText("Area Dmg:", format(white .. "%d aoe, %d max damage per second , %d seconds", radius, damage * 30 / DAMAGE_PERIOD, duration / 30))
+  --     -- end
 
-      cY = cY - fontSize
-    end
-  end
+  --     cY = cY - fontSize
+  --   end
+  -- end
 
   -- background
   glColor(WG["background_opacity_custom"])

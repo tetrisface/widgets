@@ -50,7 +50,7 @@ local isMetalStalling = false
 local isPositiveEnergyDerivative = false
 local isPositiveMetalDerivative = false
 local metalLevel = 0.5
-local metalMakingLevel = 0.5
+local metalMakersLevel = 0.5
 local positiveMMLevel = true
 local regularizedNegativeEnergy = false
 -- local regularizedNegativeMetal = false
@@ -146,12 +146,21 @@ function getUnitsBuildingUnit(unitID)
 end
 
 function widget:GameFrame(n)
+  mainIterationModuloLimit = 5
+  if #builders > 80 then
+    mainIterationModuloLimit = 3
+  elseif #builders > 40 then
+    mainIterationModuloLimit = 2
+  end
+
   if n % mainIterationModuloLimit == 0 then
     builderIteration(n)
   end
 
   if n % 1000 == 0 then
-    for k, v in pairs(abandonedTargetIDs) do
+    -- for k, v in pairs(abandonedTargetIDs) do
+    for i = 1, #abandonedTargetIDs do
+      local k = abandonedTargetIDs[i]
       local _, _, _, _, build = GetUnitHealth(k)
       if build == nil or build == 1 then
         table.remove(abandonedTargetIDs, k)
@@ -161,35 +170,54 @@ function widget:GameFrame(n)
 end
 
 function builderIteration(n)
+  local gotoContinue
   for builderId, _ in pairs(builders) do
-    local targetId = GetUnitIsBuilding(builderId)
+    gotoContinue = false
+    table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
+    table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
+    if #regularizedResourceDerivativesMetal > 7 then
+      table.remove(regularizedResourceDerivativesMetal)
+      table.remove(regularizedResourceDerivativesEnergy)
+    end
+    regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
+    regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
+    regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
+    regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
+    updateFastResourceStatus()
+
     local cmdQueue = GetUnitCommands(builderId, 3)
 
-    -- dont wait if has queued stuff
+    -- dont wait if has queued stuff and leaking
     if cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 5 and (isMetalLeaking or isEnergyLeaking) then
       GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
     end
 
-    if targetId then
-      -- target id recieved
+    local mpx, _, mpz = GetUnitPosition(builderId, true)
+    local builderDef = UnitDefs[GetUnitDefID(builderId)]
 
-      local builderDef = UnitDefs[GetUnitDefID(builderId)]
+    local features
+    local needMetal = metalLevel < 0.82
+    local needEnergy = energyLevel < 0.82
+    if (needMetal or needEnergy) and builderDef and #builderDef.buildOptions == 0 then
+      features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
+      if features then
+        if needMetal and needEnergy then
+          reclaimCheckAction(builderId, features, true, true)
+        elseif needMetal then
+          reclaimCheckAction(builderId, features, true, false)
+          -- elseif isEnergyStalling and not isMetalLeaking then
+        else
+          reclaimCheckAction(builderId, features, false, true)
+        end
+        gotoContinue = true
+      end
+    end
+
+    local targetId = GetUnitIsBuilding(builderId)
+    if not gotoContinue and targetId then
+      -- target id recieved
       local targetDefID = GetUnitDefID(targetId)
       local targetDef = UnitDefs[targetDefID]
-
-      -- if n % 3 == 0 then
-      table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
-      table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
-      if #regularizedResourceDerivativesMetal > 7 then
-        table.remove(regularizedResourceDerivativesMetal)
-        table.remove(regularizedResourceDerivativesEnergy)
-      end
-      regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
-      regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-      regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
-      regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
-      updateFastResourceStatus()
-      -- end
 
       -- queue fast forwarder
       if cmdQueue then
@@ -213,14 +241,14 @@ function builderIteration(n)
         end
       end
 
-
       -- prepare outside command queue heuristical candidates/targets
-      local mpx, _, mpz = GetUnitPosition(builderId, true)
       local neighbours = GetUnitsInCylinder(mpx, mpz, builderDef.buildDistance, myTeamId)
 
       --      local candidateNeighboursExclusive = {}
       local candidateNeighbours = {}
-      for i, candidateId in ipairs(neighbours) do
+      -- for i, candidateId in ipairs(neighbours) do
+      for i = 1, #neighbours do
+        local candidateId = neighbours[i]
         local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
         if candidateBuild ~= nil and candidateBuild < 1 then
           table.insert(candidateNeighbours, candidateId)
@@ -246,7 +274,8 @@ function builderIteration(n)
       -- log(
       --   builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
       -- )
-      if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
+      -- if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
+      if #candidateNeighbours > 1 then
         -- log(
         --   'targetUnitE > 0 ' .. tostring(targetUnitE > 0 ) ..
         --   ' positiveMMLevel ' ..  tostring(positiveMMLevel) ..
@@ -267,46 +296,65 @@ function builderIteration(n)
 
       -- 90 == reclaim cmd
       if (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
-        local features = getReclaimableFeature(mpx, mpz, builderDef.buildDistance)
+        if features == nil then
+          features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
+        end
         if features then
-          if isMetalStalling and isEnergyStalling and #features['metalenergy'] > 0 then
-            GiveOrderToUnit(builderId, CMD.INSERT,
-              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
-              { 'alt' })
-          elseif isMetalStalling and not isEnergyLeaking and #features['metal'] > 0 then
-            GiveOrderToUnit(builderId, CMD.INSERT,
-              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
-              { 'alt' })
-          elseif isEnergyStalling and not isMetalLeaking and #features['energy'] > 0 then
-            GiveOrderToUnit(builderId, CMD.INSERT,
-              { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
-              { 'alt' })
+          if isMetalStalling and isEnergyStalling then
+            reclaimCheckAction(builderId, features, true, true)
+          elseif isMetalStalling and not isEnergyLeaking then
+            reclaimCheckAction(builderId, features, true, false)
+            -- elseif isEnergyStalling and not isMetalLeaking then
+          else
+            reclaimCheckAction(builderId, features, false, true)
           end
+          gotoContinue = true
         end
       end
 
-      -- refresh for possible target change
-      targetId = GetUnitIsBuilding(builderId)
-      targetDefID = GetUnitDefID(targetId)
-      targetDef = UnitDefs[targetDefID]
+      if not gotoContinue then
+        -- refresh for possible target change
+        targetId = GetUnitIsBuilding(builderId)
+        targetDefID = GetUnitDefID(targetId)
+        targetDef = UnitDefs[targetDefID]
 
-      -- easy finish neighbour
-      local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-      for _, candidateId in ipairs(candidateNeighbours) do
-        local candidateDef = unitDef(candidateId)
-        -- same type and not actually same buildings
-        if candidateId ~= targetId and candidateDef == targetDef then
-          local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
-          if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
-            local targetBuildTimeLeft = getBuildTimeLeft(targetId)
-            if candidateBuild > targetBuild then
-              repair(builderId, candidateId)
-              break
+        -- easy finish neighbour
+        local _, _, _, _, targetBuild = GetUnitHealth(targetId)
+        -- for _, candidateId in ipairs(candidateNeighbours) do
+        for i = 1, #neighbours do
+          local candidateId = neighbours[i]
+          local candidateDef = unitDef(candidateId)
+          -- same type and not actually same buildings
+          if candidateId ~= targetId and candidateDef == targetDef then
+            local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
+            if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
+              local targetBuildTimeLeft = getBuildTimeLeft(targetId)
+              if candidateBuild > targetBuild then
+                repair(builderId, candidateId)
+                break
+              end
             end
           end
         end
       end
     end
+  end
+end
+
+function reclaimCheckAction(builderId, features, needMetal, needEnergy)
+  if needMetal and needEnergy and #features['metalenergy'] > 0 then
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
+      { 'alt' })
+  elseif needMetal and #features['metal'] > 0 then
+    log('needMetal ' .. #features['metal'] .. ' ' .. table.tostring(features['metal']))
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
+      { 'alt' })
+  elseif needEnergy and #features['energy'] > 0 then
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
+      { 'alt' })
   end
 end
 
@@ -443,7 +491,7 @@ function deepcopy(orig)
 end
 
 function updateFastResourceStatus()
-  metalMakingLevel = GetTeamRulesParam(myTeamId, 'mmLevel')
+  metalMakersLevel = GetTeamRulesParam(myTeamId, 'mmLevel')
   local m_curr, m_max, m_pull, m_inc, m_exp = GetTeamResources(myTeamId, 'metal')
   local e_curr, e_max, e_pull, e_inc, e_exp = GetTeamResources(myTeamId, 'energy')
 
@@ -453,7 +501,7 @@ function updateFastResourceStatus()
   isPositiveEnergyDerivative = e_inc > (e_pull + e_exp) / 2
   energyLevel = e_curr / e_max
 
-  if energyLevel > metalMakingLevel then
+  if energyLevel > metalMakersLevel then
     positiveMMLevel = true
   else
     positiveMMLevel = false
@@ -708,7 +756,7 @@ function traceUpkeep(unitID, alreadyCounted)
       energy - energyMake + builders[unitID].unitDef.energyMake
 end
 
-function getReclaimableFeature(x, z, radius)
+function getReclaimableFeatures(x, z, radius)
   local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
 
   if #wrecksInRange == 0 then
@@ -722,23 +770,19 @@ function getReclaimableFeature(x, z, radius)
   }
   for i = 1, #wrecksInRange do
     local featureId = wrecksInRange[i]
-    local metal, _, energy = GetFeatureResources(featureId)
 
-    if metal > 0 and energy then
-      table.insert(features['metalenergy'], featureId)
-    elseif metal > 0 then
-      table.insert(features['metal'], featureId)
-    elseif energy > 0 then
-      table.insert(features['energy'], featureId)
+    local featureRessurrect = Spring.GetFeatureResurrect(featureId)
+    if not table.has_value({ 'armcom', 'legcom', 'corcom' }, featureRessurrect) then
+      local metal, _, energy = GetFeatureResources(featureId)
+
+      if metal > 0 and energy > 0 then
+        table.insert(features['metalenergy'], featureId)
+      elseif metal > 0 then
+        table.insert(features['metal'], featureId)
+      elseif energy > 0 then
+        table.insert(features['energy'], featureId)
+      end
     end
-
-
-    -- if metal + energy == 0 then
-    --   goto continue
-    -- end
-    -- local featureId = wrecksInRange[i]
-    -- local featureId = wrecksInRange[i]
-    -- ::continue::
   end
   return features
 end
