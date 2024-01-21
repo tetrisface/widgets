@@ -147,8 +147,10 @@ end
 
 function widget:GameFrame(n)
   mainIterationModuloLimit = 5
-  if #builders > 80 then
-    mainIterationModuloLimit = 3
+  if #builders > 200 then
+    mainIterationModuloLimit = 20
+  elseif #builders > 80 then
+    mainIterationModuloLimit = 5
   elseif #builders > 40 then
     mainIterationModuloLimit = 2
   end
@@ -347,7 +349,6 @@ function reclaimCheckAction(builderId, features, needMetal, needEnergy)
       { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
       { 'alt' })
   elseif needMetal and #features['metal'] > 0 then
-    log('needMetal ' .. #features['metal'] .. ' ' .. table.tostring(features['metal']))
     GiveOrderToUnit(builderId, CMD.INSERT,
       { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
       { 'alt' })
