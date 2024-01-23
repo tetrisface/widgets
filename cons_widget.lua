@@ -11,6 +11,7 @@ function widget:GetInfo()
   }
 end
 
+local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
 local GetSelectedUnits = Spring.GetSelectedUnits
@@ -200,18 +201,28 @@ function builderIteration(n)
     local features
     local needMetal = metalLevel < 0.82
     local needEnergy = energyLevel < 0.82
-    if (needMetal or needEnergy) and builderDef and #builderDef.buildOptions == 0 then
+    if (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
+        (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
       features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
       if features then
         if needMetal and needEnergy then
           reclaimCheckAction(builderId, features, true, true)
         elseif needMetal then
           reclaimCheckAction(builderId, features, true, false)
-          -- elseif isEnergyStalling and not isMetalLeaking then
         else
           reclaimCheckAction(builderId, features, false, true)
         end
         gotoContinue = true
+      end
+    elseif #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
+      features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
+      local featureId = cmdQueue[1].params[1]
+      local metal, _, energy = GetFeatureResources(featureId)
+
+      if metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
+        GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+      elseif energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
+        GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
       end
     end
 
@@ -772,7 +783,7 @@ function getReclaimableFeatures(x, z, radius)
   for i = 1, #wrecksInRange do
     local featureId = wrecksInRange[i]
 
-    local featureRessurrect = Spring.GetFeatureResurrect(featureId)
+    local featureRessurrect = GetFeatureResurrect(featureId)
     if not table.has_value({ 'armcom', 'legcom', 'corcom' }, featureRessurrect) then
       local metal, _, energy = GetFeatureResources(featureId)
 

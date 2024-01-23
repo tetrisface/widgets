@@ -34,6 +34,8 @@ function widget:MouseRelease(x, y, button)
 end
 
 function widget:MousePress(x, y, button)
+  local cmdQueue = GetUnitCommands(16230, 3)
+  log(cmdQueue[1].params[1])
   -- log('mouse press ' .. x .. " " .. y .. " " .. button)
   -- return false
 end
