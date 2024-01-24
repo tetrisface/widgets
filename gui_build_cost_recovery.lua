@@ -46,8 +46,8 @@ include("keysym.h.lua")
 ------------------------------------------------------------------------------------
 
 local fontSize = 14
-local xOffset = 580
-local yOffset = -290
+local xOffset = 1670
+local yOffset = -175
 local useSelection = true
 
 local customFontSize = 16

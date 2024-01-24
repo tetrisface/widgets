@@ -1,9 +1,9 @@
 function widget:GetInfo()
   return {
-    desc    = "Lots of code from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc",
-    author  = "-",
+    desc    = "",
+    author  = "",
     version = "",
-    date    = "feb, 2016",
+    date    = "jan, 2024",
     name    = "dps",
     license = "",
     layer   = -99990,

@@ -26,6 +26,7 @@ local myTeamId = Spring.GetMyTeamID()
 local SetCameraTarget = Spring.SetCameraTarget
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitCommands = Spring.GetUnitCommands
+local GetUnitStates = Spring.GetUnitStates
 
 
 function widget:MouseRelease(x, y, button)
@@ -34,10 +35,21 @@ function widget:MouseRelease(x, y, button)
 end
 
 function widget:MousePress(x, y, button)
-  local cmdQueue = GetUnitCommands(16230, 3)
-  log(cmdQueue[1].params[1])
+  -- local cmdQueue = GetUnitCommands(16230, 3)
+  -- log(cmdQueue[1].params[1])
+
+  -- local desc, args = TraceScreenRay(x, y, true)
+  -- if nil == desc then return end -- off map
+  -- local worldX = args[1]
+  -- local worldY = args[2]
+  -- local worldZ = args[3]
+  -- log('x ' .. math.floor(worldX) .. ' z ' .. math.floor(worldZ))
+
   -- log('mouse press ' .. x .. " " .. y .. " " .. button)
   -- return false
+  -- local unitStates = GetUnitStates(20448)
+  -- log('unitStates')
+  -- log(table.tostring(unitStates))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
