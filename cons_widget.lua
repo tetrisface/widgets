@@ -214,14 +214,14 @@ function builderIteration(n)
         end
         gotoContinue = true
       end
-    elseif #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
+    elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
       features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
       local featureId = cmdQueue[1].params[1]
       local metal, _, energy = GetFeatureResources(featureId)
 
-      if metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
+      if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
         GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
-      elseif energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
+      elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
         GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
       end
     end
