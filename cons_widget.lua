@@ -147,7 +147,7 @@ function getUnitsBuildingUnit(unitID)
 end
 
 function widget:GameFrame(n)
-  mainIterationModuloLimit = 5
+  mainIterationModuloLimit = 1
   if #builders > 200 then
     mainIterationModuloLimit = 20
   elseif #builders > 80 then
