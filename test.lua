@@ -27,6 +27,8 @@ local SetCameraTarget = Spring.SetCameraTarget
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitStates = Spring.GetUnitStates
+local GetUnitDefID = Spring.GetUnitDefID
+local UnitDefs = UnitDefs
 
 
 function widget:MouseRelease(x, y, button)
@@ -37,6 +39,10 @@ end
 function widget:MousePress(x, y, button)
   -- local cmdQueue = GetUnitCommands(16230, 3)
   -- log(cmdQueue[1].params[1])
+  -- local unitDef = UnitDefs[GetUnitDefID(24505)]
+
+  -- log(table.tostring(unitDef.wDefs[1]))
+  -- log(unitDef.wDefs[1].projectilespeed)
 
   -- local desc, args = TraceScreenRay(x, y, true)
   -- if nil == desc then return end -- off map
@@ -50,6 +56,10 @@ function widget:MousePress(x, y, button)
   -- local unitStates = GetUnitStates(20448)
   -- log('unitStates')
   -- log(table.tostring(unitStates))
+  -- SetUnitTarget(30651, 6298)
+  -- GiveOrderToUnit(4281, CMD.FIGHT, 22248, {})
+  -- log('Spring.GetGameRulesParam(mmLevel)')
+  -- log(Spring.SetTeamRulesParam(myTeamId, 'mmLevel', 0.2))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)

@@ -31,7 +31,6 @@ local UnitDefs = UnitDefs
 local abandonedTargetIDs = {}
 local builders = {}
 local log = Spring.Echo
-local mainIterationModuloLimit = 5
 local myTeamId = Spring.GetMyTeamID()
 local possibleMetalMakersProduction = 0
 local possibleMetalMakersUpkeep = 0
@@ -60,6 +59,7 @@ local regularizedPositiveMetal = true
 -- local willStall = false
 local windMax = Game.windMax
 local windMin = Game.windMin
+local mainIterationModuloLimit
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
@@ -80,14 +80,16 @@ function registerUnit(unitID, unitDefID)
 
   local unitDef = UnitDefs[unitDefID]
 
-  if unitDef.isBuilder and unitDef.canAssist then
+  if unitDef.isBuilder and unitDef.canAssist and not unitDef.isFactory then
     builders[unitID] = {
-      ["buildSpeed"] = unitDef.buildSpeed,
+      id = unitID,
+      buildSpeed = unitDef.buildSpeed,
       originalBuildSpeed = unitDef.buildSpeed,
-      ['unitDef'] = unitDef,
-      ["targetId"] = nil,
-      ["guards"] = {},
-      ['previousBuilding'] = nil
+      def = unitDef,
+      defID = unitDefID,
+      targetId = nil,
+      guards = {},
+      previousBuilding = nil
     }
   end
 end
@@ -147,16 +149,22 @@ function getUnitsBuildingUnit(unitID)
 end
 
 function widget:GameFrame(n)
+  local nBuilders = 0
+  for _, _ in pairs(builders) do
+    nBuilders = nBuilders + 1
+  end
+
   mainIterationModuloLimit = 1
-  if #builders > 200 then
+  if nBuilders > 200 then
     mainIterationModuloLimit = 20
-  elseif #builders > 80 then
+  elseif nBuilders > 60 then
     mainIterationModuloLimit = 5
-  elseif #builders > 40 then
+  elseif nBuilders > 10 then
     mainIterationModuloLimit = 2
   end
 
   if n % mainIterationModuloLimit == 0 then
+    log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
     builderIteration(n)
   end
 
@@ -164,9 +172,11 @@ function widget:GameFrame(n)
     -- for k, v in pairs(abandonedTargetIDs) do
     for i = 1, #abandonedTargetIDs do
       local k = abandonedTargetIDs[i]
-      local _, _, _, _, build = GetUnitHealth(k)
-      if build == nil or build == 1 then
-        table.remove(abandonedTargetIDs, k)
+      if k then
+        local _, _, _, _, build = GetUnitHealth(k)
+        if build == nil or build == 1 then
+          table.remove(abandonedTargetIDs, k)
+        end
       end
     end
   end
@@ -174,55 +184,75 @@ end
 
 function builderIteration(n)
   local gotoContinue
-  for builderId, _ in pairs(builders) do
+
+  table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
+  table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
+  -- getn handles nil
+  if #regularizedResourceDerivativesMetal > 11 then
+    table.remove(regularizedResourceDerivativesMetal)
+    table.remove(regularizedResourceDerivativesEnergy)
+  end
+  regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
+  regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
+  -- regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
+  regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
+  updateFastResourceStatus()
+
+  -- for i = 1, #builders do
+  for builderId, builder in pairs(builders) do
     gotoContinue = false
-    table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
-    table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
-    if #regularizedResourceDerivativesMetal > 7 then
-      table.remove(regularizedResourceDerivativesMetal)
-      table.remove(regularizedResourceDerivativesEnergy)
-    end
-    regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
-    regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-    regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
-    regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
-    updateFastResourceStatus()
-
+    -- local builderDef = UnitDefs[GetUnitDefID(builderId)]
+    -- local builder = builders[i]
+    -- local builderId = builder.id
+    local builderDef = builder.def
     local cmdQueue = GetUnitCommands(builderId, 3)
+    local builderPosX, _, builderPosZ
 
-    -- dont wait if has queued stuff and leaking
-    if cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 5 and (isMetalLeaking or isEnergyLeaking) then
-      GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+    if cmdQueue == nil then
+      table.remove(builders, builderId)
+      gotoContinue = true
     end
 
-    local mpx, _, mpz = GetUnitPosition(builderId, true)
-    local builderDef = UnitDefs[GetUnitDefID(builderId)]
+    local health = GetUnitHealth(builderId)
+    if health == nil then
+      table.remove(builders, builderId)
+      gotoContinue = true
+    end
 
-    local features
-    local needMetal = metalLevel < 0.82
-    local needEnergy = energyLevel < 0.82
-    if (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
-        (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
-      features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
-      if features then
-        if needMetal and needEnergy then
-          reclaimCheckAction(builderId, features, true, true)
-        elseif needMetal then
-          reclaimCheckAction(builderId, features, true, false)
-        else
-          reclaimCheckAction(builderId, features, false, true)
-        end
-        gotoContinue = true
+    if not gotoContinue then
+      builderPosX, _, builderPosZ = GetUnitPosition(builderId, true)
+
+      -- dont wait if has queued stuff and leaking
+      if cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 5 and (isMetalLeaking or isEnergyLeaking) then
+        GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
       end
-    elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
-      features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
-      local featureId = cmdQueue[1].params[1]
-      local metal, _, energy = GetFeatureResources(featureId)
 
-      if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
-        GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
-      elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
-        GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+      local features
+      local needMetal = metalLevel < 0.15
+      local needEnergy = energyLevel < 0.15
+      if (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
+          (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
+        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+        if features then
+          if needMetal and needEnergy then
+            reclaimCheckAction(builderId, features, true, true)
+          elseif needMetal then
+            reclaimCheckAction(builderId, features, true, false)
+          else
+            reclaimCheckAction(builderId, features, false, true)
+          end
+          gotoContinue = true
+        end
+      elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
+        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+        local featureId = cmdQueue[1].params[1]
+        local metal, _, energy = GetFeatureResources(featureId)
+
+        if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
+          GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+        elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
+          GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+        end
       end
     end
 
@@ -255,7 +285,7 @@ function builderIteration(n)
       end
 
       -- prepare outside command queue heuristical candidates/targets
-      local neighbours = GetUnitsInCylinder(mpx, mpz, builderDef.buildDistance, myTeamId)
+      local neighbours = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance, myTeamId)
 
       --      local candidateNeighboursExclusive = {}
       local candidateNeighbours = {}
@@ -290,19 +320,28 @@ function builderIteration(n)
       -- if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
       if #candidateNeighbours > 1 then
         -- log(
-        --   'targetUnitE > 0 ' .. tostring(targetUnitE > 0 ) ..
-        --   ' positiveMMLevel ' ..  tostring(positiveMMLevel) ..
-        --   ' (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling) ' .. tostring(not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
+        --   'metalLevel ' .. metalLevel ..
+        --   ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) ..
+        --   ' positiveMMLevel ' .. tostring(positiveMMLevel) ..
+        --   ' not regularizedNegativeEnergy ' .. tostring(not regularizedNegativeEnergy) ..
+        --   ' not regularizedPositiveEnergy ' .. tostring(not regularizedPositiveEnergy) ..
+        --   ' not isEnergyLeaking ' .. tostring(not isEnergyLeaking) ..
+        --   ' targetUnitE > 0 ' .. tostring(targetUnitE > 0) ..
+        --   ' isMetalStalling ' .. tostring(isMetalStalling) ..
+        --   ' targetDef.buildSpeed ' .. tostring(targetDef.buildSpeed)
         -- )
-        if (metalLevel > 0.8 or regularizedPositiveMetal) and (positiveMMLevel or not regularizedNegativeEnergy) then
-          --  log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
+        if (metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy) then
+          log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
           builderForceAssist('buildPower', builderId, targetId, targetDefID, candidateNeighbours)
           --
         elseif not regularizedPositiveEnergy and not isEnergyLeaking and ((targetUnitMM > 0 and not positiveMMLevel) or (targetUnitE <= 0 and isEnergyStalling)) then
-          --  log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
+          log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
           builderForceAssist('energy', builderId, targetId, targetDefID, candidateNeighbours)
-        elseif targetUnitE > 0 and positiveMMLevel and (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling) then
-          --  log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
+        elseif positiveMMLevel and (
+              (
+                (not regularizedNegativeEnergy or isEnergyLeaking) and targetUnitE > 0) or
+              (isMetalStalling and targetDef.buildSpeed > 0)) then
+          log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
           builderForceAssist('mm', builderId, targetId, targetDefID, candidateNeighbours)
         end
       end
@@ -310,7 +349,7 @@ function builderIteration(n)
       -- 90 == reclaim cmd
       if (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
         if features == nil then
-          features = getReclaimableFeatures(mpx, mpz, builderDef.buildDistance)
+          features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
         end
         if features then
           if isMetalStalling and isEnergyStalling then
@@ -588,17 +627,17 @@ function getTraveltime(unitDef, A, B)
   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
   local secondsLeft = getBuildTimeLeft(targetId)
   local unitDef = UnitDefs[GetUnitDefID(targetId)]
-  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(secondsLeft, unitDef, totalBuildSpeed) then
+  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
   end
 end
 
 function doFastForwardDecision(builderId, targetId, cmdQueueTag, cmdQueueTagg)
   selectedUnits = GetSelectedUnits()
+  local unitDef = UnitDefs[GetUnitDefID(targetId)]
   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
   local secondsLeft = getBuildTimeLeft(targetId)
-  local unitDef = UnitDefs[GetUnitDefID(targetId)]
-  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(targetId) then
+  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
   end
 end
@@ -627,12 +666,19 @@ function isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed)
   end
 end
 
-function buildingWillStall(unitId)
-  local secondsLeft = getBuildTimeLeft(unitId)
-  local unitDef = unitDef(unitId)
-  local speed = unitDef.buildTime / getBuildersBuildSpeed(getUnitsBuildingUnit(unitId))
-  local metal = unitDef.metalCost / speed
-  local energy = unitDef.energyCost / speed
+function buildingWillStall(targetId, buildingDef, totalBuildSpeed, secondsLeft)
+  if not buildingDef then
+    buildingDef = unitDef(targetId)
+  end
+  if not totalBuildSpeed then
+    totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
+  end
+  if not secondsLeft then
+    secondsLeft = getBuildTimeLeft(targetId)
+  end
+  local speed = buildingDef.buildTime / totalBuildSpeed
+  local metal = buildingDef.metalCost / speed
+  local energy = buildingDef.energyCost / speed
 
   local mDrain, eDrain = getUnitsUpkeep()
 
@@ -752,9 +798,14 @@ function traceUpkeep(unitID, alreadyCounted)
     return 0, 0
   end
 
+  local builder = builders[unitID]
+  if not builder then
+    return 0, 0
+  end
+
   local metalMake, metal, energyMake, energy = GetUnitResources(unitID)
 
-  for _, guardID in ipairs(builders[unitID].guards) do
+  for _, guardID in ipairs(builder.guards) do
     if builders[guardID].owned then
       local guarderMetal, guarderEnergy = traceUpkeep(guardID, alreadyCounted)
       metal = metal + guarderMetal
@@ -764,8 +815,8 @@ function traceUpkeep(unitID, alreadyCounted)
 
   alreadyCounted[unitID] = unitID
 
-  return metal - metalMake + builders[unitID].unitDef.metalMake,
-      energy - energyMake + builders[unitID].unitDef.energyMake
+  return metal - metalMake + builder.def.metalMake,
+      energy - energyMake + builder.def.energyMake
 end
 
 function getReclaimableFeatures(x, z, radius)
