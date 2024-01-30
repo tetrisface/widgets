@@ -60,6 +60,7 @@ local regularizedPositiveMetal = true
 local windMax = Game.windMax
 local windMin = Game.windMin
 local mainIterationModuloLimit
+local nBuilders = 0
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
@@ -91,6 +92,7 @@ function registerUnit(unitID, unitDefID)
       guards = {},
       previousBuilding = nil
     }
+    nBuilders = nBuilders + 1
   end
 end
 
@@ -149,11 +151,6 @@ function getUnitsBuildingUnit(unitID)
 end
 
 function widget:GameFrame(n)
-  local nBuilders = 0
-  for _, _ in pairs(builders) do
-    nBuilders = nBuilders + 1
-  end
-
   mainIterationModuloLimit = 1
   if nBuilders > 200 then
     mainIterationModuloLimit = 20
@@ -209,13 +206,8 @@ function builderIteration(n)
     local builderPosX, _, builderPosZ
 
     if cmdQueue == nil then
-      table.remove(builders, builderId)
-      gotoContinue = true
-    end
-
-    local health = GetUnitHealth(builderId)
-    if health == nil then
-      table.remove(builders, builderId)
+      builders[builderId] = nil
+      nBuilders = nBuilders - 1
       gotoContinue = true
     end
 
