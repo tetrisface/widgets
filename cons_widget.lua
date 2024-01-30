@@ -119,19 +119,21 @@ function getBuildersBuildSpeed(tempBuilders)
   return totalSpeed
 end
 
-function getBuildTimeLeft(unitID)
-  local _, _, _, _, build = GetUnitHealth(unitID)
+function getBuildTimeLeft(targetId, targetDef)
+  local _, _, _, _, build = GetUnitHealth(targetId)
   local currentBuildSpeed = 0
   for builderId, _ in pairs(builders) do
-    local targetId = GetUnitIsBuilding(builderId)
-    if targetId == unitID and builderId ~= unitID then
+    local testTargetId = GetUnitIsBuilding(builderId)
+    if testTargetId == targetId and builderId ~= targetId then
       currentBuildSpeed = currentBuildSpeed + builders[builderId].originalBuildSpeed
     end
   end
 
-  local unitDef = UnitDefs[GetUnitDefID(unitID)]
+  if not targetDef then
+    targetDef = UnitDefs[GetUnitDefID(targetId)]
+  end
 
-  local buildLeft = (1 - build) * unitDef.buildTime
+  local buildLeft = (1 - build) * targetDef.buildTime
 
   local time = buildLeft / currentBuildSpeed
 
@@ -264,12 +266,12 @@ function builderIteration(n)
             -- target has not previously been abandoned
             local previousBuilding = builders[builderId].previousBuilding
             if not previousBuilding then
-              doFastForwardDecision(builderId, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
+              doFastForwardDecision(builder, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
             else
               local _, _, _, _, prevBuild = GetUnitHealth(previousBuilding)
               if prevBuild == nil or prevBuild == 1 then
                 -- previous building is gone/done
-                doFastForwardDecision(builderId, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
+                doFastForwardDecision(builder, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
               end
             end
           end
@@ -372,7 +374,7 @@ function builderIteration(n)
           if candidateId ~= targetId and candidateDef == targetDef then
             local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
             if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
-              local targetBuildTimeLeft = getBuildTimeLeft(targetId)
+              -- local targetBuildTimeLeft = getBuildTimeLeft(targetId)
               if candidateBuild > targetBuild then
                 repair(builderId, candidateId)
                 break
@@ -436,8 +438,8 @@ function repair(builderId, targetId)
 end
 
 function sortHeuristicallyBuildPower(a, b)
-  local aWillStall = buildingWillStall(a[1])
-  local bWillStall = buildingWillStall(b[1])
+  local aWillStall = targetWillStall(a[1])
+  local bWillStall = targetWillStall(b[1])
   if aWillStall and bWillStall then
     return a[3]['power'] < b[3]['power']
   elseif aWillStall and not bWillStall then
@@ -451,8 +453,8 @@ function sortHeuristicallyBuildPower(a, b)
 end
 
 function sortHeuristicallyEnergy(a, b)
-  local aWillStall = buildingWillStall(a[1])
-  local bWillStall = buildingWillStall(b[1])
+  local aWillStall = targetWillStall(a[1])
+  local bWillStall = targetWillStall(b[1])
   if aWillStall and bWillStall then
     return a[3]['energyMake'] * (1 / getBuildTimeLeft(a[1]) * a[3]['power']) >
         b[3]['energyMake'] * (1 / getBuildTimeLeft(b[1]) * b[3]['power'])
@@ -614,23 +616,23 @@ function getEout(unitDef)
 end
 
 -- todo
-function getTraveltime(unitDef, A, B)
-  selectedUnits = GetSelectedUnits()
-  local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
-  local secondsLeft = getBuildTimeLeft(targetId)
-  local unitDef = UnitDefs[GetUnitDefID(targetId)]
-  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
-    moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
-  end
-end
+-- function getTraveltime(unitDef, A, B)
+--   selectedUnits = GetSelectedUnits()
+--   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
+--   local secondsLeft = getBuildTimeLeft(targetId)
+--   local unitDef = UnitDefs[GetUnitDefID(targetId)]
+--   if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not targetWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
+--     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
+--   end
+-- end
 
-function doFastForwardDecision(builderId, targetId, cmdQueueTag, cmdQueueTagg)
+function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTagg)
   selectedUnits = GetSelectedUnits()
-  local unitDef = UnitDefs[GetUnitDefID(targetId)]
+  local targetDef = UnitDefs[GetUnitDefID(targetId)]
   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
-  local secondsLeft = getBuildTimeLeft(targetId)
-  if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not buildingWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
-    moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
+  local secondsLeft = getBuildTimeLeft(targetId, targetDef)
+  if isTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed) and not targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) then
+    moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
   end
 end
 
@@ -646,10 +648,10 @@ function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
   t1 = Spring.GetTimer()
 end
 
-function isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed)
+function isTimeToMoveOn(secondsLeft, builderId, builderDef, totalBuildSpeed)
   local plannerBuildSpeed = builders[builderId].originalBuildSpeed
   local plannerBuildShare = plannerBuildSpeed / totalBuildSpeed
-  local slowness = 45 / unitDef.speed
+  local slowness = 45 / builderDef.speed
   if ((plannerBuildShare < 0.75 and secondsLeft < 1.2 * slowness) or (plannerBuildShare < 0.5 and secondsLeft < 3.4 * slowness) or (plannerBuildShare < 0.15 and secondsLeft < 8 * slowness) or (plannerBuildShare < 0.05 and secondsLeft < 12 * slowness)) then
     totalSavedTime = totalSavedTime + secondsLeft
     return true
@@ -658,19 +660,19 @@ function isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed)
   end
 end
 
-function buildingWillStall(targetId, buildingDef, totalBuildSpeed, secondsLeft)
-  if not buildingDef then
-    buildingDef = unitDef(targetId)
+function targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft)
+  if not targetDef then
+    targetDef = unitDef(targetId)
   end
   if not totalBuildSpeed then
     totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
   end
   if not secondsLeft then
-    secondsLeft = getBuildTimeLeft(targetId)
+    secondsLeft = getBuildTimeLeft(targetId, targetDef)
   end
-  local speed = buildingDef.buildTime / totalBuildSpeed
-  local metal = buildingDef.metalCost / speed
-  local energy = buildingDef.energyCost / speed
+  local speed = targetDef.buildTime / totalBuildSpeed
+  local metal = targetDef.metalCost / speed
+  local energy = targetDef.energyCost / speed
 
   local mDrain, eDrain = getUnitsUpkeep()
 
@@ -769,21 +771,21 @@ function unitDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
 end
 
-function getSelectedUnitsUpkeep()
-  local alreadyCounted = {}
+-- function getSelectedUnitsUpkeep()
+--   local alreadyCounted = {}
 
-  local metal = 0
-  local energy = 0
+--   local metal = 0
+--   local energy = 0
 
-  for _, unitID in ipairs(selectedUnits) do
-    if builders[unitID] then
-      local metalUse, energyUse = traceUpkeep(unitID, alreadyCounted)
-      metal = metal + metalUse
-      energy = energy + energyUse
-    end
-  end
-  return { ["metal"] = metal, ["energy"] = energy }
-end
+--   for _, unitID in ipairs(selectedUnits) do
+--     if builders[unitID] then
+--       local metalUse, energyUse = traceUpkeep(unitID, alreadyCounted)
+--       metal = metal + metalUse
+--       energy = energy + energyUse
+--     end
+--   end
+--   return { ["metal"] = metal, ["energy"] = energy }
+-- end
 
 function traceUpkeep(unitID, alreadyCounted)
   if alreadyCounted[unitID] then
