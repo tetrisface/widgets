@@ -11,12 +11,13 @@ function widget:GetInfo()
   }
 end
 
-local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeatureResources = Spring.GetFeatureResources
+local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
-local GetSelectedUnits = Spring.GetSelectedUnits
+local GetGameRulesParam = Spring.GetGameRulesParam
 local GetTeamResources = Spring.GetTeamResources
 local GetTeamRulesParam = Spring.GetTeamRulesParam
+local GetTeamUnitDefCount = Spring.GetTeamUnitDefCount
 local GetTeamUnits = Spring.GetTeamUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitDefID = Spring.GetUnitDefID
@@ -26,6 +27,7 @@ local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitResources = Spring.GetUnitResources
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GiveOrderToUnit = Spring.GiveOrderToUnit
+local UnitDefNames = UnitDefNames
 local UnitDefs = UnitDefs
 
 local abandonedTargetIDs = {}
@@ -37,8 +39,6 @@ local possibleMetalMakersUpkeep = 0
 local regularizedResourceDerivativesEnergy = { true }
 local regularizedResourceDerivativesMetal = { true }
 local releasedMetal = 0
-local selectedUnits
--- local t0 = Spring.GetTimer()
 local tidalStrength = Game.tidal
 local totalSavedTime = 0
 
@@ -53,10 +53,8 @@ local metalLevel = 0.5
 local metalMakersLevel = 0.5
 local positiveMMLevel = true
 local regularizedNegativeEnergy = false
--- local regularizedNegativeMetal = false
 local regularizedPositiveEnergy = true
 local regularizedPositiveMetal = true
--- local willStall = false
 local windMax = Game.windMax
 local windMin = Game.windMin
 local mainIterationModuloLimit
@@ -163,12 +161,19 @@ function widget:GameFrame(n)
   end
 
   if n % mainIterationModuloLimit == 0 then
-    log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
+    -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
     builderIteration(n)
   end
 
   if n % 1000 == 0 then
-    -- for k, v in pairs(abandonedTargetIDs) do
+    if GetGameRulesParam('raptorTechAnger') > 66 and (
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) == 0
+        ) then
+      log('ANTI NUKE WARNING!!!')
+    end
     for i = 1, #abandonedTargetIDs do
       local k = abandonedTargetIDs[i]
       if k then
@@ -216,6 +221,8 @@ function builderIteration(n)
     local neighbours = {}
     local neighboursDamaged = {}
     local neighboursUnfinished = {}
+    local targetId = GetUnitIsBuilding(builderId)
+
     if not gotoContinue then
       builderPosX, _, builderPosZ = GetUnitPosition(builderId, true)
 
@@ -258,9 +265,11 @@ function builderIteration(n)
 
         if #neighboursDamaged > 0 then
           table.sort(neighboursDamaged, function(a, b) return a.health < b.health end)
-          repair(builderId, neighboursDamaged[1].id)
+          local damagedTargetId = neighboursDamaged[1].id
+          if targetId ~= damagedTargetId then
+            repair(builderId, damagedTargetId)
+          end
           gotoContinue = true
-          log('builder ' .. builderId .. ' repairing ' .. neighboursDamaged[1].id)
         end
       end
 
@@ -294,7 +303,6 @@ function builderIteration(n)
       end
     end
 
-    local targetId = GetUnitIsBuilding(builderId)
     if not gotoContinue and targetId then
       -- target id recieved
       local targetDefID = GetUnitDefID(targetId)
@@ -396,7 +404,7 @@ function builderIteration(n)
           local candidate = neighbours[i]
           local candidateId = candidate.id
           local candidateDef = unitDef(candidate.id)
-          -- same type and not actually same buildings
+          -- same type and not actually same building
           if candidateId ~= targetId and candidateDef == targetDef then
             -- local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
             local candidateBuild = candidate.build
@@ -431,23 +439,30 @@ function reclaimCheckAction(builderId, features, needMetal, needEnergy)
 end
 
 function purgeCompleteRepairs(builderId, cmdQueue)
-  local cmdq = deepcopy(cmdQueue)
-  local shitFound = true
-  while shitFound do
-    shitFound = false
-    for _, cmd in ipairs(cmdQueue) do
-      if cmd.id == 40 then
-        local _, _, _, _, targetBuild = GetUnitHealth(cmd.params[1])
-        if not targetBuild or targetBuild == 1 then
-          shitFound = true
-          GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
-        end
+  -- local shitFound = true
+  -- local safetyStop = 400
+  -- while shitFound do
+  -- shitFound = false
+  -- for _, cmd in ipairs(cmdQueue) do
+  for i = 1, #cmdQueue do
+    local cmd = cmdQueue[i]
+    if cmd.id == 40 then
+      local _, _, _, _, targetBuild = GetUnitHealth(cmd.params[1])
+      if not targetBuild or targetBuild == 1 then
+        shitFound = true
+        GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
       end
     end
-    cmdq = GetUnitCommands(builderId, 3)
-    break
   end
-  return cmdq
+  cmdQueue = GetUnitCommands(builderId, 3)
+  -- if shitFound then
+  -- end
+  -- if safetyStop <= 0 then
+  --   break
+  -- end
+  -- safetyStop = safetyStop - 1
+  -- end
+  return cmdQueue
 end
 
 function builderForceAssist(assistType, builderId, targetId, targetDefID, neighbours)
@@ -745,7 +760,6 @@ function getMyResources(type)
 
   if not inc then
     log("ERROR", myTeamId, type)
-    myTeamId = Spring.GetMyTeamID()
     return
   end
 
