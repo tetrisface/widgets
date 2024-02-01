@@ -325,17 +325,17 @@ function builderIteration(n)
         --   ' targetDef.buildSpeed ' .. tostring(targetDef.buildSpeed)
         -- )
         if (metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy) then
-          log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
+          -- log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
           builderForceAssist('buildPower', builderId, targetId, targetDefID, candidateNeighbours)
           --
         elseif not regularizedPositiveEnergy and not isEnergyLeaking and ((targetUnitMM > 0 and not positiveMMLevel) or (targetUnitE <= 0 and isEnergyStalling)) then
-          log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
+          -- log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
           builderForceAssist('energy', builderId, targetId, targetDefID, candidateNeighbours)
         elseif positiveMMLevel and (
               (
                 (not regularizedNegativeEnergy or isEnergyLeaking) and targetUnitE > 0) or
               (isMetalStalling and targetDef.buildSpeed > 0)) then
-          log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
+          -- log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
           builderForceAssist('mm', builderId, targetId, targetDefID, candidateNeighbours)
         end
       end
