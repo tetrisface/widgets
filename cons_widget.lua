@@ -213,6 +213,9 @@ function builderIteration(n)
       gotoContinue = true
     end
 
+    local neighbours = {}
+    local neighboursDamaged = {}
+    local neighboursUnfinished = {}
     if not gotoContinue then
       builderPosX, _, builderPosZ = GetUnitPosition(builderId, true)
 
@@ -221,10 +224,51 @@ function builderIteration(n)
         GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
       end
 
+      cmdQueue = purgeCompleteRepairs(builderId, cmdQueue)
+
+      if not gotoContinue then
+        -- prepare outside command queue heuristical candidates/targets
+        local neighbourIds = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance, myTeamId)
+
+        --      local candidateNeighboursExclusive = {}
+        -- for i, candidateId in ipairs(neighbours) do
+        for i = 1, #neighbourIds do
+          local candidateId = neighbourIds[i]
+          local candidateHealth, candidateMaxHealth, _, _, candidateBuild = GetUnitHealth(candidateId)
+          table.insert(neighbours, {
+            id = candidateId,
+            health = candidateHealth,
+            maxHealth = candidateMaxHealth,
+            build = candidateBuild,
+          })
+          if candidateBuild ~= nil and candidateBuild < 1 then
+            table.insert(neighboursUnfinished, candidateId)
+
+            --          if candidateId ~= builderId  then
+            --            table.insert(candidateNeighboursExclusive, candidateId)
+            --          end
+          elseif not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0))) and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
+            table.insert(neighboursDamaged, {
+              id = candidateId,
+              health = candidateHealth,
+              maxHealth = candidateMaxHealth,
+            })
+          end
+        end
+
+        if #neighboursDamaged > 0 then
+          table.sort(neighboursDamaged, function(a, b) return a.health < b.health end)
+          repair(builderId, neighboursDamaged[1].id)
+          gotoContinue = true
+          log('builder ' .. builderId .. ' repairing ' .. neighboursDamaged[1].id)
+        end
+      end
+
       local features
       local needMetal = metalLevel < 0.15
       local needEnergy = energyLevel < 0.15
-      if (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
+      -- if not gotoContinue and (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
+      if not gotoContinue and (needMetal or needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
           (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
         features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
         if features then
@@ -258,8 +302,6 @@ function builderIteration(n)
 
       -- queue fast forwarder
       if cmdQueue then
-        cmdQueue = purgeCompleteRepairs(builderId, cmdQueue)
-
         if #cmdQueue > 2 and cmdQueue[3].id < 0 then
           -- next command is build command
           if not abandonedTargetIDs[targetId] then
@@ -275,23 +317,6 @@ function builderIteration(n)
               end
             end
           end
-        end
-      end
-
-      -- prepare outside command queue heuristical candidates/targets
-      local neighbours = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance, myTeamId)
-
-      --      local candidateNeighboursExclusive = {}
-      local candidateNeighbours = {}
-      -- for i, candidateId in ipairs(neighbours) do
-      for i = 1, #neighbours do
-        local candidateId = neighbours[i]
-        local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
-        if candidateBuild ~= nil and candidateBuild < 1 then
-          table.insert(candidateNeighbours, candidateId)
-          --          if candidateId ~= builderId  then
-          --            table.insert(candidateNeighboursExclusive, candidateId)
-          --          end
         end
       end
 
@@ -312,7 +337,7 @@ function builderIteration(n)
       --   builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
       -- )
       -- if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
-      if #candidateNeighbours > 1 then
+      if #neighboursUnfinished > 1 then
         -- log(
         --   'metalLevel ' .. metalLevel ..
         --   ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) ..
@@ -326,17 +351,17 @@ function builderIteration(n)
         -- )
         if (metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
-          builderForceAssist('buildPower', builderId, targetId, targetDefID, candidateNeighbours)
+          builderForceAssist('buildPower', builderId, targetId, targetDefID, neighboursUnfinished)
           --
         elseif not regularizedPositiveEnergy and not isEnergyLeaking and ((targetUnitMM > 0 and not positiveMMLevel) or (targetUnitE <= 0 and isEnergyStalling)) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
-          builderForceAssist('energy', builderId, targetId, targetDefID, candidateNeighbours)
+          builderForceAssist('energy', builderId, targetId, targetDefID, neighboursUnfinished)
         elseif positiveMMLevel and (
               (
                 (not regularizedNegativeEnergy or isEnergyLeaking) and targetUnitE > 0) or
               (isMetalStalling and targetDef.buildSpeed > 0)) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
-          builderForceAssist('mm', builderId, targetId, targetDefID, candidateNeighbours)
+          builderForceAssist('mm', builderId, targetId, targetDefID, neighboursUnfinished)
         end
       end
 
@@ -368,11 +393,13 @@ function builderIteration(n)
         local _, _, _, _, targetBuild = GetUnitHealth(targetId)
         -- for _, candidateId in ipairs(candidateNeighbours) do
         for i = 1, #neighbours do
-          local candidateId = neighbours[i]
-          local candidateDef = unitDef(candidateId)
+          local candidate = neighbours[i]
+          local candidateId = candidate.id
+          local candidateDef = unitDef(candidate.id)
           -- same type and not actually same buildings
           if candidateId ~= targetId and candidateDef == targetDef then
-            local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
+            -- local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
+            local candidateBuild = candidate.build
             if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
               -- local targetBuildTimeLeft = getBuildTimeLeft(targetId)
               if candidateBuild > targetBuild then
@@ -476,11 +503,11 @@ function getBestCandidate(candidatesOriginal, assistType)
   if #candidatesOriginal == 0 or assistType == 'metal' then
     return false
   end
-  local candidatesFull = deepcopy(candidatesOriginal)
+  -- local candidatesFull = deepcopy(candidatesOriginal)
   local candidates = {}
 
-  for i = 1, #candidatesFull do
-    local candidateId = candidatesFull[i]
+  for i = 1, #candidatesOriginal do
+    local candidateId = candidatesOriginal[i]
     local candidateDefId = GetUnitDefID(candidateId)
     local candidateDef = UnitDefs[candidateDefId]
     local MMEff = getMetalMakingEfficiencyDef(candidateDef)
@@ -493,10 +520,6 @@ function getBestCandidate(candidatesOriginal, assistType)
         (assistType == 'energy' and (candidateDef['energyMake'] > 0)) or
         (assistType == 'mm' and MMEff > 0) then
       table.insert(candidates, { candidateId, candidateDefId, candidateDef })
-    else
-      --      if assistType == 'mm' then
-      --        log('removed from candidates ' .. assistType .. ' ' .. udef.humanName)
-      --      end
     end
   end
 
@@ -627,7 +650,6 @@ end
 -- end
 
 function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTagg)
-  selectedUnits = GetSelectedUnits()
   local targetDef = UnitDefs[GetUnitDefID(targetId)]
   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
   local secondsLeft = getBuildTimeLeft(targetId, targetDef)
