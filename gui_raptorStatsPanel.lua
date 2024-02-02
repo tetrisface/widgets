@@ -6,7 +6,7 @@ function widget:GetInfo()
 		date = "May 04, 2008",
 		license = "GNU GPL, v2 or later",
 		layer = -9,
-		enabled = true  --  loaded by default?
+		enabled = true --  loaded by default?
 	}
 end
 
@@ -219,21 +219,20 @@ local function CreatePanelDisplayList()
 	local currentTime = GetGameSeconds()
 	if currentTime > gameInfo.raptorGracePeriod then
 		if gameInfo.raptorQueenAnger < 100 then
-
 			local gain = 0
 			if Spring.GetGameRulesParam("RaptorQueenAngerGain_Base") then
 				-- font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerBase', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) }), panelMarginX, PanelRow(3), panelFontSize, "")
 				-- font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerAggression', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) }), panelMarginX, PanelRow(4), panelFontSize, "")
 				--font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerEco', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3) }), panelMarginX+5, PanelRow(5), panelFontSize, "")
 				gain = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) +
-						math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) +
-						math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3)
+					math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) +
+					math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3)
 			end
 			--font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerWithGain', { anger = gameInfo.raptorQueenAnger, gain = math.round(gain, 3) }), panelMarginX, PanelRow(1), panelFontSize, "")
 			font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerWithTech', { anger = gameInfo.raptorQueenAnger, techAnger = gameInfo.raptorTechAnger }), panelMarginX, PanelRow(1), panelFontSize, "")
 
 			local totalSeconds = (100 - gameInfo.raptorQueenAnger) / gain
-			font:Print(textColor .. Spring.I18N('ui.raptors.queenETA', { time = '' }), panelMarginX, PanelRow(2), panelFontSize, "")
+			font:Print(textColor .. Spring.I18N('ui.raptors.queenETA'), panelMarginX, PanelRow(2), panelFontSize, "")
 			local time = string.formatTime(totalSeconds)
 			font:Print(textColor .. time, panelMarginX + 220 - font:GetTextWidth(time) * panelFontSize, PanelRow(2), panelFontSize, "")
 
@@ -244,7 +243,9 @@ local function CreatePanelDisplayList()
 				currentlyResistantTo = {}
 			end
 		else
-			font:Print(textColor .. Spring.I18N('ui.raptors.queenHealth', { health = gameInfo.raptorQueenHealth }), panelMarginX, PanelRow(1), panelFontSize, "")
+			font:Print(textColor .. Spring.I18N('ui.raptors.queenHealth'), panelMarginX, PanelRow(1), panelFontSize, "")
+			local healthText = tostring(gameInfo.raptorQueenHealth)
+			font:Print(textColor .. gameInfo.raptorQueenHealth, panelMarginX + 220 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize, "")
 
 			DrawPlayerEcoInfos(2)
 
@@ -283,12 +284,12 @@ local function getMarqueeMessage(raptorEventArgs)
 		messages[1] = textColor .. Spring.I18N('ui.raptors.queenIsAngry1')
 		messages[2] = textColor .. Spring.I18N('ui.raptors.queenIsAngry2')
 	elseif raptorEventArgs.type == "airWave" then
-		messages[1] = textColor .. Spring.I18N('ui.raptors.wave1', {waveNumber = raptorEventArgs.waveCount})
+		messages[1] = textColor .. Spring.I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
 		messages[2] = textColor .. Spring.I18N('ui.raptors.airWave1')
-		messages[3] = textColor .. Spring.I18N('ui.raptors.airWave2', {unitCount = raptorEventArgs.number})
+		messages[3] = textColor .. Spring.I18N('ui.raptors.airWave2', { unitCount = raptorEventArgs.number })
 	elseif raptorEventArgs.type == "wave" then
-		messages[1] = textColor .. Spring.I18N('ui.raptors.wave1', {waveNumber = raptorEventArgs.waveCount})
-		messages[2] = textColor .. Spring.I18N('ui.raptors.wave2', {unitCount = raptorEventArgs.number})
+		messages[1] = textColor .. Spring.I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
+		messages[2] = textColor .. Spring.I18N('ui.raptors.wave2', { unitCount = raptorEventArgs.number })
 	end
 
 	refreshMarqueeMessage = false
@@ -299,10 +300,10 @@ end
 local function getResistancesMessage()
 	local messages = {}
 	messages[1] = textColor .. Spring.I18N('ui.raptors.resistanceUnits')
-	for i = 1,#resistancesTable do
+	for i = 1, #resistancesTable do
 		local attackerName = UnitDefs[resistancesTable[i]].name
-		messages[i+1] = textColor .. Spring.I18N('units.names.' .. attackerName)
-		currentlyResistantToNames[#currentlyResistantToNames+1] = Spring.I18N('units.names.' .. attackerName)
+		messages[i + 1] = textColor .. Spring.I18N('units.names.' .. attackerName)
+		currentlyResistantToNames[#currentlyResistantToNames + 1] = Spring.I18N('units.names.' .. attackerName)
 	end
 	resistancesTable = {}
 
