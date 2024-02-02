@@ -12,31 +12,13 @@ end
 
 -- TODO DOESNT WORK QUEUE CMDS ON FLYING
 
-local geos = {}
-local geos_on = true
-local GetAllyTeamList = Spring.GetAllyTeamList
-local GetMyTeamID = Spring.GetMyTeamID
 local GetSelectedUnits = Spring.GetSelectedUnits
-local GetTeamResources = Spring.GetTeamResources
-local GetTeamUnits = Spring.GetTeamUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitDefID = Spring.GetUnitDefID
-local GetUnitHealth = Spring.GetUnitHealth
-local GetUnitIsBuilding = Spring.GetUnitIsBuilding
-local GetUnitPosition = Spring.GetUnitPosition
-local GetUnitResources = Spring.GetUnitResources
-local GetUnitsInCylinder = Spring.GetUnitsInCylinder
-local GetUnitsInSphere = Spring.GetUnitsInSphere
+
 local GiveOrderToUnit = Spring.GiveOrderToUnit
-local GiveOrderToUnitMap = Spring.GiveOrderToUnitMap
+
 local log = Spring.Echo
-local mainIterationModuloLimit = 5
-local myTeamId = GetMyTeamID()
-local regularizedNegativeEnergy = false
-local regularizedPositiveEnergy = true
-local regularizedResourceDerivativesEnergy = { true }
-local regularizedResourceDerivativesMetal = { true }
-local SetTeamRulesParam = Spring.SetTeamRulesParam
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then

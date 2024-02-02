@@ -29,6 +29,9 @@ local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitStates = Spring.GetUnitStates
 local GetUnitDefID = Spring.GetUnitDefID
 local UnitDefs = UnitDefs
+local GetTeamList = Spring.GetTeamList
+local GetMyAllyTeamID = Spring.GetMyAllyTeamID
+local GetTeamStatsHistory = Spring.GetTeamStatsHistory
 
 
 function widget:MouseRelease(x, y, button)
@@ -58,8 +61,27 @@ function widget:MousePress(x, y, button)
   -- log(table.tostring(unitStates))
   -- SetUnitTarget(30651, 6298)
   -- GiveOrderToUnit(4281, CMD.FIGHT, 22248, {})
-  -- log('Spring.GetGameRulesParam(mmLevel)')
+  -- log('Spring.GetGameRulesParam(raptorPlayerAggressionEcoValues)')
+  -- log(table.tostring(Json.decode(Spring.GetGameRulesParam('raptorPlayerAggressionEcoValues') or '{}')))
   -- log(Spring.SetTeamRulesParam(myTeamId, 'mmLevel', 0.2))
+  -- get all teams
+  -- for _, teamID in ipairs(teams) do
+  -- log(table.tostring(teams))
+  -- log(GetMyAllyTeamID())
+
+  local ecoValues = {}
+  local teams = GetTeamList(GetMyAllyTeamID())
+  for i = 1, #teams do
+    local teamID = teams[i]
+    for team, _value in pairs(GetTeamStatsHistory(teamID, 1234)) do
+      for key, value in pairs(_value) do
+        if key == 'energyProduced' then
+          ecoValues[team] = value
+        end
+      end
+    end
+  end
+  log(table.tostring(ecoValues))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
@@ -193,6 +215,14 @@ function table.key_to_str(k)
 end
 
 function table.tostring(tbl)
+  if not tbl then
+    return 'nil'
+  end
+  if type(tbl) == "string" then
+    return tbl
+  elseif type(tbl) ~= "table" then
+    return tostring(tbl)
+  end
   local result, done = {}, {}
   for k, v in ipairs(tbl) do
     table.insert(result, table.val_to_str(v))
