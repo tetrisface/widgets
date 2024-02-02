@@ -69,19 +69,19 @@ function widget:MousePress(x, y, button)
   -- log(table.tostring(teams))
   -- log(GetMyAllyTeamID())
 
-  local ecoValues = {}
-  local teams = GetTeamList(GetMyAllyTeamID())
-  for i = 1, #teams do
-    local teamID = teams[i]
-    for team, _value in pairs(GetTeamStatsHistory(teamID, 1234)) do
-      for key, value in pairs(_value) do
-        if key == 'energyProduced' then
-          ecoValues[team] = value
-        end
-      end
-    end
-  end
-  log(table.tostring(ecoValues))
+  -- local ecoValues = {}
+  -- local teams = GetTeamList(GetMyAllyTeamID())
+  -- for i = 1, #teams do
+  --   local teamID = teams[i]
+  --   for team, _value in pairs(GetTeamStatsHistory(teamID, 1234)) do
+  --     for key, value in pairs(_value) do
+  --       if key == 'energyProduced' then
+  --         ecoValues[team] = value
+  --       end
+  --     end
+  --   end
+  -- end
+  -- log(table.tostring(ecoValues))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)

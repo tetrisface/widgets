@@ -159,6 +159,57 @@ local function WaveRow(n)
     return n * (waveFontSize + waveSpacingY)
 end
 
+function Interpolate(value, inMin, inMax, outMin, outMax)
+    -- Define the range of input values (100 to 500)
+    local minValue = inMin
+    local maxValue = inMax
+
+    -- Define the range of output values (1 to 0.4)
+    local minOutputValue = outMin
+    local maxOutputValue = outMax
+
+    -- Ensure the value is within the specified range
+    value = math.max(minValue, math.min(maxValue, value))
+
+    -- Calculate the interpolation
+    local t = (value - minValue) / (maxValue - minValue)
+    local result = minOutputValue + t * (maxOutputValue - minOutputValue)
+
+    return result
+end
+
+function sliceTextToPixelWidth(text, width)
+    while font:GetTextWidth(text) * panelFontSize > width and text:len() >= 0 do
+        text = text:sub(1, -2)
+    end
+    return text
+end
+
+function DrawPlayerEcoInfos(row)
+    font:Print(textColor .. 'Player Ecos:', panelMarginX, PanelRow(row), panelFontSize, "")
+    local playersEcoInfo = GetPlayersEcoInfo(7 - row)
+
+    for i = 1, #playersEcoInfo do
+        local playerEcoInfo = playersEcoInfo[i]
+        local gb = 1
+        local alpha = 1
+        if playerEcoInfo.value > 170 then
+            gb = Interpolate(playerEcoInfo.value, 170, 600, 0.5, 0.3)
+        elseif playerEcoInfo.value > 100 then
+            gb = Interpolate(playerEcoInfo.value, 100, 170, 0.8, 0.5)
+        elseif playerEcoInfo.value < 80 then
+            alpha = Interpolate(playerEcoInfo.value, 0, 70, 1, 0.8)
+        end
+        font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
+
+        local namePosX = panelMarginX + 10 + (i == #playersEcoInfo and 40 or 0)
+        local ecoTextWidth = math.floor(font:GetTextWidth(playerEcoInfo.valueString) * panelFontSize)
+        local ecoTextRightX = panelMarginX + 220
+        font:Print(sliceTextToPixelWidth(playerEcoInfo.name, (ecoTextRightX - ecoTextWidth) - namePosX), namePosX, PanelRow(row + i), panelFontSize, "")
+        font:Print(playerEcoInfo.valueString, ecoTextRightX - ecoTextWidth, PanelRow(row + i), panelFontSize, "")
+    end
+end
+
 local function CreatePanelDisplayList()
     gl.PushMatrix()
     gl.Translate(x1, y1, 0)
@@ -182,16 +233,10 @@ local function CreatePanelDisplayList()
 
             local totalSeconds = (100 - gameInfo.raptorQueenAnger) / gain
             time = string.formatTime(totalSeconds)
-            font:Print(textColor .. Spring.I18N('ui.raptors.queenETA', { time = time }), panelMarginX, PanelRow(2), panelFontSize, "")
+            font:Print(textColor .. Spring.I18N('ui.raptors.queenETA', { time = '' }), panelMarginX, PanelRow(2), panelFontSize, "")
+            font:Print(textColor .. time, panelMarginX + 220 - font:GetTextWidth(time) * panelFontSize, PanelRow(2), panelFontSize, "")
 
-            local playersEcoInfo = GetPlayersEcoInfo(3)
-
-            font:Print(textColor .. Spring.I18N('ui.raptors.PlayerEcoInfo', { 'player info' }), panelMarginX, PanelRow(3), panelFontSize, "")
-            for i = 1, #playersEcoInfo do
-                local PlayerEcoInfo = playersEcoInfo[i]
-                -- font:Print(textColor .. Spring.I18N('ui.raptors.PlayerEcoInfo', playersEcoInfo), panelMarginX, PanelRow(2 + i), panelFontSize, "")
-                font:Print(textColor .. Spring.I18N(PlayerEcoInfo.name .. ' ' .. PlayerEcoInfo.value, playersEcoInfo), panelMarginX, PanelRow(3 + i), panelFontSize, "")
-            end
+            DrawPlayerEcoInfos(3)
 
             if #currentlyResistantToNames > 0 then
                 currentlyResistantToNames = {}
@@ -199,6 +244,9 @@ local function CreatePanelDisplayList()
             end
         else
             font:Print(textColor .. Spring.I18N('ui.raptors.queenHealth', { health = gameInfo.raptorQueenHealth }), panelMarginX, PanelRow(1), panelFontSize, "")
+
+            DrawPlayerEcoInfos(2)
+
             for i = 1, #currentlyResistantToNames do
                 if i == 1 then
                     font:Print(textColor .. Spring.I18N('ui.raptors.queenResistantToList'), panelMarginX, PanelRow(11), panelFontSize, "")
@@ -208,15 +256,7 @@ local function CreatePanelDisplayList()
         end
     else
         font:Print(textColor .. Spring.I18N('ui.raptors.gracePeriod', { time = string.formatTime(math.ceil(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)) }), panelMarginX, PanelRow(1), panelFontSize, "")
-        font:Print(textColor .. Spring.I18N('ui.raptors.PlayerInfo', { 'player info' }), panelMarginX, PanelRow(2), panelFontSize, "")
-        local playersEcoInfo = GetPlayersEcoInfo(4)
-        for i = 1, #playersEcoInfo do
-            local PlayerEcoInfo = playersEcoInfo[i]
-            log('table.tostring(PlayerEcoInfo)')
-            log(table.tostring(PlayerEcoInfo))
-            -- font:Print(textColor .. Spring.I18N('ui.raptors.PlayerEcoInfo', playersEcoInfo), panelMarginX, PanelRow(2 + i), panelFontSize, "")
-            font:Print(textColor .. Spring.I18N(PlayerEcoInfo.name .. ' ' .. PlayerEcoInfo.value, playersEcoInfo), panelMarginX, PanelRow(2 + i), panelFontSize, "")
-        end
+        DrawPlayerEcoInfos(2)
     end
 
     -- font:Print(textColor .. Spring.I18N('ui.raptors.raptorKillCount', { count = gameInfo.raptorKills }), panelMarginX, PanelRow(6), panelFontSize, "")
@@ -344,49 +384,42 @@ function GetPlayersEcoInfo(maxRows)
         else
             _, playerName = Spring.GetAIInfo(teamID)
         end
-        local currmax = GetTeamStatsHistory(playerList[1] or teamID)
-        local ecoStats = GetTeamStatsHistory(playerList[1] or teamID, currmax, currmax)
-        if ecoStats then
-            local e = ecoStats[1].energyProduced
-            sum = sum + e
+
+        local _, _, _, income = Spring.GetTeamResources(playerList[1] or teamID, 'energy')
+        if income then
+            sum = sum + income
             table.insert(playerEcoInfos, {
-                value = e,
+                value = income,
                 name = playerName,
                 teamID = teamID,
-                me = myTeamId == teamID
+                me = myTeamId == teamID,
+                forced = false
             })
         end
-        -- for _, _value in pairs(ecoStats) do
-        --     for key, value in pairs(ecoStats[1].energyProduced) do
-        --         if key == 'energyProduced' then
-        --             sum = sum + value
-        --             table.insert(playerEcoInfos, {
-        --                 value = value,
-        --                 name = playerName,
-        --                 teamID = teamID,
-        --                 me = myTeamId == teamID
-        --             })
-        --         end
-        --     end
-        -- end
     end
 
+    -- normalize and add text formatting
     local nplayerEcoInfos = #playerEcoInfos
     for i = 1, nplayerEcoInfos do
         local playerEcoInfo = playerEcoInfos[i]
-        playerEcoInfo.value = string.format("%.2f", nplayerEcoInfos * playerEcoInfo.value / sum, 2)
+        playerEcoInfo.value = nplayerEcoInfos * playerEcoInfo.value * 100 / sum
+        playerEcoInfo.valueString = string.format("%.0f%%", playerEcoInfo.value, 2)
     end
 
     table.sort(playerEcoInfos, function(a, b) return a.value > b.value end)
 
+    -- limit rows and add player forced flag
     local playerEcoInfosLimited = {}
     for i = 1, #playerEcoInfos do
         local ecoInfo = playerEcoInfos[i]
         if ecoInfo.me or #playerEcoInfosLimited < maxRows then
-            table.insert(playerEcoInfosLimited, ecoInfo)
             if ecoInfo.me then
+                if #playerEcoInfosLimited >= maxRows then
+                    ecoInfo.forced = true
+                end
                 maxRows = maxRows + 1
             end
+            table.insert(playerEcoInfosLimited, ecoInfo)
         end
     end
 
