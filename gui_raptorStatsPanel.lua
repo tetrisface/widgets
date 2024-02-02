@@ -12,7 +12,6 @@ end
 
 local config = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua')
 
-local GetPlayerRoster = Spring.GetPlayerRoster
 local GetTeamStatsHistory = Spring.GetTeamStatsHistory
 local log = Spring.Echo
 
@@ -173,8 +172,8 @@ local function CreatePanelDisplayList()
         if gameInfo.raptorQueenAnger < 100 then
             local gain = 0
             if Spring.GetGameRulesParam("RaptorQueenAngerGain_Base") then
-                font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerBase', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) }), panelMarginX, PanelRow(3), panelFontSize, "")
-                font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerAggression', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) }), panelMarginX, PanelRow(4), panelFontSize, "")
+                -- font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerBase', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) }), panelMarginX, PanelRow(3), panelFontSize, "")
+                -- font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerAggression', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) }), panelMarginX, PanelRow(4), panelFontSize, "")
                 --font:Print(textColor .. Spring.I18N('ui.raptors.queenAngerEco', { value = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3) }), panelMarginX+5, PanelRow(5), panelFontSize, "")
                 gain = math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) + math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) + math.round(Spring.GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3)
             end
@@ -186,6 +185,13 @@ local function CreatePanelDisplayList()
             font:Print(textColor .. Spring.I18N('ui.raptors.queenETA', { time = time }), panelMarginX, PanelRow(2), panelFontSize, "")
 
             local playersEcoInfo = GetPlayersEcoInfo(3)
+
+            font:Print(textColor .. Spring.I18N('ui.raptors.PlayerEcoInfo', { 'player info' }), panelMarginX, PanelRow(3), panelFontSize, "")
+            for i = 1, #playersEcoInfo do
+                local PlayerEcoInfo = playersEcoInfo[i]
+                -- font:Print(textColor .. Spring.I18N('ui.raptors.PlayerEcoInfo', playersEcoInfo), panelMarginX, PanelRow(2 + i), panelFontSize, "")
+                font:Print(textColor .. Spring.I18N(PlayerEcoInfo.name .. ' ' .. PlayerEcoInfo.value, playersEcoInfo), panelMarginX, PanelRow(3 + i), panelFontSize, "")
+            end
 
             if #currentlyResistantToNames > 0 then
                 currentlyResistantToNames = {}
@@ -338,28 +344,37 @@ function GetPlayersEcoInfo(maxRows)
         else
             _, playerName = Spring.GetAIInfo(teamID)
         end
-        local ecoStats = GetTeamStatsHistory(playerList[1] or teamID, 1234)
+        local currmax = GetTeamStatsHistory(playerList[1] or teamID)
+        local ecoStats = GetTeamStatsHistory(playerList[1] or teamID, currmax, currmax)
         if ecoStats then
-            for _, _value in pairs(ecoStats) do
-                for key, value in pairs(_value) do
-                    if key == 'energyProduced' then
-                        sum = sum + value
-                        table.insert(playerEcoInfos, {
-                            value = value,
-                            name = playerName,
-                            teamID = teamID,
-                            me = myTeamId == teamID
-                        })
-                    end
-                end
-            end
+            local e = ecoStats[1].energyProduced
+            sum = sum + e
+            table.insert(playerEcoInfos, {
+                value = e,
+                name = playerName,
+                teamID = teamID,
+                me = myTeamId == teamID
+            })
         end
+        -- for _, _value in pairs(ecoStats) do
+        --     for key, value in pairs(ecoStats[1].energyProduced) do
+        --         if key == 'energyProduced' then
+        --             sum = sum + value
+        --             table.insert(playerEcoInfos, {
+        --                 value = value,
+        --                 name = playerName,
+        --                 teamID = teamID,
+        --                 me = myTeamId == teamID
+        --             })
+        --         end
+        --     end
+        -- end
     end
 
-    local nEcoValues = #playerEcoInfos
-    for i = 1, nEcoValues do
-        local ecoValue = playerEcoInfos[i]
-        ecoValue.value = nEcoValues * ecoValue.value / sum
+    local nplayerEcoInfos = #playerEcoInfos
+    for i = 1, nplayerEcoInfos do
+        local playerEcoInfo = playerEcoInfos[i]
+        playerEcoInfo.value = string.format("%.2f", nplayerEcoInfos * playerEcoInfo.value / sum, 2)
     end
 
     table.sort(playerEcoInfos, function(a, b) return a.value > b.value end)
