@@ -365,7 +365,6 @@ local function Draw()
 
 		local marqueeMarginY = waveFontSize + waveSpacingY + 40
 		local waveY = viewSizeY + marqueeMarginY - (DiffTimers(t, waveTime) * waveSpeed * (viewSizeY + marqueeMarginY))
-		Spring.Echo('waveY + marqueeMarginY ' .. waveY + marqueeMarginY)
 		if waveY + marqueeMarginY > 0 then
 			if refreshMarqueeMessage or not marqueeMessage then
 				marqueeMessage = getMarqueeMessage(messageArgs)
