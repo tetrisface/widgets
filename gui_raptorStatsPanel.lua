@@ -181,6 +181,10 @@ local function PanelRow(n)
 	return h - panelMarginY - (n - 1) * (panelFontSize + panelSpacingY)
 end
 
+local function WaveRow(n)
+	return n * (waveFontSize + waveSpacingY)
+end
+
 function Interpolate(value, inMin, inMax, outMin, outMax)
 	-- Define the range of input values (100 to 500)
 	local minValue = inMin
@@ -363,22 +367,18 @@ local function Draw()
 	if showMarqueeMessage then
 		local t = GetTimer()
 
-		local marqueeMarginY = waveFontSize + waveSpacingY + 40
-		local waveY = viewSizeY + marqueeMarginY - (DiffTimers(t, waveTime) * waveSpeed * (viewSizeY + marqueeMarginY))
-		if waveY + marqueeMarginY > 0 then
+		local waveY = viewSizeY - DiffTimers(t, waveTime) * waveSpeed * viewSizeY
+		if waveY > 0 then
 			if refreshMarqueeMessage or not marqueeMessage then
 				marqueeMessage = getMarqueeMessage(messageArgs)
 			end
 
-			gl.PushMatrix()
-			gl.Translate(0, waveY, 0)
 			font2:Begin()
 			font:SetTextColor(1, 1, 1, 1)
-			for i = 1, #marqueeMessage do
-				font2:Print(marqueeMessage[i], viewSizeX / 2, i * (waveFontSize + waveSpacingY), waveFontSize * widgetScale, "co")
+			for i, message in ipairs(marqueeMessage) do
+				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, "co")
 			end
 			font2:End()
-			gl.PopMatrix()
 		else
 			showMarqueeMessage = false
 			messageArgs = nil
