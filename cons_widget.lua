@@ -927,6 +927,14 @@ function table.key_to_str(k)
 end
 
 function table.tostring(tbl)
+  if type(tbl) == "string" then
+    return tbl
+  elseif type(tbl) ~= "table" then
+    return tostring(tbl)
+  end
+  if not tbl then
+    return 'nil'
+  end
   local result, done = {}, {}
   for k, v in ipairs(tbl) do
     table.insert(result, table.val_to_str(v))
