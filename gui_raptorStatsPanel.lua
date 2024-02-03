@@ -247,7 +247,7 @@ function DrawPlayerEcoInfos(row)
 		font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
 
 		local namePosX = panelMarginX + 10 + (i == #playersEcoInfo and 40 or 0)
-		local ecoTextWidth = math.floor(font:GetTextWidth(playerEcoInfo.valueString:gsub('\\d', '0')) * panelFontSize)
+		local ecoTextWidth = math.floor(font:GetTextWidth(playerEcoInfo.valueString) * panelFontSize)
 		local ecoTextRightX = panelMarginX + 220
 		if playerEcoInfo.name then
 			font:Print(TruncateTextToPixelWidth(playerEcoInfo.name, (ecoTextRightX - ecoTextWidth) - namePosX), namePosX,
@@ -310,7 +310,7 @@ local function CreatePanelDisplayList()
 	else
 		font:Print(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1), panelFontSize, "")
 		local timeText = string.formatTime(math.ceil(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5))
-		font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText:gsub(':.*', '')) * panelFontSize, PanelRow(1), panelFontSize, "")
+		font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1), panelFontSize, "")
 		DrawPlayerEcoInfos(2)
 	end
 
