@@ -456,37 +456,6 @@ function RaptorEvent(raptorEventArgs)
 	end
 end
 
-function widget:Initialize()
-	widget:ViewResize()
-
-	displayList = gl.CreateList(function()
-		gl.Blending(true)
-		gl.Color(1, 1, 1, 1)
-		gl.Texture(panelTexture)
-		gl.TexRect(0, 0, w, h)
-	end)
-
-	widgetHandler:RegisterGlobal("RaptorEvent", RaptorEvent)
-	UpdateRules()
-	viewSizeX, viewSizeY = gl.GetViewSizes()
-	local x = math.abs(math.floor(viewSizeX - 320))
-	local y = math.abs(math.floor(viewSizeY - 300))
-
-	-- reposition if scavengers panel is shown as well
-	if Utilities.Gametype.IsScavengers() then
-		x = x - 315
-	end
-
-	updatePos(x, y)
-
-	local allUnits = GetAllUnits()
-	for i = 1, #allUnits do
-		local unitID = allUnits[i]
-		local unitDefID = GetUnitDefID(unitID)
-		RegisterUnit(unitID, unitDefID, GetUnitTeam(unitID))
-	end
-end
-
 function widget:Shutdown()
 	if hasRaptorEvent then
 		SendCommands({ "luarules HasRaptorEvent 0" })
@@ -661,4 +630,35 @@ end
 
 function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
 	DeregisterUnit(unitID, unitDefID, unitTeam)
+end
+
+function widget:Initialize()
+	widget:ViewResize()
+
+	displayList = gl.CreateList(function()
+		gl.Blending(true)
+		gl.Color(1, 1, 1, 1)
+		gl.Texture(panelTexture)
+		gl.TexRect(0, 0, w, h)
+	end)
+
+	widgetHandler:RegisterGlobal("RaptorEvent", RaptorEvent)
+	UpdateRules()
+	viewSizeX, viewSizeY = gl.GetViewSizes()
+	local x = math.abs(math.floor(viewSizeX - 320))
+	local y = math.abs(math.floor(viewSizeY - 300))
+
+	-- reposition if scavengers panel is shown as well
+	if Utilities.Gametype.IsScavengers() then
+		x = x - 315
+	end
+
+	updatePos(x, y)
+
+	local allUnits = GetAllUnits()
+	for i = 1, #allUnits do
+		local unitID = allUnits[i]
+		local unitDefID = GetUnitDefID(unitID)
+		RegisterUnit(unitID, unitDefID, GetUnitTeam(unitID))
+	end
 end
