@@ -122,8 +122,11 @@ if not raptorTeamID then
 end
 
 local function updatePos(x, y)
-	x1 = math.min((viewSizeX * 0.94) - (w * widgetScale) / 2, x)
-	y1 = math.min((viewSizeY * 0.89) - (h * widgetScale) / 2, y)
+	local x0 = (viewSizeX * 0.94) - (w * widgetScale) / 2
+	local y0 = (viewSizeY * 0.89) - (h * widgetScale) / 2
+	x1 = x0 < x and x0 or x
+	y1 = y0 < y and y0 or y
+
 	updatePanel = true
 end
 
@@ -145,7 +148,7 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 	local maxOutputValue = outMax
 
 	-- Ensure the value is within the specified range
-	value = math.max(minValue, math.min(maxValue, value))
+	value = (value < minValue) and minValue or ((value > maxValue) and maxValue or value)
 
 	-- Calculate the interpolation
 	local t = (value - minValue) / (maxValue - minValue)
