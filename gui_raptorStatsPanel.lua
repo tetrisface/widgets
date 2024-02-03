@@ -10,9 +10,8 @@ function widget:GetInfo()
 	}
 end
 
-local config = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua')
-local SetListUtilities = VFS.Include('common/SetList.lua')
-
+local config                = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua')
+local Set                   = VFS.Include('common/SetList.lua').NewSetList
 
 local GetTeamColor          = Spring.GetTeamColor
 local DiffTimers            = Spring.DiffTimers
@@ -25,16 +24,13 @@ local GetModOptions         = Spring.GetModOptions
 local GetMyTeamID           = Spring.GetMyTeamID
 local GetPlayerInfo         = Spring.GetPlayerInfo
 local GetPlayerList         = Spring.GetPlayerList
-local GetTeamInfo           = Spring.GetTeamInfo
 local GetTeamList           = Spring.GetTeamList
 local GetTeamLuaAI          = Spring.GetTeamLuaAI
-local GetTeamResources      = Spring.GetTeamResources
 local GetTimer              = Spring.GetTimer
 local GetUnitDefID          = Spring.GetUnitDefID
 local GetUnitTeam           = Spring.GetUnitTeam
 local GetViewGeometry       = Spring.GetViewGeometry
 local I18N                  = Spring.I18N
-local log                   = Spring.Echo
 local SendCommands          = Spring.SendCommands
 local UnitDefs              = UnitDefs
 local Utilities             = Spring.Utilities
@@ -53,8 +49,6 @@ end
 if not GetGameRulesParam("raptorDifficulty") then
 	return false
 end
-
-local GetGameSeconds = GetGameSeconds
 
 local displayList
 local panelTexture = ":n:LuaUI/Images/raptorpanel.tga"
@@ -86,14 +80,14 @@ local scoreCount = 0
 local resistancesTable = {}
 local currentlyResistantTo = {}
 local currentlyResistantToNames = {}
-local WALLS = {
+local WALLS = Set({
 	"armdrag",
 	"armfort",
 	"cordrag",
 	"corfort",
 	"scavdrag",
 	"scavfort",
-}
+})
 local playersAggroEcos = {}
 
 local guiPanel --// a displayList
@@ -136,10 +130,6 @@ local rules = {
 	"raptor_hiveKills",
 }
 
-local waveColor = "\255\255\0\0"
-local textColor = "\255\255\255\255"
-
-
 local raptorTypes = {
 	"raptor",
 	"raptora",
@@ -155,27 +145,19 @@ local raptorTypes = {
 }
 
 local raptorTeamID
-local raptorAllyTeamID
-local humanTeams = {}
 
 local teams = GetTeamList()
 for _, teamID in ipairs(teams) do
 	local teamLuaAI = GetTeamLuaAI(teamID)
 	if (teamLuaAI and string.find(teamLuaAI, "Raptors")) then
 		raptorTeamID = teamID
-		raptorAllyTeamID = select(6, GetTeamInfo(raptorTeamID))
-	else
-		humanTeams[teamID] = true
 	end
 end
 
 local gaiaTeamID = GetGaiaTeamID()
 if not raptorTeamID then
 	raptorTeamID = gaiaTeamID
-	raptorAllyTeamID = select(6, GetTeamInfo(raptorTeamID))
 end
-
-humanTeams[gaiaTeamID] = nil
 
 local function getRaptorCounts(type)
 	local total = 0
@@ -235,23 +217,23 @@ function DrawPlayerEcoInfos(row)
 
 	for i = 1, #playersEcoInfo do
 		local playerEcoInfo = playersEcoInfo[i]
-		local gb = 1
-		local alpha = 1
-		if playerEcoInfo.value > 170 then
-			gb = Interpolate(playerEcoInfo.value, 170, 600, 0.5, 0.3)
-		elseif playerEcoInfo.value > 100 then
-			gb = Interpolate(playerEcoInfo.value, 100, 170, 0.8, 0.5)
-		elseif playerEcoInfo.value < 80 then
-			alpha = Interpolate(playerEcoInfo.value, 0, 70, 1, 0.8)
-		end
-		font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
-
-		local namePosX = panelMarginX + 10 + (i == #playersEcoInfo and 40 or 0)
-		local ecoTextWidth = math.floor(font:GetTextWidth(playerEcoInfo.valueString) * panelFontSize)
-		local ecoTextRightX = panelMarginX + 220
 		if playerEcoInfo.name then
-			font:Print(TruncateTextToPixelWidth(playerEcoInfo.name, (ecoTextRightX - ecoTextWidth) - namePosX), namePosX,
-				PanelRow(row + i), panelFontSize, "")
+			local gb = 1
+			local alpha = 1
+			if playerEcoInfo.value > 170 then
+				gb = Interpolate(playerEcoInfo.value, 170, 600, 0.5, 0.3)
+			elseif playerEcoInfo.value > 100 then
+				gb = Interpolate(playerEcoInfo.value, 100, 170, 0.8, 0.5)
+			elseif playerEcoInfo.value < 80 then
+				alpha = Interpolate(playerEcoInfo.value, 0, 70, 1, 0.8)
+			end
+			font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
+
+			local namePosX = panelMarginX + 10 + (i == #playersEcoInfo and 40 or 0)
+			local ecoTextWidth = math.floor(font:GetTextWidth(playerEcoInfo.valueString) * panelFontSize)
+			local ecoTextRightX = panelMarginX + 220
+			font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
+			font:Print(TruncateTextToPixelWidth(playerEcoInfo.name, (ecoTextRightX - ecoTextWidth) - namePosX), namePosX, PanelRow(row + i), panelFontSize, "")
 			font:Print(playerEcoInfo.valueString, ecoTextRightX - ecoTextWidth, PanelRow(row + i), panelFontSize, "")
 		end
 	end
@@ -272,20 +254,20 @@ local function CreatePanelDisplayList()
 		if gameInfo.raptorQueenAnger < 100 then
 			local gain = 0
 			if GetGameRulesParam("RaptorQueenAngerGain_Base") then
-				-- font:Print(textColor .. I18N('ui.raptors.queenAngerBase', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) }), panelMarginX, PanelRow(3), panelFontSize, "")
-				-- font:Print(textColor .. I18N('ui.raptors.queenAngerAggression', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) }), panelMarginX, PanelRow(4), panelFontSize, "")
-				--font:Print(textColor .. I18N('ui.raptors.queenAngerEco', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3) }), panelMarginX+5, PanelRow(5), panelFontSize, "")
+				-- font:Print(I18N('ui.raptors.queenAngerBase', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) }), panelMarginX, PanelRow(3), panelFontSize, "")
+				-- font:Print(I18N('ui.raptors.queenAngerAggression', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) }), panelMarginX, PanelRow(4), panelFontSize, "")
+				--font:Print(I18N('ui.raptors.queenAngerEco', { value = math.round(GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3) }), panelMarginX+5, PanelRow(5), panelFontSize, "")
 				gain = math.round(GetGameRulesParam("RaptorQueenAngerGain_Base"), 3) +
 					math.round(GetGameRulesParam("RaptorQueenAngerGain_Aggression"), 3) +
 					math.round(GetGameRulesParam("RaptorQueenAngerGain_Eco"), 3)
 			end
-			--font:Print(textColor .. I18N('ui.raptors.queenAngerWithGain', { anger = gameInfo.raptorQueenAnger, gain = math.round(gain, 3) }), panelMarginX, PanelRow(1), panelFontSize, "")
+			--font:Print(I18N('ui.raptors.queenAngerWithGain', { anger = gameInfo.raptorQueenAnger, gain = math.round(gain, 3) }), panelMarginX, PanelRow(1), panelFontSize, "")
 			font:Print(I18N('ui.raptors.queenAngerWithTech', { anger = gameInfo.raptorQueenAnger, techAnger = gameInfo.raptorTechAnger }):gsub('ution', 'ved'), panelMarginX, PanelRow(1), panelFontSize, "")
 
 			local totalSeconds = (100 - gameInfo.raptorQueenAnger) / gain
 			font:Print(I18N('ui.raptors.queenETA', { time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize, "")
 			local time = string.formatTime(totalSeconds)
-			font:Print(time, panelMarginX + 205 - font:GetTextWidth(time:gsub(':.*', '')) * panelFontSize, PanelRow(2), panelFontSize, "")
+			font:Print(time, panelMarginX + 200 - font:GetTextWidth(time:gsub(':.*', '')) * panelFontSize, PanelRow(2), panelFontSize, "")
 
 			DrawPlayerEcoInfos(3)
 
@@ -319,7 +301,7 @@ local function CreatePanelDisplayList()
 		endless = ' (' .. I18N('ui.raptors.difficulty.endless') .. ')'
 	end
 	local difficultyCaption = I18N('ui.raptors.difficulty.' .. difficultyOption)
-	font:Print(textColor .. I18N('ui.raptors.mode', { mode = difficultyCaption }) .. endless, 80, h - 170, panelFontSize, "")
+	font:Print(I18N('ui.raptors.mode', { mode = difficultyCaption }) .. endless, 80, h - 170, panelFontSize, "")
 	font:End()
 
 	gl.Texture(false)
@@ -329,18 +311,18 @@ end
 local function getMarqueeMessage(raptorEventArgs)
 	local messages = {}
 	if raptorEventArgs.type == "firstWave" then
-		messages[1] = textColor .. I18N('ui.raptors.firstWave1')
-		messages[2] = textColor .. I18N('ui.raptors.firstWave2')
+		messages[1] = I18N('ui.raptors.firstWave1')
+		messages[2] = I18N('ui.raptors.firstWave2')
 	elseif raptorEventArgs.type == "queen" then
-		messages[1] = textColor .. I18N('ui.raptors.queenIsAngry1')
-		messages[2] = textColor .. I18N('ui.raptors.queenIsAngry2')
+		messages[1] = I18N('ui.raptors.queenIsAngry1')
+		messages[2] = I18N('ui.raptors.queenIsAngry2')
 	elseif raptorEventArgs.type == "airWave" then
-		messages[1] = textColor .. I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
-		messages[2] = textColor .. I18N('ui.raptors.airWave1')
-		messages[3] = textColor .. I18N('ui.raptors.airWave2', { unitCount = raptorEventArgs.number })
+		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
+		messages[2] = I18N('ui.raptors.airWave1')
+		messages[3] = I18N('ui.raptors.airWave2', { unitCount = raptorEventArgs.number })
 	elseif raptorEventArgs.type == "wave" then
-		messages[1] = textColor .. I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
-		messages[2] = textColor .. I18N('ui.raptors.wave2', { unitCount = raptorEventArgs.number })
+		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
+		messages[2] = I18N('ui.raptors.wave2', { unitCount = raptorEventArgs.number })
 	end
 
 	refreshMarqueeMessage = false
@@ -350,10 +332,10 @@ end
 
 local function getResistancesMessage()
 	local messages = {}
-	messages[1] = textColor .. I18N('ui.raptors.resistanceUnits')
+	messages[1] = I18N('ui.raptors.resistanceUnits')
 	for i = 1, #resistancesTable do
 		local attackerName = UnitDefs[resistancesTable[i]].name
-		messages[i + 1] = textColor .. I18N('units.names.' .. attackerName)
+		messages[i + 1] = I18N('units.names.' .. attackerName)
 		currentlyResistantToNames[#currentlyResistantToNames + 1] = I18N('units.names.' .. attackerName)
 	end
 	resistancesTable = {}
@@ -392,6 +374,7 @@ local function Draw()
 			end
 
 			font2:Begin()
+			font:SetTextColor(1, 1, 1, 1)
 			for i, message in ipairs(marqueeMessage) do
 				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, "co")
 			end
@@ -408,6 +391,56 @@ local function Draw()
 	end
 end
 
+-- local function Draw()
+-- 	if not enabled or not gameInfo then
+-- 		return
+-- 	end
+
+-- 	if updatePanel then
+-- 		if (guiPanel) then
+-- 			gl.DeleteList(guiPanel);
+-- 			guiPanel = nil
+-- 		end
+-- 		guiPanel = gl.CreateList(CreatePanelDisplayList)
+-- 		updatePanel = false
+-- 	end
+
+-- 	if guiPanel then
+-- 		gl.CallList(guiPanel)
+-- 	end
+
+-- 	if showMarqueeMessage then
+-- 		local t = GetTimer()
+
+-- 		local waveY = viewSizeY - DiffTimers(t, waveTime) * waveSpeed * viewSizeY
+-- 		if waveY > 0 then
+-- 			gl.PushMatrix()
+-- 			gl.Translate(0, waveY, 0)
+-- 			if refreshMarqueeMessage or not marqueeMessage then
+-- 				marqueeMessage = getMarqueeMessage(messageArgs)
+-- 			end
+
+-- 			font2:Begin()
+-- 			font2:SetTextColor(1, 1, 1, 1)
+-- 			for i = 1, #marqueeMessage do
+-- 				local message = marqueeMessage[i]
+-- 				-- font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, "co")
+-- 				font2:Print(message, viewSizeX / 2, 30 * i * widgetScale, waveFontSize * widgetScale, "co")
+-- 			end
+-- 			font2:End()
+-- 			gl.PopMatrix()
+-- 		else
+-- 			showMarqueeMessage = false
+-- 			messageArgs = nil
+-- 			waveY = viewSizeY
+-- 		end
+-- 	elseif #resistancesTable > 0 then
+-- 		marqueeMessage = getResistancesMessage()
+-- 		waveTime = GetTimer()
+-- 		showMarqueeMessage = true
+-- 	end
+-- end
+
 local function UpdateRules()
 	if not gameInfo then
 		gameInfo = {}
@@ -421,35 +454,6 @@ local function UpdateRules()
 
 	updatePanel = true
 end
-
--- function PlayerEnergyDistribution()
--- 	local playerEcoInfos = {}
--- 	local sum            = 0
-
--- 	for i = 1, #teamList do
--- 		local teamID = teamList[i]
--- 		local playerName
--- 		local playerList = GetPlayerList(teamID)
--- 		if playerList[1] then
--- 			playerName = GetPlayerInfo(playerList[1])
--- 		else
--- 			_, playerName = GetAIInfo(teamID)
--- 		end
-
--- 		local _, _, _, income = GetTeamResources(playerList[1] or teamID, 'energy')
--- 		if income then
--- 			sum = sum + income
--- 			table.insert(playerEcoInfos, {
--- 				value = income,
--- 				name = playerName,
--- 				teamID = teamID,
--- 				me = myTeamId == teamID,
--- 				forced = false
--- 			})
--- 		end
--- 	end
--- 	return playerEcoInfos, sum
--- end
 
 function PlayerAggroEcoDistribution()
 	local myTeamId       = GetMyTeamID()
@@ -468,7 +472,7 @@ function PlayerAggroEcoDistribution()
 		end
 
 		local aggroEcoValue = playersAggroEcos[teamID] or 0
-		if playerName then
+		if playerName and not playerName:find("Raptors") then
 			sum = sum + aggroEcoValue
 			table.insert(playerEcoInfos, {
 				value = aggroEcoValue,
@@ -476,7 +480,7 @@ function PlayerAggroEcoDistribution()
 				teamID = teamID,
 				me = myTeamId == teamID,
 				forced = false,
-				color = GetTeamColor(teamID)
+				color = { GetTeamColor(teamID) }
 			})
 		end
 	end
