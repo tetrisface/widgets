@@ -1,6 +1,6 @@
 function widget:GetInfo()
     return {
-        name = "_old",
+        name = "z old",
         desc = "Lots of code from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc",
         author = "-",
         date = "feb, 2016",
