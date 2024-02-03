@@ -276,7 +276,7 @@ local function CreatePanelDisplayList()
 				currentlyResistantTo = {}
 			end
 		else
-			font:Print(I18N('ui.raptors.queenHealth', { health = '' }), panelMarginX, PanelRow(1), panelFontSize, "")
+			font:Print(I18N('ui.raptors.queenHealth', { health = '' }):gsub('%.', ''), panelMarginX, PanelRow(1), panelFontSize, "")
 			local healthText = tostring(gameInfo.raptorQueenHealth)
 			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 220 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize, "")
 
@@ -391,56 +391,6 @@ local function Draw()
 	end
 end
 
--- local function Draw()
--- 	if not enabled or not gameInfo then
--- 		return
--- 	end
-
--- 	if updatePanel then
--- 		if (guiPanel) then
--- 			gl.DeleteList(guiPanel);
--- 			guiPanel = nil
--- 		end
--- 		guiPanel = gl.CreateList(CreatePanelDisplayList)
--- 		updatePanel = false
--- 	end
-
--- 	if guiPanel then
--- 		gl.CallList(guiPanel)
--- 	end
-
--- 	if showMarqueeMessage then
--- 		local t = GetTimer()
-
--- 		local waveY = viewSizeY - DiffTimers(t, waveTime) * waveSpeed * viewSizeY
--- 		if waveY > 0 then
--- 			gl.PushMatrix()
--- 			gl.Translate(0, waveY, 0)
--- 			if refreshMarqueeMessage or not marqueeMessage then
--- 				marqueeMessage = getMarqueeMessage(messageArgs)
--- 			end
-
--- 			font2:Begin()
--- 			font2:SetTextColor(1, 1, 1, 1)
--- 			for i = 1, #marqueeMessage do
--- 				local message = marqueeMessage[i]
--- 				-- font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, "co")
--- 				font2:Print(message, viewSizeX / 2, 30 * i * widgetScale, waveFontSize * widgetScale, "co")
--- 			end
--- 			font2:End()
--- 			gl.PopMatrix()
--- 		else
--- 			showMarqueeMessage = false
--- 			messageArgs = nil
--- 			waveY = viewSizeY
--- 		end
--- 	elseif #resistancesTable > 0 then
--- 		marqueeMessage = getResistancesMessage()
--- 		waveTime = GetTimer()
--- 		showMarqueeMessage = true
--- 	end
--- end
-
 local function UpdateRules()
 	if not gameInfo then
 		gameInfo = {}
@@ -489,7 +439,6 @@ end
 
 function GetPlayersEcoInfo(maxRows)
 	maxRows                   = (maxRows or 3) - 1
-	-- local playerEcoInfos, sum                  = PlayerEnergyDistribution()
 	local playerEcoInfos, sum = PlayerAggroEcoDistribution()
 
 	-- normalize and add text formatting
@@ -755,67 +704,4 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam, attackerID)
 	if not unitDef.canMove then
 		playersAggroEcos[unitTeam] = (playersAggroEcos[unitTeam] or 0) - EcoValueByDef(unitDef)
 	end
-end
-
-function table.has_value(tab, val)
-	for _, value in ipairs(tab) do
-		if value == val then
-			return true
-		end
-	end
-	return false
-end
-
-function table.full_of(tab, val)
-	for _, value in ipairs(tab) do
-		if value ~= val then
-			return false
-		end
-	end
-	return true
-end
-
--- for printing tables
-function table.val_to_str(v)
-	if "string" == type(v) then
-		v = string.gsub(v, "\n", "\\n")
-		if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
-			return "'" .. v .. "'"
-		end
-		return '"' .. string.gsub(v, '"', '\\"') .. '"'
-	else
-		return "table" == type(v) and table.tostring(v) or
-			tostring(v)
-	end
-end
-
-function table.key_to_str(k)
-	if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
-		return k
-	else
-		return "[" .. table.val_to_str(k) .. "]"
-	end
-end
-
-function table.tostring(tbl)
-	if type(tbl) == "string" then
-		return tbl
-	elseif type(tbl) ~= "table" then
-		return tostring(tbl)
-	end
-	if not tbl then
-		return 'nil'
-	end
-	local result, done = {}, {}
-	for k, v in ipairs(tbl) do
-		table.insert(result, table.val_to_str(v))
-		done[k] = true
-	end
-	for k, v in pairs(tbl) do
-		if not done[k] then
-			table.insert(result,
-				table.key_to_str(k) .. "=" .. table.val_to_str(v))
-		end
-	end
-	return "{" .. table.concat(result, ",") .. "}"
 end
