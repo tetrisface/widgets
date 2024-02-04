@@ -165,22 +165,12 @@ local function PlayerAggros(maxRows)
 		return {}
 	end
 
-	-- normalize and add text formatting
-	-- local nPlayerAggros = #playerAggros
-	-- for i = 1, nPlayerAggros do
-	-- 	local playerAggro               = playerAggros[i]
-	-- 	playerAggro.aggroMultiple       = nPlayerAggros * playerAggro.value / sum
-	-- 	playerAggro.aggroFraction       = playerAggro.value * 100 / sum
-	-- 	playerAggro.aggroMultipleString = string.format("%.1fX", playerAggro.aggroMultiple)
-	-- 	playerAggro.aggroFractionString = string.format(" (%.0f%%)", playerAggro.aggroFraction)
-	-- end
-
 	table.sort(playerAggros, function(a, b) return a.value > b.value end)
 
-	-- limit rows and add player forced flag
+	-- add string formatting, forced current player result and limit results
 	local playerAggrosLimited = {}
-	local playerAggro
 	local nPlayerAggros = #playerAggros
+	local playerAggro
 	for i = 1, nPlayerAggros do
 		playerAggro = playerAggros[i]
 
@@ -213,11 +203,11 @@ local function WaveRow(n)
 end
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
-	-- Define the range of input values (100 to 500)
+	-- Define the range of input values
 	local minValue = inMin
 	local maxValue = inMax
 
-	-- Define the range of output values (1 to 0.4)
+	-- Define the range of output values
 	local minOutputValue = outMin
 	local maxOutputValue = outMax
 
