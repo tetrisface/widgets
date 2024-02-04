@@ -152,7 +152,9 @@ end
 
 function widget:GameFrame(n)
   mainIterationModuloLimit = 1
-  if nBuilders > 200 then
+  if nBuilders > 300 then
+    mainIterationModuloLimit = 70
+  elseif nBuilders > 200 then
     mainIterationModuloLimit = 20
   elseif nBuilders > 60 then
     mainIterationModuloLimit = 5
