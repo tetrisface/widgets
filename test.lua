@@ -11,27 +11,30 @@ function widget:GetInfo()
   }
 end
 
-local GetCameraPosition = Spring.GetCameraPosition
-local GetSelectedUnits = Spring.GetSelectedUnits
-local GetUnitsInRectangle = Spring.GetUnitsInRectangle
-local GetUnitViewPosition = Spring.GetUnitViewPosition
-local GetVisibleUnits = Spring.GetVisibleUnits
+local Set                   = VFS.Include('common/SetList.lua').NewSetListNoTable
+local testSet               = Set()
+
+local GetCameraPosition     = Spring.GetCameraPosition
+local GetSelectedUnits      = Spring.GetSelectedUnits
+local GetUnitsInRectangle   = Spring.GetUnitsInRectangle
+local GetUnitViewPosition   = Spring.GetUnitViewPosition
+local GetVisibleUnits       = Spring.GetVisibleUnits
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
-local GetFeatureResources = Spring.GetFeatureResources
-local GetMouseState = Spring.GetMouseState
-local TraceScreenRay = Spring.TraceScreenRay
-local GiveOrderToUnit = Spring.GiveOrderToUnit
-local log = Spring.Echo
-local myTeamId = Spring.GetMyTeamID()
-local SetCameraTarget = Spring.SetCameraTarget
-local GetSelectedUnits = Spring.GetSelectedUnits
-local GetUnitCommands = Spring.GetUnitCommands
-local GetUnitStates = Spring.GetUnitStates
-local GetUnitDefID = Spring.GetUnitDefID
-local UnitDefs = UnitDefs
-local GetTeamList = Spring.GetTeamList
-local GetMyAllyTeamID = Spring.GetMyAllyTeamID
-local GetTeamStatsHistory = Spring.GetTeamStatsHistory
+local GetFeatureResources   = Spring.GetFeatureResources
+local GetMouseState         = Spring.GetMouseState
+local TraceScreenRay        = Spring.TraceScreenRay
+local GiveOrderToUnit       = Spring.GiveOrderToUnit
+local log                   = Spring.Echo
+local myTeamId              = Spring.GetMyTeamID()
+local SetCameraTarget       = Spring.SetCameraTarget
+local GetSelectedUnits      = Spring.GetSelectedUnits
+local GetUnitCommands       = Spring.GetUnitCommands
+local GetUnitStates         = Spring.GetUnitStates
+local GetUnitDefID          = Spring.GetUnitDefID
+local UnitDefs              = UnitDefs
+local GetTeamList           = Spring.GetTeamList
+local GetMyAllyTeamID       = Spring.GetMyAllyTeamID
+local GetTeamStatsHistory   = Spring.GetTeamStatsHistory
 
 
 function widget:MouseRelease(x, y, button)
@@ -82,6 +85,10 @@ function widget:MousePress(x, y, button)
   --   end
   -- end
   -- log(table.tostring(ecoValues))
+
+  testSet:Add(Spring.GetGameFrame())
+  testSet:Add(123)
+  log('testSet.count ' .. tostring(testSet.count) .. ' ' .. table.tostring(testSet.data))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
