@@ -11,6 +11,8 @@ function widget:GetInfo()
   }
 end
 
+local NewSetList = VFS.Include('common/SetList.lua').NewSetList
+
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
@@ -36,8 +38,8 @@ local log = Spring.Echo
 local myTeamId = Spring.GetMyTeamID()
 local possibleMetalMakersProduction = 0
 local possibleMetalMakersUpkeep = 0
-local regularizedResourceDerivativesEnergy = { true }
-local regularizedResourceDerivativesMetal = { true }
+local regularizedResourceDerivativesEnergy = { true, true, true, true, true, true, true, true, true, true, true }
+local regularizedResourceDerivativesMetal = { true, true, true, true, true, true, true, true, true, true, true }
 local releasedMetal = 0
 local tidalStrength = Game.tidal
 local totalSavedTime = 0
@@ -59,6 +61,33 @@ local windMax = Game.windMax
 local windMin = Game.windMin
 local mainIterationModuloLimit
 local nBuilders = 0
+
+local isReclaimTarget = NewSetList()
+local isReclaimTargetPrev = NewSetList()
+
+-- local function GetOrCreateTargetsBuilders(id)
+--   if targetsBuilders[id] then
+--     return targetsBuilders[id]
+--   else
+--     targetsBuilders[id] = {
+--       reclaim = NewSetList(),
+--       repairBuild = NewSetList(),
+--     }
+--     return targetsBuilders[id]
+--   end
+-- end
+
+-- local function GetOrCreateTargetsBuildersPrev(id)
+--   if targetsBuildersPrev[id] then
+--     return targetsBuildersPrev[id]
+--   else
+--     targetsBuildersPrev[id] = {
+--       reclaim = NewSetList(),
+--       repairBuild = NewSetList(),
+--     }
+--     return targetsBuildersPrev[id]
+--   end
+-- end
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
@@ -168,13 +197,13 @@ function widget:GameFrame(n)
   end
 
   if n % 1000 == 0 then
-    if GetGameRulesParam('raptorTechAnger') > 66 and (
+    if GetGameRulesParam('raptorTechAnger') and GetGameRulesParam('raptorTechAnger') > 66 and (
           GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) == 0 and
           GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) == 0 and
           GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) == 0 and
           GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) == 0
         ) then
-      log('ANTI NUKE WARNING!!!')
+      log('ANTI NUKE WARNING!!!  ' .. tostring(n))
     end
     for i = 1, #abandonedTargetIDs do
       local k = abandonedTargetIDs[i]
@@ -185,31 +214,29 @@ function widget:GameFrame(n)
         end
       end
     end
+    -- for i = 1, targetsBuilders.count do
+    --   local targetId = targetsBuilders.list[i]
+    --   local _, _, _, _, build = GetUnitHealth(targetId)
+    --   if build == nil or build == 1 then
+    --     targetsBuilders[i] = nil
+    --   end
+    -- end
   end
 end
 
 function builderIteration(n)
   local gotoContinue
 
-  table.insert(regularizedResourceDerivativesMetal, 1, isPositiveMetalDerivative)
-  table.insert(regularizedResourceDerivativesEnergy, 1, isPositiveEnergyDerivative)
-  -- getn handles nil
-  if #regularizedResourceDerivativesMetal > 11 then
-    table.remove(regularizedResourceDerivativesMetal)
-    table.remove(regularizedResourceDerivativesEnergy)
-  end
+  local regMod = n % 11 + 1
+  regularizedResourceDerivativesMetal[regMod] = isPositiveMetalDerivative
+  regularizedResourceDerivativesMetal[regMod] = isPositiveEnergyDerivative
   regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
   regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-  -- regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
   regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
   updateFastResourceStatus()
 
-  -- for i = 1, #builders do
   for builderId, builder in pairs(builders) do
     gotoContinue = false
-    -- local builderDef = UnitDefs[GetUnitDefID(builderId)]
-    -- local builder = builders[i]
-    -- local builderId = builder.id
     local builderDef = builder.def
     local cmdQueue = GetUnitCommands(builderId, 3)
     local builderPosX, _, builderPosZ
@@ -236,40 +263,42 @@ function builderIteration(n)
       cmdQueue = purgeCompleteRepairs(builderId, cmdQueue)
 
       if not gotoContinue then
-        -- prepare outside command queue heuristical candidates/targets
         local neighbourIds = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance, myTeamId)
 
-        --      local candidateNeighboursExclusive = {}
-        -- for i, candidateId in ipairs(neighbours) do
         for i = 1, #neighbourIds do
           local candidateId = neighbourIds[i]
           local candidateHealth, candidateMaxHealth, _, _, candidateBuild = GetUnitHealth(candidateId)
-          table.insert(neighbours, {
+          neighbours[i] = {
             id = candidateId,
             health = candidateHealth,
             maxHealth = candidateMaxHealth,
             build = candidateBuild,
-          })
+          }
           if candidateBuild ~= nil and candidateBuild < 1 then
-            table.insert(neighboursUnfinished, candidateId)
-
-            --          if candidateId ~= builderId  then
-            --            table.insert(candidateNeighboursExclusive, candidateId)
-            --          end
+            neighboursUnfinished[#neighboursUnfinished + 1] = candidateId
           elseif not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0))) and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
-            table.insert(neighboursDamaged, {
+            neighboursDamaged[#neighboursDamaged + 1] = {
               id = candidateId,
               health = candidateHealth,
               maxHealth = candidateMaxHealth,
-            })
+              healthRatio = candidateHealth / candidateMaxHealth,
+            }
           end
         end
 
         if #neighboursDamaged > 0 then
           table.sort(neighboursDamaged, function(a, b) return a.health < b.health end)
-          local damagedTargetId = neighboursDamaged[1].id
-          if targetId ~= damagedTargetId then
-            repair(builderId, damagedTargetId)
+          local damagedTarget = neighboursDamaged[1]
+          local damagedTargetId = damagedTarget.id
+          if targetId then
+            local targetHealth, targetMaxHealth = GetUnitHealth(targetId)
+            local targetHealthRatio = targetHealth / targetMaxHealth
+
+            if targetId ~= damagedTargetId
+                and (not targetHealthRatio or targetHealthRatio == 0 or damagedTarget.healthRatio * 0.95 < targetHealthRatio)
+                and isReclaimTarget.hash[targetId] == nil and isReclaimTargetPrev.hash[targetId] == nil then
+              repair(builderId, damagedTargetId)
+            end
           end
           gotoContinue = true
         end
@@ -422,6 +451,8 @@ function builderIteration(n)
       end
     end
   end
+  isReclaimTargetPrev = isReclaimTarget
+  isReclaimTarget = NewSetList()
 end
 
 function reclaimCheckAction(builderId, features, needMetal, needEnergy)
@@ -448,12 +479,17 @@ function purgeCompleteRepairs(builderId, cmdQueue)
   -- for _, cmd in ipairs(cmdQueue) do
   for i = 1, #cmdQueue do
     local cmd = cmdQueue[i]
+    local targetId = cmd.params[1]
     if cmd.id == 40 then
-      local _, _, _, _, targetBuild = GetUnitHealth(cmd.params[1])
+      local _, _, _, _, targetBuild = GetUnitHealth(targetId)
       if not targetBuild or targetBuild == 1 then
         shitFound = true
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
+        isReclaimTarget:Remove(targetId)
+        isReclaimTargetPrev:Remove(targetId)
       end
+    elseif cmd.id == 90 then
+      isReclaimTarget:Add(targetId)
     end
   end
   cmdQueue = GetUnitCommands(builderId, 3)
@@ -522,6 +558,7 @@ function getBestCandidate(candidatesOriginal, assistType)
   end
   -- local candidatesFull = deepcopy(candidatesOriginal)
   local candidates = {}
+  local nCandidates = 0
 
   for i = 1, #candidatesOriginal do
     local candidateId = candidatesOriginal[i]
@@ -536,7 +573,9 @@ function getBestCandidate(candidatesOriginal, assistType)
         (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
         (assistType == 'energy' and (candidateDef['energyMake'] > 0)) or
         (assistType == 'mm' and MMEff > 0) then
-      table.insert(candidates, { candidateId, candidateDefId, candidateDef })
+      -- table.insert(candidates, { candidateId, candidateDefId, candidateDef })
+      nCandidates = nCandidates + 1
+      candidates[nCandidates] = { candidateId, candidateDefId, candidateDef }
     end
   end
 
@@ -863,6 +902,9 @@ function getReclaimableFeatures(x, z, radius)
     ['metal'] = {},
     ['energy'] = {},
   }
+  local nME = 0
+  local nM = 0
+  local nE = 0
   for i = 1, #wrecksInRange do
     local featureId = wrecksInRange[i]
 
@@ -871,11 +913,17 @@ function getReclaimableFeatures(x, z, radius)
       local metal, _, energy = GetFeatureResources(featureId)
 
       if metal > 0 and energy > 0 then
-        table.insert(features['metalenergy'], featureId)
+        nME = nME + 1
+        features['metalenergy'][nME] = featureId
+        -- table.insert(features['metalenergy'], featureId)
       elseif metal > 0 then
-        table.insert(features['metal'], featureId)
+        nM = nM + 1
+        features['metal'][nM] = featureId
+        -- table.insert(features['metal'], featureId)
       elseif energy > 0 then
-        table.insert(features['energy'], featureId)
+        nE = nE + 1
+        features['energy'][nE] = featureId
+        -- table.insert(features['energy'], featureId)
       end
     end
   end
