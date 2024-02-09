@@ -65,43 +65,11 @@ local nBuilders = 0
 local isReclaimTarget = NewSetList()
 local isReclaimTargetPrev = NewSetList()
 
--- local function GetOrCreateTargetsBuilders(id)
---   if targetsBuilders[id] then
---     return targetsBuilders[id]
---   else
---     targetsBuilders[id] = {
---       reclaim = NewSetList(),
---       repairBuild = NewSetList(),
---     }
---     return targetsBuilders[id]
---   end
--- end
-
--- local function GetOrCreateTargetsBuildersPrev(id)
---   if targetsBuildersPrev[id] then
---     return targetsBuildersPrev[id]
---   else
---     targetsBuildersPrev[id] = {
---       reclaim = NewSetList(),
---       repairBuild = NewSetList(),
---     }
---     return targetsBuildersPrev[id]
---   end
--- end
-
-function widget:Initialize()
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
-    widgetHandler:RemoveWidget()
-  end
-
-  local myUnits = GetTeamUnits(myTeamId)
-  for _, unitID in ipairs(myUnits) do
-    local unitDefID = GetUnitDefID(unitID)
-    registerUnit(unitID, unitDefID, teamID)
-  end
+local function unitDef(unitId)
+  return UnitDefs[GetUnitDefID(unitId)]
 end
 
-function registerUnit(unitID, unitDefID)
+local function registerUnit(unitID, unitDefID)
   if not unitDefID then
     return
   end
@@ -123,6 +91,18 @@ function registerUnit(unitID, unitDefID)
   end
 end
 
+function widget:Initialize()
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    widgetHandler:RemoveWidget()
+  end
+
+  local myUnits = GetTeamUnits(myTeamId)
+  for _, unitID in ipairs(myUnits) do
+    local unitDefID = GetUnitDefID(unitID)
+    registerUnit(unitID, unitDefID, teamID)
+  end
+end
+
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
   registerUnit(unitID, unitDefID)
 end
@@ -133,7 +113,7 @@ function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
   end
 end
 
-function getBuildersBuildSpeed(tempBuilders)
+local function getBuildersBuildSpeed(tempBuilders)
   local totalSpeed = 0
 
   for _, unitID in pairs(tempBuilders) do
@@ -146,7 +126,7 @@ function getBuildersBuildSpeed(tempBuilders)
   return totalSpeed
 end
 
-function getBuildTimeLeft(targetId, targetDef)
+local function getBuildTimeLeft(targetId, targetDef)
   local _, _, _, _, build = GetUnitHealth(targetId)
   local currentBuildSpeed = 0
   for builderId, _ in pairs(builders) do
@@ -167,7 +147,7 @@ function getBuildTimeLeft(targetId, targetDef)
   return time
 end
 
-function getUnitsBuildingUnit(unitID)
+local function getUnitsBuildingUnit(unitID)
   local building = {}
 
   for builderId, _ in pairs(builders) do
@@ -179,52 +159,492 @@ function getUnitsBuildingUnit(unitID)
   return building
 end
 
-function widget:GameFrame(n)
-  mainIterationModuloLimit = 1
-  if nBuilders > 300 then
-    mainIterationModuloLimit = 70
-  elseif nBuilders > 200 then
-    mainIterationModuloLimit = 20
-  elseif nBuilders > 60 then
-    mainIterationModuloLimit = 5
-  elseif nBuilders > 10 then
-    mainIterationModuloLimit = 2
-  end
 
-  if n % mainIterationModuloLimit == 0 then
-    -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
-    builderIteration(n)
-  end
 
-  if n % 1000 == 0 then
-    if GetGameRulesParam('raptorTechAnger') and GetGameRulesParam('raptorTechAnger') > 66 and (
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) == 0
-        ) then
-      log('ANTI NUKE WARNING!!!  ' .. tostring(n))
-    end
-    for i = 1, #abandonedTargetIDs do
-      local k = abandonedTargetIDs[i]
-      if k then
-        local _, _, _, _, build = GetUnitHealth(k)
-        if build == nil or build == 1 then
-          table.remove(abandonedTargetIDs, k)
-        end
-      end
-    end
-    -- for i = 1, targetsBuilders.count do
-    --   local targetId = targetsBuilders.list[i]
-    --   local _, _, _, _, build = GetUnitHealth(targetId)
-    --   if build == nil or build == 1 then
-    --     targetsBuilders[i] = nil
-    --   end
-    -- end
+local function reclaimCheckAction(builderId, features, needMetal, needEnergy)
+  if needMetal and needEnergy and #features['metalenergy'] > 0 then
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
+      { 'alt' })
+  elseif needMetal and #features['metal'] > 0 then
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
+      { 'alt' })
+  elseif needEnergy and #features['energy'] > 0 then
+    GiveOrderToUnit(builderId, CMD.INSERT,
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
+      { 'alt' })
   end
 end
 
-function builderIteration(n)
+local function purgeCompleteRepairs(builderId, cmdQueue)
+  -- local shitFound = true
+  -- local safetyStop = 400
+  -- while shitFound do
+  -- shitFound = false
+  -- for _, cmd in ipairs(cmdQueue) do
+  for i = 1, #cmdQueue do
+    local cmd = cmdQueue[i]
+    local targetId = cmd.params[1]
+    if cmd.id == 40 then
+      local _, _, _, _, targetBuild = GetUnitHealth(targetId)
+      if not targetBuild or targetBuild == 1 then
+        -- shitFound = true
+        GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
+        isReclaimTarget:Remove(targetId)
+        isReclaimTargetPrev:Remove(targetId)
+      end
+    elseif cmd.id == 90 then
+      isReclaimTarget:Add(targetId)
+    end
+  end
+  cmdQueue = GetUnitCommands(builderId, 3)
+  -- if shitFound then
+  -- end
+  -- if safetyStop <= 0 then
+  --   break
+  -- end
+  -- safetyStop = safetyStop - 1
+  -- end
+  return cmdQueue
+end
+
+
+
+local function repair(builderId, targetId)
+  GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.REPAIR, CMD.OPT_CTRL, targetId }, { "alt" })
+end
+
+
+
+-- local function deepcopy(orig)
+--   local orig_type = type(orig)
+--   local copy
+--   if orig_type == 'table' then
+--     copy = {}
+--     for orig_key, orig_value in next, orig, nil do
+--       copy[deepcopy(orig_key)] = deepcopy(orig_value)
+--     end
+--     setmetatable(copy, deepcopy(getmetatable(orig)))
+--   else -- number, string, boolean, etc
+--     copy = orig
+--   end
+--   return copy
+-- end
+
+local function updateFastResourceStatus()
+  metalMakersLevel = GetTeamRulesParam(myTeamId, 'mmLevel')
+  local m_curr, m_max, m_pull, m_inc, m_exp = GetTeamResources(myTeamId, 'metal')
+  local e_curr, e_max, e_pull, e_inc, e_exp = GetTeamResources(myTeamId, 'energy')
+
+  isPositiveMetalDerivative = m_inc > (m_pull + m_exp) / 2
+  metalLevel = m_curr / m_max
+
+  isPositiveEnergyDerivative = e_inc > (e_pull + e_exp) / 2
+  energyLevel = e_curr / e_max
+
+  if energyLevel > metalMakersLevel then
+    positiveMMLevel = true
+  else
+    positiveMMLevel = false
+  end
+
+  isMetalStalling = metalLevel < 0.01 and not regularizedPositiveMetal
+  isEnergyStalling = energyLevel < 0.01 and not regularizedPositiveEnergy
+  isMetalLeaking = metalLevel > 0.99 and regularizedPositiveMetal
+  isEnergyLeaking = energyLevel > 0.99 and isPositiveEnergyDerivative
+end
+
+
+
+local function getMetalMakingEfficiencyDef(unitDef)
+  -- if unitDef.customParams.energyconv_capacity and unitDef.customParams.energyconv_efficiency then
+  if unitDef.customParams.energyconv_efficiency then
+    -- local asdf = { tonumber(unitDef.customParams.energyconv_capacity), tonumber(unitDef.customParams.energyconv_efficiency) }
+    return tonumber(unitDef.customParams.energyconv_efficiency)
+  else
+    return 0
+  end
+
+  -- local makerDef = WG.energyConversion.convertCapacities[unitDefID]
+  -- local makerDef = WG.converter_usage.convertCapacities[unitDefID]
+  -- if makerDef ~= nil then
+  --   return makerDef.e
+  -- else
+  --   return 0
+  -- end
+end
+
+local function getMetalMakingEfficiency(unitDefID)
+  return getMetalMakingEfficiencyDef(UnitDefs[unitDefID])
+end
+local function sortHeuristicallyMM(a, b)
+  --  log('compare ' .. a[3].humanName .. ' '.. getMetalMakingEfficiency(a[2]))
+  return getMetalMakingEfficiency(a[2]) > getMetalMakingEfficiency(b[2])
+end
+
+
+
+local function getEout(unitDef)
+  local totalEOut = unitDef.energyMake or 0
+
+  totalEOut = totalEOut + -1 * unitDef.energyUpkeep
+
+  if unitDef.tidalGenerator > 0 and tidalStrength > 0 then
+    local mult = 1 -- DEFAULT
+    if unitDef.customParams then
+      mult = unitDef.customParams.energymultiplier or mult
+    end
+    totalEOut = totalEOut + (tidalStrength * mult)
+  end
+
+  if unitDef.windGenerator > 0 then
+    local mult = 1 -- DEFAULT
+    if unitDef.customParams then
+      mult = unitDef.customParams.energymultiplier or mult
+    end
+
+    local unitWindMin = math.min(windMin, unitDef.windGenerator)
+    local unitWindMax = math.min(windMax, unitDef.windGenerator)
+    totalEOut = totalEOut + (((unitWindMin + unitWindMax) / 2) * mult)
+  end
+  return totalEOut
+end
+
+-- todo
+-- local function getTraveltime(unitDef, A, B)
+--   selectedUnits = GetSelectedUnits()
+--   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
+--   local secondsLeft = getBuildTimeLeft(targetId)
+--   local unitDef = UnitDefs[GetUnitDefID(targetId)]
+--   if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not targetWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
+--     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
+--   end
+-- end
+
+local function getUnitResourceProperties(unitDefID, unitDef)
+  local metalMakingEfficiency = getMetalMakingEfficiencyDef(unitDef)
+  if metalMakingEfficiency == nil then
+    metalMakingEfficiency = 0
+  end
+  local energyMaking = getEout(unitDef)
+  return metalMakingEfficiency, energyMaking
+end
+
+local function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
+  GiveOrderToUnit(builderId, CMD.REMOVE, { cmdQueueTag }, { "ctrl" })
+
+  -- if not cmdQueueTagg then
+  -- else
+  --   GiveOrderToUnit(builderId, CMD.REMOVE, {cmdQueueTag,cmdQueueTagg}, {"ctrl"})
+  -- end
+  builders[builderId].previousBuilding = targetId
+  abandonedTargetIDs[targetId] = true
+  t1 = Spring.GetTimer()
+end
+
+
+
+
+local function getMyResources(type)
+  local lvl, storage, pull, inc, exp, share, sent, recieved = GetTeamResources(myTeamId, type)
+
+  if not inc then
+    log("ERROR", myTeamId, type)
+    return
+  end
+
+  local total = recieved
+  local exp = 0
+  local units = GetTeamUnits(myTeamId)
+
+  if type == "metal" then
+    for _, unitID in ipairs(units) do
+      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
+      total = total + metalMake - metalUse
+      exp = exp + metalUse
+    end
+  else
+    for _, unitID in ipairs(units) do
+      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
+      total = total + energyMake - energyUse
+      exp = exp + energyUse
+    end
+  end
+
+  local alreadyInStall = pull > exp and lvl < pull
+
+  return total, lvl, storage, exp, alreadyInStall
+end
+
+local function buildingWillStallType(type, consumption, secondsLeft, releasedExpenditures)
+  local currentChange, lvl, storage, _, alreadyInStall = getMyResources(type)
+
+  local changeWhenBuilding = currentChange - consumption + releasedExpenditures
+
+  if metalMakersControlled and type == "metal" then
+    changeWhenBuilding = changeWhenBuilding - releasedMetal
+  end
+
+  releasedMetal = 0
+  if metalMakersControlled and type == "energy" and possibleMetalMakersUpkeep > 0 then
+    local metalMakersUpkeep = getMetalMakersUpkeep()
+    if changeWhenBuilding < 0 then
+      changeWhenBuilding = changeWhenBuilding + metalMakersUpkeep
+
+      local releasedEnergy = 0
+      if changeWhenBuilding > 0 then
+        releasedEnergy = changeWhenBuilding
+        changeWhenBuilding = 0
+      else
+        releasedEnergy = metalMakersUpkeep
+      end
+      releasedMetal = possibleMetalMakersProduction * releasedEnergy / possibleMetalMakersUpkeep
+    end
+  end
+
+  local after = lvl + secondsLeft * changeWhenBuilding
+
+  if consumption < 1 or (not alreadyInStall and after > 0) then
+    return false
+  else
+    return true
+  end
+end
+
+
+local function traceUpkeep(unitID, alreadyCounted)
+  if alreadyCounted[unitID] then
+    return 0, 0
+  end
+
+  local builder = builders[unitID]
+  if not builder then
+    return 0, 0
+  end
+
+  local metalMake, metal, energyMake, energy = GetUnitResources(unitID)
+
+  for _, guardID in ipairs(builder.guards) do
+    if builders[guardID].owned then
+      local guarderMetal, guarderEnergy = traceUpkeep(guardID, alreadyCounted)
+      metal = metal + guarderMetal
+      energy = energy + guarderEnergy
+    end
+  end
+
+  alreadyCounted[unitID] = unitID
+
+  return metal - metalMake + builder.def.metalMake,
+      energy - energyMake + builder.def.energyMake
+end
+
+local function getUnitsUpkeep()
+  local alreadyCounted = {}
+
+  local metal = 0
+  local energy = 0
+
+  for _, unitId in ipairs(GetTeamUnits(myTeamId)) do
+    local _unitDef = unitDef(unitId)
+    if _unitDef.canAssist then
+      local metalUse, energyUse = traceUpkeep(unitId, alreadyCounted)
+      metal = metal + metalUse
+      energy = energy + energyUse
+    end
+  end
+  return metal, energy
+end
+
+local function isTimeToMoveOn(secondsLeft, builderId, builderDef, totalBuildSpeed)
+  local plannerBuildSpeed = builders[builderId].originalBuildSpeed
+  local plannerBuildShare = plannerBuildSpeed / totalBuildSpeed
+  local slowness = 45 / builderDef.speed
+  if ((plannerBuildShare < 0.75 and secondsLeft < 1.2 * slowness) or (plannerBuildShare < 0.5 and secondsLeft < 3.4 * slowness) or (plannerBuildShare < 0.15 and secondsLeft < 8 * slowness) or (plannerBuildShare < 0.05 and secondsLeft < 12 * slowness)) then
+    totalSavedTime = totalSavedTime + secondsLeft
+    return true
+  else
+    return false
+  end
+end
+
+local function targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft)
+  if not targetDef then
+    targetDef = unitDef(targetId)
+  end
+  if not totalBuildSpeed then
+    totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
+  end
+  if not secondsLeft then
+    secondsLeft = getBuildTimeLeft(targetId, targetDef)
+  end
+  local speed = targetDef.buildTime / totalBuildSpeed
+  local metal = targetDef.metalCost / speed
+  local energy = targetDef.energyCost / speed
+
+  local mDrain, eDrain = getUnitsUpkeep()
+
+  if buildingWillStallType("metal", metal, secondsLeft, mDrain) or buildingWillStallType("energy", energy, secondsLeft, eDrain) then
+    return true
+  else
+    return false
+  end
+end
+
+local function sortHeuristicallyBuildPower(a, b)
+  local aWillStall = targetWillStall(a[1])
+  local bWillStall = targetWillStall(b[1])
+  if aWillStall and bWillStall then
+    return a[3]['power'] < b[3]['power']
+  elseif aWillStall and not bWillStall then
+    return false
+  elseif not aWillStall and bWillStall then
+    return true
+  else
+    return a[3].buildSpeed * (1 / getBuildTimeLeft(a[1])) * (1 / a[3]['power']) >
+        b[3].buildSpeed * (1 / getBuildTimeLeft(b[1])) * (1 / b[3]['power'])
+  end
+end
+
+local function sortHeuristicallyEnergy(a, b)
+  local aWillStall = targetWillStall(a[1])
+  local bWillStall = targetWillStall(b[1])
+  if aWillStall and bWillStall then
+    return a[3]['energyMake'] * (1 / getBuildTimeLeft(a[1]) * a[3]['power']) >
+        b[3]['energyMake'] * (1 / getBuildTimeLeft(b[1]) * b[3]['power'])
+  elseif aWillStall and not bWillStall then
+    return false
+  elseif not aWillStall and bWillStall then
+    return true
+  else
+    return a[3]['energyMake'] * a[3]['power'] > b[3]['energyMake'] * b[3]['power']
+  end
+end
+
+local function getBestCandidate(candidatesOriginal, assistType)
+  if #candidatesOriginal == 0 or assistType == 'metal' then
+    return false
+  end
+  local candidates = {}
+  local nCandidates = 0
+
+  for i = 1, #candidatesOriginal do
+    local candidateId = candidatesOriginal[i]
+    local candidateDefId = GetUnitDefID(candidateId)
+    local candidateDef = UnitDefs[candidateDefId]
+    local MMEff = getMetalMakingEfficiencyDef(candidateDef)
+    -- if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
+    --   log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
+    -- end
+    if
+    --    candidateDef and (assistType == 'mm' and MMEff) and
+        (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
+        (assistType == 'energy' and (candidateDef['energyMake'] > 0)) or
+        (assistType == 'mm' and MMEff > 0) then
+      -- table.insert(candidates, { candidateId, candidateDefId, candidateDef })
+      nCandidates = nCandidates + 1
+      candidates[nCandidates] = { candidateId, candidateDefId, candidateDef }
+    end
+  end
+
+  if #candidates == 1 then
+    return candidates[1]
+    -- todo investigate why number
+    -- elseif type(candidates[1]) == "number" or type(candidates[2]) == "number" then
+    --   return false
+  elseif #candidates == 0 then
+    return false
+  end
+  if assistType == 'buildPower' then
+    table.sort(candidates, sortHeuristicallyBuildPower)
+  elseif assistType == 'energy' then
+    table.sort(candidates, sortHeuristicallyEnergy)
+  elseif assistType == 'mm' then
+    --    log(table.tostring(candidates))
+    table.sort(candidates, sortHeuristicallyMM)
+  end
+  -- log('table.tostring(candidates) ' .. table.tostring(candidates))
+  return candidates[1]
+end
+
+local function builderForceAssist(assistType, builderId, targetId, targetDefID, neighbours)
+  local bestCandidate = getBestCandidate(neighbours, assistType)
+
+  if bestCandidate and targetDefID ~= bestCandidate[2] then
+    -- GetUnitDefID not a number arg one
+    -- log('repair bestCandidate ' .. bestCandidate[1] .. ' ' .. bestCandidate[3].translatedHumanName)
+    repair(builderId, bestCandidate[1])
+  end
+end
+
+local function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTagg)
+  local targetDef = UnitDefs[GetUnitDefID(targetId)]
+  local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
+  local secondsLeft = getBuildTimeLeft(targetId, targetDef)
+  if isTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed) and not targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) then
+    moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
+  end
+end
+
+
+
+-- local function getSelectedUnitsUpkeep()
+--   local alreadyCounted = {}
+
+--   local metal = 0
+--   local energy = 0
+
+--   for _, unitID in ipairs(selectedUnits) do
+--     if builders[unitID] then
+--       local metalUse, energyUse = traceUpkeep(unitID, alreadyCounted)
+--       metal = metal + metalUse
+--       energy = energy + energyUse
+--     end
+--   end
+--   return { ["metal"] = metal, ["energy"] = energy }
+-- end
+
+local function getReclaimableFeatures(x, z, radius)
+  local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
+
+  if #wrecksInRange == 0 then
+    return
+  end
+
+  local features = {
+    ['metalenergy'] = {},
+    ['metal'] = {},
+    ['energy'] = {},
+  }
+  local nME = 0
+  local nM = 0
+  local nE = 0
+  for i = 1, #wrecksInRange do
+    local featureId = wrecksInRange[i]
+
+    local featureRessurrect = GetFeatureResurrect(featureId)
+    if not table.has_value({ 'armcom', 'legcom', 'corcom' }, featureRessurrect) then
+      local metal, _, energy = GetFeatureResources(featureId)
+
+      if metal > 0 and energy > 0 then
+        nME = nME + 1
+        features['metalenergy'][nME] = featureId
+        -- table.insert(features['metalenergy'], featureId)
+      elseif metal > 0 then
+        nM = nM + 1
+        features['metal'][nM] = featureId
+        -- table.insert(features['metal'], featureId)
+      elseif energy > 0 then
+        nE = nE + 1
+        features['energy'][nE] = featureId
+        -- table.insert(features['energy'], featureId)
+      end
+    end
+  end
+  return features
+end
+
+local function builderIteration(n)
   local gotoContinue
 
   local regMod = n % 11 + 1
@@ -307,7 +727,6 @@ function builderIteration(n)
       local features
       local needMetal = metalLevel < 0.15
       local needEnergy = energyLevel < 0.15
-      -- if not gotoContinue and (needMetal or needEnergy) and not isMetalStalling and not isEnergyStalling and builderDef and
       if not gotoContinue and (needMetal or needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
           (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
         features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
@@ -430,17 +849,14 @@ function builderIteration(n)
 
         -- easy finish neighbour
         local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-        -- for _, candidateId in ipairs(candidateNeighbours) do
         for i = 1, #neighbours do
           local candidate = neighbours[i]
           local candidateId = candidate.id
           local candidateDef = unitDef(candidate.id)
           -- same type and not actually same building
           if candidateId ~= targetId and candidateDef == targetDef then
-            -- local _, _, _, _, candidateBuild = GetUnitHealth(candidateId)
             local candidateBuild = candidate.build
             if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
-              -- local targetBuildTimeLeft = getBuildTimeLeft(targetId)
               if candidateBuild > targetBuild then
                 repair(builderId, candidateId)
                 break
@@ -455,486 +871,45 @@ function builderIteration(n)
   isReclaimTarget = NewSetList()
 end
 
-function reclaimCheckAction(builderId, features, needMetal, needEnergy)
-  if needMetal and needEnergy and #features['metalenergy'] > 0 then
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
-      { 'alt' })
-  elseif needMetal and #features['metal'] > 0 then
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
-      { 'alt' })
-  elseif needEnergy and #features['energy'] > 0 then
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
-      { 'alt' })
+function widget:GameFrame(n)
+  mainIterationModuloLimit = 1
+  if nBuilders > 300 then
+    mainIterationModuloLimit = 70
+  elseif nBuilders > 200 then
+    mainIterationModuloLimit = 20
+  elseif nBuilders > 60 then
+    mainIterationModuloLimit = 5
+  elseif nBuilders > 10 then
+    mainIterationModuloLimit = 2
   end
-end
 
-function purgeCompleteRepairs(builderId, cmdQueue)
-  -- local shitFound = true
-  -- local safetyStop = 400
-  -- while shitFound do
-  -- shitFound = false
-  -- for _, cmd in ipairs(cmdQueue) do
-  for i = 1, #cmdQueue do
-    local cmd = cmdQueue[i]
-    local targetId = cmd.params[1]
-    if cmd.id == 40 then
-      local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-      if not targetBuild or targetBuild == 1 then
-        shitFound = true
-        GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
-        isReclaimTarget:Remove(targetId)
-        isReclaimTargetPrev:Remove(targetId)
-      end
-    elseif cmd.id == 90 then
-      isReclaimTarget:Add(targetId)
+  if n % mainIterationModuloLimit == 0 then
+    -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
+    builderIteration(n)
+  end
+
+  if n % 1000 == 0 then
+    if GetGameRulesParam('raptorTechAnger') and GetGameRulesParam('raptorTechAnger') > 66 and (
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) == 0 and
+          GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) == 0
+        ) then
+      log('ANTI NUKE WARNING!!!  ' .. tostring(n))
     end
-  end
-  cmdQueue = GetUnitCommands(builderId, 3)
-  -- if shitFound then
-  -- end
-  -- if safetyStop <= 0 then
-  --   break
-  -- end
-  -- safetyStop = safetyStop - 1
-  -- end
-  return cmdQueue
-end
-
-function builderForceAssist(assistType, builderId, targetId, targetDefID, neighbours)
-  local bestCandidate = getBestCandidate(neighbours, assistType)
-
-  if bestCandidate and targetDefID ~= bestCandidate[2] then
-    -- GetUnitDefID not a number arg one
-    -- log('repair bestCandidate ' .. bestCandidate[1] .. ' ' .. bestCandidate[3].translatedHumanName)
-    repair(builderId, bestCandidate[1])
-  end
-end
-
-function repair(builderId, targetId)
-  GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.REPAIR, CMD.OPT_CTRL, targetId }, { "alt" })
-end
-
-function sortHeuristicallyBuildPower(a, b)
-  local aWillStall = targetWillStall(a[1])
-  local bWillStall = targetWillStall(b[1])
-  if aWillStall and bWillStall then
-    return a[3]['power'] < b[3]['power']
-  elseif aWillStall and not bWillStall then
-    return false
-  elseif not aWillStall and bWillStall then
-    return true
-  else
-    return a[3].buildSpeed * (1 / getBuildTimeLeft(a[1])) * (1 / a[3]['power']) >
-        b[3].buildSpeed * (1 / getBuildTimeLeft(b[1])) * (1 / b[3]['power'])
-  end
-end
-
-function sortHeuristicallyEnergy(a, b)
-  local aWillStall = targetWillStall(a[1])
-  local bWillStall = targetWillStall(b[1])
-  if aWillStall and bWillStall then
-    return a[3]['energyMake'] * (1 / getBuildTimeLeft(a[1]) * a[3]['power']) >
-        b[3]['energyMake'] * (1 / getBuildTimeLeft(b[1]) * b[3]['power'])
-  elseif aWillStall and not bWillStall then
-    return false
-  elseif not aWillStall and bWillStall then
-    return true
-  else
-    return a[3]['energyMake'] * a[3]['power'] > b[3]['energyMake'] * b[3]['power']
-  end
-end
-
-function sortHeuristicallyMM(a, b)
-  --  log('compare ' .. a[3].humanName .. ' '.. getMetalMakingEfficiency(a[2]))
-  return getMetalMakingEfficiency(a[2]) > getMetalMakingEfficiency(b[2])
-end
-
-function getBestCandidate(candidatesOriginal, assistType)
-  if #candidatesOriginal == 0 or assistType == 'metal' then
-    return false
-  end
-  -- local candidatesFull = deepcopy(candidatesOriginal)
-  local candidates = {}
-  local nCandidates = 0
-
-  for i = 1, #candidatesOriginal do
-    local candidateId = candidatesOriginal[i]
-    local candidateDefId = GetUnitDefID(candidateId)
-    local candidateDef = UnitDefs[candidateDefId]
-    local MMEff = getMetalMakingEfficiencyDef(candidateDef)
-    -- if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
-    --   log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
-    -- end
-    if
-    --    candidateDef and (assistType == 'mm' and MMEff) and
-        (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
-        (assistType == 'energy' and (candidateDef['energyMake'] > 0)) or
-        (assistType == 'mm' and MMEff > 0) then
-      -- table.insert(candidates, { candidateId, candidateDefId, candidateDef })
-      nCandidates = nCandidates + 1
-      candidates[nCandidates] = { candidateId, candidateDefId, candidateDef }
-    end
-  end
-
-  if #candidates == 1 then
-    return candidates[1]
-    -- todo investigate why number
-    -- elseif type(candidates[1]) == "number" or type(candidates[2]) == "number" then
-    --   return false
-  elseif #candidates == 0 then
-    return false
-  end
-  if assistType == 'buildPower' then
-    table.sort(candidates, sortHeuristicallyBuildPower)
-  elseif assistType == 'energy' then
-    table.sort(candidates, sortHeuristicallyEnergy)
-  elseif assistType == 'mm' then
-    --    log(table.tostring(candidates))
-    table.sort(candidates, sortHeuristicallyMM)
-  end
-  -- log('table.tostring(candidates) ' .. table.tostring(candidates))
-  return candidates[1]
-end
-
-function deepcopy(orig)
-  local orig_type = type(orig)
-  local copy
-  if orig_type == 'table' then
-    copy = {}
-    for orig_key, orig_value in next, orig, nil do
-      copy[deepcopy(orig_key)] = deepcopy(orig_value)
-    end
-    setmetatable(copy, deepcopy(getmetatable(orig)))
-  else -- number, string, boolean, etc
-    copy = orig
-  end
-  return copy
-end
-
-function updateFastResourceStatus()
-  metalMakersLevel = GetTeamRulesParam(myTeamId, 'mmLevel')
-  local m_curr, m_max, m_pull, m_inc, m_exp = GetTeamResources(myTeamId, 'metal')
-  local e_curr, e_max, e_pull, e_inc, e_exp = GetTeamResources(myTeamId, 'energy')
-
-  isPositiveMetalDerivative = m_inc > (m_pull + m_exp) / 2
-  metalLevel = m_curr / m_max
-
-  isPositiveEnergyDerivative = e_inc > (e_pull + e_exp) / 2
-  energyLevel = e_curr / e_max
-
-  if energyLevel > metalMakersLevel then
-    positiveMMLevel = true
-  else
-    positiveMMLevel = false
-  end
-
-  isMetalStalling = metalLevel < 0.01 and not regularizedPositiveMetal
-  isEnergyStalling = energyLevel < 0.01 and not regularizedPositiveEnergy
-  isMetalLeaking = metalLevel > 0.99 and regularizedPositiveMetal
-  isEnergyLeaking = energyLevel > 0.99 and isPositiveEnergyDerivative
-end
-
-function getUnitResourceProperties(unitDefID, unitDef)
-  local metalMakingEfficiency = getMetalMakingEfficiencyDef(unitDef)
-  if metalMakingEfficiency == nil then
-    metalMakingEfficiency = 0
-  end
-  local energyMaking = getEout(unitDef)
-  return metalMakingEfficiency, energyMaking
-end
-
-function getMetalMakingEfficiency(unitDefID)
-  return getMetalMakingEfficiencyDef(UnitDefs[unitDefID])
-end
-
-function getMetalMakingEfficiencyDef(unitDef)
-  -- if unitDef.customParams.energyconv_capacity and unitDef.customParams.energyconv_efficiency then
-  if unitDef.customParams.energyconv_efficiency then
-    -- local asdf = { tonumber(unitDef.customParams.energyconv_capacity), tonumber(unitDef.customParams.energyconv_efficiency) }
-    return tonumber(unitDef.customParams.energyconv_efficiency)
-  else
-    return 0
-  end
-
-  -- local makerDef = WG.energyConversion.convertCapacities[unitDefID]
-  -- local makerDef = WG.converter_usage.convertCapacities[unitDefID]
-  -- if makerDef ~= nil then
-  --   return makerDef.e
-  -- else
-  --   return 0
-  -- end
-end
-
-function getEout(unitDef)
-  local totalEOut = unitDef.energyMake or 0
-
-  totalEOut = totalEOut + -1 * unitDef.energyUpkeep
-
-  if unitDef.tidalGenerator > 0 and tidalStrength > 0 then
-    local mult = 1 -- DEFAULT
-    if unitDef.customParams then
-      mult = unitDef.customParams.energymultiplier or mult
-    end
-    totalEOut = totalEOut + (tidalStrength * mult)
-  end
-
-  if unitDef.windGenerator > 0 then
-    local mult = 1 -- DEFAULT
-    if unitDef.customParams then
-      mult = unitDef.customParams.energymultiplier or mult
-    end
-
-    local unitWindMin = math.min(windMin, unitDef.windGenerator)
-    local unitWindMax = math.min(windMax, unitDef.windGenerator)
-    totalEOut = totalEOut + (((unitWindMin + unitWindMax) / 2) * mult)
-  end
-  return totalEOut
-end
-
--- todo
--- function getTraveltime(unitDef, A, B)
---   selectedUnits = GetSelectedUnits()
---   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
---   local secondsLeft = getBuildTimeLeft(targetId)
---   local unitDef = UnitDefs[GetUnitDefID(targetId)]
---   if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not targetWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
---     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
---   end
--- end
-
-function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTagg)
-  local targetDef = UnitDefs[GetUnitDefID(targetId)]
-  local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
-  local secondsLeft = getBuildTimeLeft(targetId, targetDef)
-  if isTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed) and not targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) then
-    moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
-  end
-end
-
-function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
-  GiveOrderToUnit(builderId, CMD.REMOVE, { cmdQueueTag }, { "ctrl" })
-
-  -- if not cmdQueueTagg then
-  -- else
-  --   GiveOrderToUnit(builderId, CMD.REMOVE, {cmdQueueTag,cmdQueueTagg}, {"ctrl"})
-  -- end
-  builders[builderId].previousBuilding = targetId
-  abandonedTargetIDs[targetId] = true
-  t1 = Spring.GetTimer()
-end
-
-function isTimeToMoveOn(secondsLeft, builderId, builderDef, totalBuildSpeed)
-  local plannerBuildSpeed = builders[builderId].originalBuildSpeed
-  local plannerBuildShare = plannerBuildSpeed / totalBuildSpeed
-  local slowness = 45 / builderDef.speed
-  if ((plannerBuildShare < 0.75 and secondsLeft < 1.2 * slowness) or (plannerBuildShare < 0.5 and secondsLeft < 3.4 * slowness) or (plannerBuildShare < 0.15 and secondsLeft < 8 * slowness) or (plannerBuildShare < 0.05 and secondsLeft < 12 * slowness)) then
-    totalSavedTime = totalSavedTime + secondsLeft
-    return true
-  else
-    return false
-  end
-end
-
-function targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft)
-  if not targetDef then
-    targetDef = unitDef(targetId)
-  end
-  if not totalBuildSpeed then
-    totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
-  end
-  if not secondsLeft then
-    secondsLeft = getBuildTimeLeft(targetId, targetDef)
-  end
-  local speed = targetDef.buildTime / totalBuildSpeed
-  local metal = targetDef.metalCost / speed
-  local energy = targetDef.energyCost / speed
-
-  local mDrain, eDrain = getUnitsUpkeep()
-
-  if buildingWillStallType("metal", metal, secondsLeft, mDrain) or buildingWillStallType("energy", energy, secondsLeft, eDrain) then
-    return true
-  else
-    return false
-  end
-end
-
-function buildingWillStallType(type, consumption, secondsLeft, releasedExpenditures)
-  local currentChange, lvl, storage, _, alreadyInStall = getMyResources(type)
-
-  local changeWhenBuilding = currentChange - consumption + releasedExpenditures
-
-  if metalMakersControlled and type == "metal" then
-    changeWhenBuilding = changeWhenBuilding - releasedMetal
-  end
-
-  releasedMetal = 0
-  if metalMakersControlled and type == "energy" and possibleMetalMakersUpkeep > 0 then
-    local metalMakersUpkeep = getMetalMakersUpkeep()
-    if changeWhenBuilding < 0 then
-      changeWhenBuilding = changeWhenBuilding + metalMakersUpkeep
-
-      local releasedEnergy = 0
-      if changeWhenBuilding > 0 then
-        releasedEnergy = changeWhenBuilding
-        changeWhenBuilding = 0
-      else
-        releasedEnergy = metalMakersUpkeep
-      end
-      releasedMetal = possibleMetalMakersProduction * releasedEnergy / possibleMetalMakersUpkeep
-    end
-  end
-
-  local after = lvl + secondsLeft * changeWhenBuilding
-
-  if consumption < 1 or (not alreadyInStall and after > 0) then
-    return false
-  else
-    return true
-  end
-end
-
-function getMyResources(type)
-  local lvl, storage, pull, inc, exp, share, sent, recieved = GetTeamResources(myTeamId, type)
-
-  if not inc then
-    log("ERROR", myTeamId, type)
-    return
-  end
-
-  local total = recieved
-  local exp = 0
-  local units = GetTeamUnits(myTeamId)
-
-  if type == "metal" then
-    for _, unitID in ipairs(units) do
-      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
-      total = total + metalMake - metalUse
-      exp = exp + metalUse
-    end
-  else
-    for _, unitID in ipairs(units) do
-      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
-      total = total + energyMake - energyUse
-      exp = exp + energyUse
-    end
-  end
-
-  local alreadyInStall = pull > exp and lvl < pull
-
-  return total, lvl, storage, exp, alreadyInStall
-end
-
-function getUnitsUpkeep()
-  local alreadyCounted = {}
-
-  local metal = 0
-  local energy = 0
-
-  for _, unitId in ipairs(GetTeamUnits(myTeamId)) do
-    local unitDef = unitDef(unitId)
-    if unitDef.canAssist then
-      local metalUse, energyUse = traceUpkeep(unitId, alreadyCounted)
-      metal = metal + metalUse
-      energy = energy + energyUse
-    end
-  end
-  return metal, energy
-end
-
-function unitDef(unitId)
-  return UnitDefs[GetUnitDefID(unitId)]
-end
-
--- function getSelectedUnitsUpkeep()
---   local alreadyCounted = {}
-
---   local metal = 0
---   local energy = 0
-
---   for _, unitID in ipairs(selectedUnits) do
---     if builders[unitID] then
---       local metalUse, energyUse = traceUpkeep(unitID, alreadyCounted)
---       metal = metal + metalUse
---       energy = energy + energyUse
---     end
---   end
---   return { ["metal"] = metal, ["energy"] = energy }
--- end
-
-function traceUpkeep(unitID, alreadyCounted)
-  if alreadyCounted[unitID] then
-    return 0, 0
-  end
-
-  local builder = builders[unitID]
-  if not builder then
-    return 0, 0
-  end
-
-  local metalMake, metal, energyMake, energy = GetUnitResources(unitID)
-
-  for _, guardID in ipairs(builder.guards) do
-    if builders[guardID].owned then
-      local guarderMetal, guarderEnergy = traceUpkeep(guardID, alreadyCounted)
-      metal = metal + guarderMetal
-      energy = energy + guarderEnergy
-    end
-  end
-
-  alreadyCounted[unitID] = unitID
-
-  return metal - metalMake + builder.def.metalMake,
-      energy - energyMake + builder.def.energyMake
-end
-
-function getReclaimableFeatures(x, z, radius)
-  local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
-
-  if #wrecksInRange == 0 then
-    return
-  end
-
-  local features = {
-    ['metalenergy'] = {},
-    ['metal'] = {},
-    ['energy'] = {},
-  }
-  local nME = 0
-  local nM = 0
-  local nE = 0
-  for i = 1, #wrecksInRange do
-    local featureId = wrecksInRange[i]
-
-    local featureRessurrect = GetFeatureResurrect(featureId)
-    if not table.has_value({ 'armcom', 'legcom', 'corcom' }, featureRessurrect) then
-      local metal, _, energy = GetFeatureResources(featureId)
-
-      if metal > 0 and energy > 0 then
-        nME = nME + 1
-        features['metalenergy'][nME] = featureId
-        -- table.insert(features['metalenergy'], featureId)
-      elseif metal > 0 then
-        nM = nM + 1
-        features['metal'][nM] = featureId
-        -- table.insert(features['metal'], featureId)
-      elseif energy > 0 then
-        nE = nE + 1
-        features['energy'][nE] = featureId
-        -- table.insert(features['energy'], featureId)
+    for i = 1, #abandonedTargetIDs do
+      local k = abandonedTargetIDs[i]
+      if k then
+        local _, _, _, _, build = GetUnitHealth(k)
+        if build == nil or build == 1 then
+          table.remove(abandonedTargetIDs, k)
+        end
       end
     end
   end
-  return features
 end
 
 -- for debug
-
-function log(s)
-  Spring.Echo(s)
-end
 
 function table.has_value(tab, val)
   for _, value in ipairs(tab) do
