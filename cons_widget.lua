@@ -29,12 +29,12 @@ local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitResources = Spring.GetUnitResources
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GiveOrderToUnit = Spring.GiveOrderToUnit
+local log = Spring.Echo
 local UnitDefNames = UnitDefNames
 local UnitDefs = UnitDefs
 
 local abandonedTargetIDs = {}
 local builders = {}
-local log = Spring.Echo
 local myTeamId = Spring.GetMyTeamID()
 local possibleMetalMakersProduction = 0
 local possibleMetalMakersUpkeep = 0
@@ -61,9 +61,12 @@ local windMax = Game.windMax
 local windMin = Game.windMin
 local mainIterationModuloLimit
 local nBuilders = 0
-
 local isReclaimTarget = NewSetList()
 local isReclaimTargetPrev = NewSetList()
+local showNukeWarning = false
+local hasAnti = false
+local nukeList
+local font
 
 local function unitDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
@@ -74,14 +77,14 @@ local function registerUnit(unitID, unitDefID)
     return
   end
 
-  local unitDef = UnitDefs[unitDefID]
+  local candidateBuilderDef = UnitDefs[unitDefID]
 
-  if unitDef.isBuilder and unitDef.canAssist and not unitDef.isFactory then
+  if candidateBuilderDef.isBuilder and candidateBuilderDef.canAssist and not candidateBuilderDef.isFactory then
     builders[unitID] = {
       id = unitID,
-      buildSpeed = unitDef.buildSpeed,
-      originalBuildSpeed = unitDef.buildSpeed,
-      def = unitDef,
+      buildSpeed = candidateBuilderDef.buildSpeed,
+      originalBuildSpeed = candidateBuilderDef.buildSpeed,
+      def = candidateBuilderDef,
       defID = unitDefID,
       targetId = nil,
       guards = {},
@@ -90,6 +93,7 @@ local function registerUnit(unitID, unitDefID)
     nBuilders = nBuilders + 1
   end
 end
+
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
@@ -101,6 +105,8 @@ function widget:Initialize()
     local unitDefID = GetUnitDefID(unitID)
     registerUnit(unitID, unitDefID, teamID)
   end
+
+  font = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
@@ -888,15 +894,11 @@ function widget:GameFrame(n)
     builderIteration(n)
   end
 
-  if n % 1000 == 0 then
-    if GetGameRulesParam('raptorTechAnger') and GetGameRulesParam('raptorTechAnger') > 66 and (
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) == 0 and
-          GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) == 0
-        ) then
-      log('ANTI NUKE WARNING!!!  ' .. tostring(n))
-    end
+  if n % 100 == 0 then
+    hasAnti = GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) > 0
+        or GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) > 0
+        or GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) > 0
+        or GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) > 0
     for i = 1, #abandonedTargetIDs do
       local k = abandonedTargetIDs[i]
       if k then
@@ -906,6 +908,30 @@ function widget:GameFrame(n)
         end
       end
     end
+  end
+  showNukeWarning = not hasAnti and n % 50 < 25 and nBuilders > 0 and GetGameRulesParam('raptorTechAnger') > 68
+end
+
+function widget:ViewResize()
+  font = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
+end
+
+local function CreateNukeWarning()
+  gl.PushMatrix()
+  font:Begin()
+  font:SetTextColor(1, 0.3, 0.3, 0.8)
+  font:Print('NUKE WARNING! ' .. tostring(GetGameRulesParam('raptorTechAnger')) .. '%', 1100, 800, 50)
+  font:End()
+  gl.PopMatrix()
+end
+
+
+function widget:DrawScreen()
+  if showNukeWarning then
+    nukeList = gl.CreateList(CreateNukeWarning)
+    gl.CallList(nukeList)
+  else
+    gl.DeleteList(nukeList)
   end
 end
 
