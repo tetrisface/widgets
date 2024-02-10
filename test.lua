@@ -37,6 +37,17 @@ local GetMyAllyTeamID       = Spring.GetMyAllyTeamID
 local GetTeamStatsHistory   = Spring.GetTeamStatsHistory
 
 
+local function Interpolate(value, inMin, inMax, outMin, outMax)
+  -- Ensure the value is within the specified range
+  value = (value < inMin) and inMin or ((value > inMax) and inMax or value)
+
+  -- Calculate the interpolation
+  local t = (value - inMin) / (inMax - inMin)
+  local result = outMin + t * (outMax - outMin)
+
+  return result
+end
+
 function widget:MouseRelease(x, y, button)
   -- log('mouse release ' .. x .. " " .. y .. " " .. button)
   -- return false
@@ -86,9 +97,15 @@ function widget:MousePress(x, y, button)
   -- end
   -- log(table.tostring(ecoValues))
 
-  testSet:Add(Spring.GetGameFrame())
-  testSet:Add(123)
-  log('testSet.count ' .. tostring(testSet.count) .. ' ' .. table.tostring(testSet.data))
+  -- testSet:Add(Spring.GetGameFrame())
+  -- testSet:Add(123)
+  -- log('testSet.count ' .. tostring(testSet.count) .. ' ' .. table.tostring(testSet.data))
+
+  log('interpolating:')
+  log(Interpolate(243.2 - 235, 0, 12, 0, 0.6))
+  log(Interpolate(240 - 235, 0, 12, 0, 0.6))
+  log(Interpolate(235 - 235, 0, 12, 0, 0.6))
+  log(Interpolate(230 - 235, 0, 12, 0, 0.6))
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
