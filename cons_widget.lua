@@ -909,7 +909,7 @@ function widget:GameFrame(n)
       end
     end
   end
-  showNukeWarning = not hasAnti and n % 50 < 25 and nBuilders > 0 and GetGameRulesParam('raptorTechAnger') > 68
+  showNukeWarning = not hasAnti and n % 50 < 25 and nBuilders > 0 and GetGameRulesParam('raptorTechAnger') > 66
 end
 
 function widget:ViewResize()
