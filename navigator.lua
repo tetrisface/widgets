@@ -225,6 +225,46 @@ function widget:MousePress(x, y, button)
   return true
 end
 
+local function compareConsReverse(a, b)
+  if not b or not a then
+    return false
+  end
+  return (not a.hasBuildQueue and b.hasBuildQueue)
+      or (a.def.cost < b.def.cost)
+end
+
+local function compareCons(a, b)
+  if not b or not a then
+    return false
+  end
+  return (not a.hasBuildQueue and b.hasBuildQueue)
+      or (a.def.cost > b.def.cost)
+end
+
+local function filterSortUnitDefs(toFilterUnits, category, reverse)
+  local filtered = {}
+  if category == 'cons' then
+    for i = 1, #toFilterUnits do
+      local temp = toFilterUnits[i]
+      local tempDef = temp['def']
+      if tempDef.isBuilder and not tempDef.isBuilding and string.find(tempDef.translatedTooltip, 'Commander') == nil then
+        temp['cmdQueue'] = GetUnitCommands(temp['id'], 10)
+        temp['hasBuildQueue'] = false
+        for j = 1, #temp['cmdQueue'] do
+          if temp['cmdQueue'][j].id < 0 then
+            temp['hasBuildQueue'] = true
+            break
+          end
+        end
+        table.insert(filtered, temp)
+      end
+    end
+    table.sort(filtered, reverse and compareConsReverse or compareCons)
+    return filtered
+  end
+  return toFilterUnits
+end
+
 function widget:KeyPress(key, mods, isRepeat)
   -- log('isNavigatorActive ' ..
   --   tostring(isNavigatorActive) ..
@@ -258,46 +298,6 @@ function unitDefMap(_unitIds)
     })
   end
   return map
-end
-
-function filterSortUnitDefs(toFilterUnits, category, reverse)
-  local filtered = {}
-  if category == 'cons' then
-    for i = 1, #toFilterUnits do
-      local temp = toFilterUnits[i]
-      local tempDef = temp['def']
-      if tempDef.isBuilder and not tempDef.isBuilding and string.find(tempDef.translatedTooltip, 'Commander') == nil then
-        temp['cmdQueue'] = GetUnitCommands(temp['id'], 10)
-        temp['hasBuildQueue'] = false
-        for j = 1, #temp['cmdQueue'] do
-          if temp['cmdQueue'][j].id < 0 then
-            temp['hasBuildQueue'] = true
-            break
-          end
-        end
-        table.insert(filtered, temp)
-      end
-    end
-    table.sort(filtered, reverse and compareConsReverse or compareCons)
-    return filtered
-  end
-  return toFilterUnits
-end
-
-function compareCons(a, b)
-  if not b or not a then
-    return false
-  end
-  return (not a.hasBuildQueue and b.hasBuildQueue)
-      or (a.def.cost > b.def.cost)
-end
-
-function compareConsReverse(a, b)
-  if not b or not a then
-    return false
-  end
-  return (not a.hasBuildQueue and b.hasBuildQueue)
-      or (a.def.cost < b.def.cost)
 end
 
 function getPressMoveDirection(x, y)

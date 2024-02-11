@@ -284,34 +284,33 @@ end
 local function getMetalMakingEfficiency(unitDefID)
   return getMetalMakingEfficiencyDef(UnitDefs[unitDefID])
 end
-local function sortHeuristicallyMM(a, b)
+local function sortHeuristicallyMorMM(a, b)
   --  log('compare ' .. a[3].humanName .. ' '.. getMetalMakingEfficiency(a[2]))
-  return getMetalMakingEfficiency(a[2]) > getMetalMakingEfficiency(b[2])
+  return (a.def.extractsMetal > b.def.extractsMetal)
+      or getMetalMakingEfficiency(a[2]) > getMetalMakingEfficiency(b[2])
 end
 
+local function getEout(_unitDef)
+  local totalEOut = _unitDef.energyMake or 0
 
+  totalEOut = totalEOut + -1 * _unitDef.energyUpkeep
 
-local function getEout(unitDef)
-  local totalEOut = unitDef.energyMake or 0
-
-  totalEOut = totalEOut + -1 * unitDef.energyUpkeep
-
-  if unitDef.tidalGenerator > 0 and tidalStrength > 0 then
+  if _unitDef.tidalGenerator > 0 and tidalStrength > 0 then
     local mult = 1 -- DEFAULT
-    if unitDef.customParams then
-      mult = unitDef.customParams.energymultiplier or mult
+    if _unitDef.customParams then
+      mult = _unitDef.customParams.energymultiplier or mult
     end
     totalEOut = totalEOut + (tidalStrength * mult)
   end
 
-  if unitDef.windGenerator > 0 then
+  if _unitDef.windGenerator > 0 then
     local mult = 1 -- DEFAULT
-    if unitDef.customParams then
-      mult = unitDef.customParams.energymultiplier or mult
+    if _unitDef.customParams then
+      mult = _unitDef.customParams.energymultiplier or mult
     end
 
-    local unitWindMin = math.min(windMin, unitDef.windGenerator)
-    local unitWindMax = math.min(windMax, unitDef.windGenerator)
+    local unitWindMin = math.min(windMin, _unitDef.windGenerator)
+    local unitWindMax = math.min(windMax, _unitDef.windGenerator)
     totalEOut = totalEOut + (((unitWindMin + unitWindMax) / 2) * mult)
   end
   return totalEOut
@@ -328,12 +327,12 @@ end
 --   end
 -- end
 
-local function getUnitResourceProperties(unitDefID, unitDef)
-  local metalMakingEfficiency = getMetalMakingEfficiencyDef(unitDef)
+local function getUnitResourceProperties(unitDefID, _unitDef)
+  local metalMakingEfficiency = getMetalMakingEfficiencyDef(_unitDef)
   if metalMakingEfficiency == nil then
     metalMakingEfficiency = 0
   end
-  local energyMaking = getEout(unitDef)
+  local energyMaking = getEout(_unitDef)
   return metalMakingEfficiency, energyMaking
 end
 
@@ -539,14 +538,15 @@ local function getBestCandidate(candidatesOriginal, assistType)
     local candidateDefId = GetUnitDefID(candidateId)
     local candidateDef = UnitDefs[candidateDefId]
     local MMEff = getMetalMakingEfficiencyDef(candidateDef)
+    local M = candidateDef.extractsMetal or 0
     -- if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
     --   log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
     -- end
     if
     --    candidateDef and (assistType == 'mm' and MMEff) and
         (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
-        (assistType == 'energy' and (candidateDef['energyMake'] > 0)) or
-        (assistType == 'mm' and MMEff > 0) then
+        (assistType == 'energy' and (candidateDef.energyMake > 0)) or
+        (assistType == 'mm' and (MMEff > 0 or M > 0)) then
       -- table.insert(candidates, { candidateId, candidateDefId, candidateDef })
       nCandidates = nCandidates + 1
       candidates[nCandidates] = { candidateId, candidateDefId, candidateDef }
@@ -567,7 +567,7 @@ local function getBestCandidate(candidatesOriginal, assistType)
     table.sort(candidates, sortHeuristicallyEnergy)
   elseif assistType == 'mm' then
     --    log(table.tostring(candidates))
-    table.sort(candidates, sortHeuristicallyMM)
+    table.sort(candidates, sortHeuristicallyMorMM)
   end
   -- log('table.tostring(candidates) ' .. table.tostring(candidates))
   return candidates[1]
@@ -650,6 +650,10 @@ local function getReclaimableFeatures(x, z, radius)
   return features
 end
 
+local function SortHealthAsc(a, b)
+  return a.health < b.health
+end
+
 local function builderIteration(n)
   local gotoContinue
 
@@ -713,7 +717,7 @@ local function builderIteration(n)
         end
 
         if #neighboursDamaged > 0 then
-          table.sort(neighboursDamaged, function(a, b) return a.health < b.health end)
+          table.sort(neighboursDamaged, SortHealthAsc)
           local damagedTarget = neighboursDamaged[1]
           local damagedTargetId = damagedTarget.id
           if targetId then
