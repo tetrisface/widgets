@@ -63,10 +63,6 @@ local mainIterationModuloLimit
 local nBuilders = 0
 local isReclaimTarget = NewSetList()
 local isReclaimTargetPrev = NewSetList()
-local showNukeWarning = false
-local hasAnti = false
-local nukeList
-local font
 
 local function unitDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
@@ -899,10 +895,6 @@ function widget:GameFrame(n)
   end
 
   if n % 100 == 0 then
-    hasAnti = GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) > 0
-        or GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) > 0
-        or GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) > 0
-        or GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) > 0
     for i = 1, #abandonedTargetIDs do
       local k = abandonedTargetIDs[i]
       if k then
@@ -912,30 +904,6 @@ function widget:GameFrame(n)
         end
       end
     end
-  end
-  showNukeWarning = not hasAnti and n % 50 < 25 and nBuilders > 0 and (GetGameRulesParam('raptorTechAnger') or 0) > 66
-end
-
-function widget:ViewResize()
-  font = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
-end
-
-local function CreateNukeWarning()
-  gl.PushMatrix()
-  font:Begin()
-  font:SetTextColor(1, 0.3, 0.3, 0.8)
-  font:Print('NUKE WARNING! ' .. tostring(GetGameRulesParam('raptorTechAnger')) .. '%', 1100, 800, 50)
-  font:End()
-  gl.PopMatrix()
-end
-
-
-function widget:DrawScreen()
-  if showNukeWarning then
-    nukeList = gl.CreateList(CreateNukeWarning)
-    gl.CallList(nukeList)
-  else
-    gl.DeleteList(nukeList)
   end
 end
 
