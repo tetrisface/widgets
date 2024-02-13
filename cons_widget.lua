@@ -12,14 +12,13 @@ function widget:GetInfo()
 end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
+VFS.Include('helpers.lua')
 
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
-local GetGameRulesParam = Spring.GetGameRulesParam
 local GetTeamResources = Spring.GetTeamResources
 local GetTeamRulesParam = Spring.GetTeamRulesParam
-local GetTeamUnitDefCount = Spring.GetTeamUnitDefCount
 local GetTeamUnits = Spring.GetTeamUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitDefID = Spring.GetUnitDefID
@@ -30,7 +29,6 @@ local GetUnitResources = Spring.GetUnitResources
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GiveOrderToUnit = Spring.GiveOrderToUnit
 local log = Spring.Echo
-local UnitDefNames = UnitDefNames
 local UnitDefs = UnitDefs
 
 local abandonedTargetIDs = {}
@@ -905,69 +903,4 @@ function widget:GameFrame(n)
       end
     end
   end
-end
-
--- for debug
-
-function table.has_value(tab, val)
-  for _, value in ipairs(tab) do
-    if value == val then
-      return true
-    end
-  end
-  return false
-end
-
-function table.full_of(tab, val)
-  for _, value in ipairs(tab) do
-    if value ~= val then
-      return false
-    end
-  end
-  return true
-end
-
--- for printing tables
-function table.val_to_str(v)
-  if "string" == type(v) then
-    v = string.gsub(v, "\n", "\\n")
-    if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
-      return "'" .. v .. "'"
-    end
-    return '"' .. string.gsub(v, '"', '\\"') .. '"'
-  else
-    return "table" == type(v) and table.tostring(v) or
-        tostring(v)
-  end
-end
-
-function table.key_to_str(k)
-  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
-    return k
-  else
-    return "[" .. table.val_to_str(k) .. "]"
-  end
-end
-
-function table.tostring(tbl)
-  if type(tbl) == "string" then
-    return tbl
-  elseif type(tbl) ~= "table" then
-    return tostring(tbl)
-  end
-  if not tbl then
-    return 'nil'
-  end
-  local result, done = {}, {}
-  for k, v in ipairs(tbl) do
-    table.insert(result, table.val_to_str(v))
-    done[k] = true
-  end
-  for k, v in pairs(tbl) do
-    if not done[k] then
-      table.insert(result,
-        table.key_to_str(k) .. "=" .. table.val_to_str(v))
-    end
-  end
-  return "{" .. table.concat(result, ",") .. "}"
 end

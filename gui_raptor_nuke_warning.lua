@@ -18,9 +18,9 @@ local alive           = true
 local nukeList
 local font
 
-
 function widget:ViewResize()
-  font = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
+  vsx, vsy = Spring.GetViewGeometry()
+  font     = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
 end
 
 local function CreateNukeWarning()
@@ -53,16 +53,17 @@ function widget:GameFrame(n)
           or Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) > 0
           or Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) > 0
     end
-    local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
-    showNukeWarning = not hasAnti and n % 50 < 25 and raptorTechAnger ~= nil and raptorTechAnger > 65
-  else
-    showNukeWarning = false
+    if n % 25 == 0 then
+      local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
+      showNukeWarning = not hasAnti and n % 50 < 25 and raptorTechAnger ~= nil and raptorTechAnger > 65
+    end
   end
 end
 
 function widget:TeamDied(teamID)
   if teamID == Spring.GetMyTeamID() then
     alive = false
+    showNukeWarning = false
   end
 end
 
