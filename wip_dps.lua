@@ -21,20 +21,9 @@ local UnitDefs = UnitDefs
 local glText = gl.Text
 local units = {}
 
-function widget:Initialize()
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
-    widgetHandler:RemoveWidget()
-  end
 
-  local allUnits = GetAllUnits()
-  for i = 1, #allUnits do
-    local unitID = allUnits[i]
-    local unitDefID = GetUnitDefID(unitID)
-    registerUnit(unitID, unitDefID)
-  end
-end
 
-function registerUnit(unitID, unitDefID)
+local function RegisterUnit(unitID, unitDefID)
   if not unitDefID then
     return
   end
@@ -51,12 +40,25 @@ function registerUnit(unitID, unitDefID)
   }
 end
 
+function widget:Initialize()
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    widgetHandler:RemoveWidget()
+  end
+
+  local allUnits = GetAllUnits()
+  for i = 1, #allUnits do
+    local unitID = allUnits[i]
+    local unitDefID = GetUnitDefID(unitID)
+    RegisterUnit(unitID, unitDefID)
+  end
+end
+
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-  registerUnit(unitID, unitDefID)
+  RegisterUnit(unitID, unitDefID)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  registerUnit(unitID, unitDefID)
+  RegisterUnit(unitID, unitDefID)
 end
 
 -- function widget:UnitDamaged(unitID, unitDefID, unitTeam, damage, paralyzer, weaponDefID, projectileID, attackerID, attackerDefID, attackerTeam)

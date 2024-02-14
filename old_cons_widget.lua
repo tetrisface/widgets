@@ -64,19 +64,8 @@ local isEnergyStalling = false
 local isMetalLeaking = true
 local isEnergyLeaking = true
 
-function widget:Initialize()
-    if Spring.GetSpectatingState() or Spring.IsReplay() then
-        widgetHandler:RemoveWidget()
-    end
 
-    local myUnits = GetTeamUnits(myTeamId)
-    for _, unitID in ipairs(myUnits) do
-        local unitDefID = GetUnitDefID(unitID)
-        registerUnit(unitID, unitDefID, teamID)
-    end
-end
-
-function registerUnit(unitID, unitDefID)
+local function RegisterUnit(unitID, unitDefID)
     if not unitDefID then
         return
     end
@@ -95,13 +84,25 @@ function registerUnit(unitID, unitDefID)
     end
 end
 
+function widget:Initialize()
+    if Spring.GetSpectatingState() or Spring.IsReplay() then
+        widgetHandler:RemoveWidget()
+    end
+
+    local myUnits = GetTeamUnits(myTeamId)
+    for _, unitID in ipairs(myUnits) do
+        local unitDefID = GetUnitDefID(unitID)
+        RegisterUnit(unitID, unitDefID, teamID)
+    end
+end
+
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-    registerUnit(unitID, unitDefID, unitTeam)
+    RegisterUnit(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
     if unitTeam == myTeamId then
-        registerUnit(unitID, unitDefID)
+        RegisterUnit(unitID, unitDefID)
     end
 end
 

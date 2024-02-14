@@ -226,20 +226,7 @@ function median(t)
   end
 end
 
-function widget:Initialize()
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
-    widgetHandler:RemoveWidget()
-  end
-
-  local allUnits = GetAllUnits()
-  for i = 1, #allUnits do
-    local unitID = allUnits[i]
-    local unitDefID = GetUnitDefID(unitID)
-    registerUnit(unitID, unitDefID, GetUnitTeam(unitID))
-  end
-end
-
-function registerUnit(unitID, unitDefID, unitTeam)
+local function RegisterUnit(unitID, unitDefID, unitTeam)
   -- if not unitDefID then
   --   local unitDefID
   -- end
@@ -277,12 +264,25 @@ function registerUnit(unitID, unitDefID, unitTeam)
   })
 end
 
+function widget:Initialize()
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    widgetHandler:RemoveWidget()
+  end
+
+  local allUnits = GetAllUnits()
+  for i = 1, #allUnits do
+    local unitID = allUnits[i]
+    local unitDefID = GetUnitDefID(unitID)
+    RegisterUnit(unitID, unitDefID, GetUnitTeam(unitID))
+  end
+end
+
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-  registerUnit(unitID, unitDefID, unitTeam)
+  RegisterUnit(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  registerUnit(unitID, unitDefID, unitTeam)
+  RegisterUnit(unitID, unitDefID, unitTeam)
 end
 
 function log(s)

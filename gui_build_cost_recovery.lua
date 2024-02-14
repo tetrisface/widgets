@@ -48,7 +48,7 @@ include("keysym.h.lua")
 local fontSize = 14
 local xOffset = 1670
 local yOffset = -175
-local useSelection = true
+-- local useSelection = true
 
 local customFontSize = 16
 
@@ -160,39 +160,22 @@ local char = string.char
 
 local glColor = gl.Color
 local glText = gl.Text
-local glRect = gl.Rect
 
-local spGetMyTeamID = Spring.GetMyTeamID
-local spGetTeamResources = Spring.GetTeamResources
 local spGetTeamInfo = Spring.GetTeamInfo
 local spGetPlayerInfo = Spring.GetPlayerInfo
 local spGetTeamColor = Spring.GetTeamColor
 
-local spGetModKeyState = Spring.GetModKeyState
 local spGetMouseState = Spring.GetMouseState
-local spTraceScreenRay = Spring.TraceScreenRay
-local spGetSelectedUnits = Spring.GetSelectedUnits
-local spGetSelectedUnitsCount = Spring.GetSelectedUnitsCount
 
-local spGetUnitDefID = Spring.GetUnitDefID
-local spGetUnitExp = Spring.GetUnitExperience
-local spGetUnitHealth = Spring.GetUnitHealth
-local spGetUnitTeam = Spring.GetUnitTeam
-local spGetUnitExperience = Spring.GetUnitExperience
-local spGetUnitSensorRadius = Spring.GetUnitSensorRadius
-local spGetUnitWeaponState = Spring.GetUnitWeaponState
-local GetUnitResources = Spring.GetUnitResources
-
-local log = Spring.Echo
 
 local tidalStrength = Game.tidal
 local windMin = Game.windMin
 local windMax = Game.windMax
 
 local uDefs = UnitDefs
-local wDefs = WeaponDefs
+-- local wDefs = WeaponDefs
 
-local triggerKey = KEYSYMS.SPACE
+-- local triggerKey = KEYSYMS.SPACE
 
 local myTeamID = Spring.GetMyTeamID
 local spGetTeamRulesParam = Spring.GetTeamRulesParam

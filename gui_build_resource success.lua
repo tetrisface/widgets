@@ -86,27 +86,50 @@ local GL_QUADS = GL.QUADS
 local isReplay = Spring.IsReplay()
 local GetSpectatingState = Spring.GetSpectatingState
 
-
-function widget:Initialize()
-
-  widgetXPosition = Spring.GetConfigInt("buildCostsWidgetXPosition", 175) / 1000
-
-  spectating = isSpec() and debug == false
-
-  registerUnits()
+local function registerMetalMaker(unitID, unitDef)
+  metalMakers[unitID] = unitDef.energyUpkeep
+  possibleMetalMakersUpkeep = possibleMetalMakersUpkeep + unitDef.energyUpkeep
+  possibleMetalMakersProduction = possibleMetalMakersProduction + unitDef.makesMetal
 end
 
-function widget:Shutdown()
-  Spring.SetConfigInt("buildCostsWidgetXPosition", widgetXPosition * 1000)
+local function drawBox(x, y, w, h)
+  glShape(GL_QUADS, {
+    { v = { x, y } },
+    { v = { x, y + h } },
+    { v = { x + w, y + h } },
+    { v = { x + w, y } }
+  })
+end
+local function RegisterUnit(unitID, unitDefID, unitTeam)
+  if not unitDefID then
+    return
+  end
+
+  local unitDef = UnitDefs[unitDefID]
+
+  if isBuilder(unitDef) then
+    builders[unitID] = { ["buildSpeed"] = unitDef.buildSpeed, originalBuildSpeed = unitDef.buildSpeed, ['unitDef'] = unitDef, ["owned"] = (unitTeam == myTeamID), ["targetID"] = nil, ["guards"] = {} }
+
+    if unitDef.customParams.iscommander then
+      commanderBuildSpeed = unitDef.buildSpeed
+    end
+  elseif unitTeam == myTeamID and isMetalMaker(unitDef) then
+    registerMetalMaker(unitID, unitDef)
+  else
+    return
+  end
+
+  echo(UnitDefs[unitDefID].humanName .. " registered")
 end
 
-function drawFrame(docked)
+
+local function drawFrame(docked)
   -- if docked then
   --   windowX = commandsPanelWidth + 10
   --   windowY = commandsPanelHeight
   -- else
-    -- windowX, windowY = mouseX + 100,mouseY - height/2+100
-    windowX, windowY = 750,190
+  -- windowX, windowY = mouseX + 100,mouseY - height/2+100
+  windowX, windowY = 750, 190
   -- end
 
   glColor(0.3, 0.3, 0.3, 0.5)
@@ -121,15 +144,6 @@ function drawMediumFrame()
   drawBox(windowX, windowY, width * 0.4, height)
 end
 
-function drawBox(x, y, w, h)
-  glShape(GL_QUADS, {
-    { v = { x, y } },
-    { v = { x, y + h } },
-    { v = { x + w, y + h } },
-    { v = { x + w, y } }
-  })
-end
-
 function widget:ViewResize(viewSizeX, viewSizeY)
   screenWidth = viewSizeX
   screenHeight = viewSizeY
@@ -141,7 +155,6 @@ function screenStettingChanged()
   tweakX = commandsPanelWidth
   commandsPanelHeight = screenHeight * 0.125
 end
-
 
 function addFactoryBuildingCosts(releasedExpenditures)
   if #selectedUnits ~= 1 then
@@ -175,7 +188,7 @@ function addFactoryBuildingCosts(releasedExpenditures)
   hideBars = true
 end
 
-function registerUnits()
+local function registerUnits()
   builders = {}
   metalMakers = {}
   possibleMetalMakersUpkeep = 0
@@ -186,7 +199,7 @@ function registerUnits()
     local units = GetTeamUnits(teamID)
     for _, unitID in ipairs(units) do
       local unitDefID = GetUnitDefID(unitID)
-      registerUnit(unitID, unitDefID, teamID)
+      RegisterUnit(unitID, unitDefID, teamID)
     end
   end
 end
@@ -233,10 +246,9 @@ function widget:DrawScreen()
     else
       drawText(formatTime(time) .. " ???", 50, 35)
     end
-
   elseif not assistBuildingTooltip() then
     return
-    displayBuildSpeed()
+        displayBuildSpeed()
   end
 end
 
@@ -372,7 +384,6 @@ function drawResourceBar(type, after, lvl, storage, color, changeWhenBuilding, c
     local afterX = after * ratio
     local afetrWidth = (lvl - after) * ratio
     drawBox(windowX + 135 + afterX, windowY + position + 3, afetrWidth, barHeight)
-
   else
     willStall = true
 
@@ -815,37 +826,6 @@ function assistBuildingTooltip()
   return true
 end
 
-function registerUnit(unitID, unitDefID, unitTeam)
-
-  if not unitDefID then
-    return
-  end
-
-  local unitDef = UnitDefs[unitDefID]
-
-  if isBuilder(unitDef) then
-
-    builders[unitID] = { ["buildSpeed"] = unitDef.buildSpeed, originalBuildSpeed = unitDef.buildSpeed, ['unitDef'] = unitDef, ["owned"] = (unitTeam == myTeamID), ["targetID"] = nil, ["guards"] = {} }
-
-    if unitDef.customParams.iscommander then
-      commanderBuildSpeed = unitDef.buildSpeed
-    end
-
-  elseif unitTeam == myTeamID and isMetalMaker(unitDef) then
-    registerMetalMaker(unitID, unitDef)
-  else
-    return
-  end
-
-  echo(UnitDefs[unitDefID].humanName .. " registered")
-end
-
-function registerMetalMaker(unitID, unitDef)
-  metalMakers[unitID] = unitDef.energyUpkeep
-  possibleMetalMakersUpkeep = possibleMetalMakersUpkeep + unitDef.energyUpkeep
-  possibleMetalMakersProduction = possibleMetalMakersProduction + unitDef.makesMetal
-end
-
 function unregisterMetalMaker(unitID, unitDef)
   if not unitDef then
     unitDef = UnitDefs[GetUnitDefID(unitID)]
@@ -865,17 +845,13 @@ end
 
 function unregisterUnit(unitID, unitDefID, unitTeam)
   if builders[unitID] then
-
     changeGuardTarget(unitID, nil)
     local guards = builders[unitID].guards
     for index, guardID in ipairs(guards) do
       changeGuardTarget(guardID, nil)
     end
-
   elseif metalMakers[unitID] then
-
     unregisterMetalMaker(unitID)
-
   else
     return
   end
@@ -884,7 +860,7 @@ function unregisterUnit(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-  registerUnit(unitID, unitDefID, unitTeam)
+  RegisterUnit(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
@@ -908,7 +884,6 @@ function widget:UnitTaken(unitID, unitDefID, unitTeam, newTeam)
   if unitTeam == myTeamID then
     if builders[unitID] then
       builders[unitID].owned = false
-
     elseif metalMakers[unitID] then
       unregisterMetalMaker(unitID)
     end
@@ -982,7 +957,7 @@ end
 
 function widget:TweakGetTooltip(x, y)
   return 'Drag to match the left side of this box with the right side of your menu\n' ..
-          "Use only if you don't use standard 3 column menu."
+      "Use only if you don't use standard 3 column menu."
 end
 
 function widget:TweakMousePress(x, y, button)
@@ -1020,4 +995,16 @@ function widget:TweakMouseMove(x, y, dx, dy, button)
     TweakMouseMoved = true
     tweakX = x + TweakPressedPos_X
   end
+end
+
+function widget:Initialize()
+  widgetXPosition = Spring.GetConfigInt("buildCostsWidgetXPosition", 175) / 1000
+
+  spectating = isSpec() and debug == false
+
+  registerUnits()
+end
+
+function widget:Shutdown()
+  Spring.SetConfigInt("buildCostsWidgetXPosition", widgetXPosition * 1000)
 end

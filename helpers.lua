@@ -1,4 +1,4 @@
-local log = Spring.Echo
+log = Spring.Echo
 
 function table.has_value(tab, val)
     for _, value in ipairs(tab) do

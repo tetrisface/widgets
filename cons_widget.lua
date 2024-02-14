@@ -12,7 +12,7 @@ function widget:GetInfo()
 end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
-VFS.Include('helpers.lua')
+VFS.Include('luaui/Widgets/helpers.lua')
 
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeatureResurrect = Spring.GetFeatureResurrect
@@ -665,6 +665,8 @@ local function builderIteration(n)
     local cmdQueue = GetUnitCommands(builderId, 3)
     local builderPosX, _, builderPosZ
 
+    -- log('builder ', builderId, builderDef.translatedHumanName, 'cmdQueue', table.tostring(cmdQueue))
+
     if cmdQueue == nil then
       builders[builderId] = nil
       nBuilders = nBuilders - 1
@@ -714,9 +716,10 @@ local function builderIteration(n)
           table.sort(neighboursDamaged, SortHealthAsc)
           local damagedTarget = neighboursDamaged[1]
           local damagedTargetId = damagedTarget.id
+          local targetHealthRatio
           if targetId then
             local targetHealth, targetMaxHealth = GetUnitHealth(targetId)
-            local targetHealthRatio = targetHealth / targetMaxHealth
+            targetHealthRatio = targetHealth / targetMaxHealth
 
             if targetId ~= damagedTargetId
                 and (not targetHealthRatio or targetHealthRatio == 0 or damagedTarget.healthRatio * 0.95 < targetHealthRatio)
@@ -724,6 +727,7 @@ local function builderIteration(n)
               repair(builderId, damagedTargetId)
             end
           end
+          -- log('gotoContinue', 'neighboursDamaged', 'targetId', targetId, 'damagedTargetId', damagedTargetId, 'targetHealthRatio', targetHealthRatio, 'damagedTarget.healthRatio', damagedTarget.healthRatio)
           gotoContinue = true
         end
       end
