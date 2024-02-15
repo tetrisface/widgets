@@ -178,12 +178,6 @@ local function reclaimCheckAction(builderId, features, needMetal, needEnergy)
 end
 
 local function purgeCompleteRepairs(builderId, cmdQueue)
-  -- local shitFound = true
-  -- local safetyStop = 400
-  -- while shitFound do
-  -- shitFound = false
-  -- for _, cmd in ipairs(cmdQueue) do
-  -- local cmdq = deepcopy(cmdQueue)
   local cmd
   for i = 1, #cmdQueue do
     cmd = cmdQueue[i]
@@ -191,10 +185,7 @@ local function purgeCompleteRepairs(builderId, cmdQueue)
     if cmd.id == CMD.REPAIR then -- 40
       local _, _, _, _, targetBuild = GetUnitHealth(targetId)
       if not targetBuild or targetBuild == 1 then
-        -- shitFound = true
         local _, _, cmdTag2 = Spring.GetUnitCurrentCommand(builderId, i + 1)
-        -- local _, _, cmdTag0 = Spring.GetUnitCurrentCommand(builderId, i - 1)
-        -- log('builderId', builderId, 'remove cmd ' .. i .. ' targetId ' .. targetId .. ' cmd.tag ' .. cmd.tag, ' cmd.tag2 ' .. tostring(cmdTag2))
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmdTag2, cmd.tag }, { "ctrl" })
         if not targetBuild then
@@ -206,14 +197,6 @@ local function purgeCompleteRepairs(builderId, cmdQueue)
       reclaimTargets:Add(targetId)
     end
   end
-  -- cmdQueue = GetUnitCommands(builderId, 3)
-  -- if shitFound then
-  -- end
-  -- if safetyStop <= 0 then
-  --   break
-  -- end
-  -- safetyStop = safetyStop - 1
-  -- end
   return GetUnitCommands(builderId, 3)
 end
 
@@ -265,10 +248,6 @@ local function getMetalMakingEfficiencyDef(unitDef)
   -- else
   --   return 0
   -- end
-end
-
-local function getMetalMakingEfficiency(unitDefID)
-  return getMetalMakingEfficiencyDef(UnitDefs[unitDefID])
 end
 
 local function getEout(_unitDef)
@@ -477,7 +456,7 @@ local function targetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft
   end
 end
 
-local function sortHeuristicallyBuildPower(a, b)
+local function sortBuildPower(a, b)
   local aWillStall = targetWillStall(a.id)
   local bWillStall = targetWillStall(b.id)
   if aWillStall and bWillStall then
@@ -493,7 +472,7 @@ local function sortHeuristicallyBuildPower(a, b)
   end
 end
 
-local function sortHeuristicallyEnergy(a, b)
+local function sortEnergy(a, b)
   local aWillStall = targetWillStall(a.id)
   local bWillStall = targetWillStall(b.id)
   if aWillStall and bWillStall then
@@ -509,8 +488,7 @@ local function sortHeuristicallyEnergy(a, b)
   end
 end
 
-local function sortHeuristicallyMorMM(a, b)
-  --  log('compare ' .. a.def.humanName .. ' '.. getMetalMakingEfficiency(a.defId))
+local function sortMAndMM(a, b)
   return (a.def.extractsMetal > b.def.extractsMetal)
       or getMetalMakingEfficiencyDef(a.def) > getMetalMakingEfficiencyDef(b.def)
       or a.build > b.build
@@ -530,15 +508,10 @@ local function getBestCandidate(candidatesOriginal, assistType)
     local candidateDef = UnitDefs[candidateDefId]
     local MMEff = getMetalMakingEfficiencyDef(candidateDef)
     local M = candidateDef.extractsMetal or 0
-    -- if assistType == 'mm' then -- and MMEff and MMEff <= 0 then
-    --   log(candidateDef.translatedHumanName .. ' mm eff ' .. MMEff)
-    -- end
     if
-    --    candidateDef and (assistType == 'mm' and MMEff) and
         (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
         (assistType == 'energy' and (candidateDef.energyMake > 0)) or
         (assistType == 'mm' and (MMEff > 0 or M > 0)) then
-      -- table.insert(candidates, { candidateId, candidateDefId, candidateDef })
       nCandidates = nCandidates + 1
       candidates[nCandidates] = { id = candidateId, defId = candidateDefId, def = candidateDef, build = candidateOriginal.build }
     end
@@ -546,21 +519,16 @@ local function getBestCandidate(candidatesOriginal, assistType)
 
   if #candidates == 1 then
     return candidates[1]
-    -- todo investigate why number
-    -- elseif type(candidates[1]) == "number" or type(candidates[2]) == "number" then
-    --   return false
   elseif #candidates == 0 then
     return false
   end
   if assistType == 'buildPower' then
-    table.sort(candidates, sortHeuristicallyBuildPower)
+    table.sort(candidates, sortBuildPower)
   elseif assistType == 'energy' then
-    table.sort(candidates, sortHeuristicallyEnergy)
+    table.sort(candidates, sortEnergy)
   elseif assistType == 'mm' then
-    --    log(table.tostring(candidates))
-    table.sort(candidates, sortHeuristicallyMorMM)
+    table.sort(candidates, sortMAndMM)
   end
-  -- log('table.tostring(candidates) ' .. table.tostring(candidates))
   return candidates[1]
 end
 
@@ -568,8 +536,6 @@ local function builderForceAssist(assistType, builderId, targetId, targetDefID, 
   local bestCandidate = getBestCandidate(neighbours, assistType)
 
   if bestCandidate and targetId ~= bestCandidate.id then
-    -- GetUnitDefID not a number arg one
-    -- log('repair bestCandidate ' .. bestCandidate[1] .. ' ' .. bestCandidate[3].translatedHumanName)
     repair(builderId, bestCandidate.id)
     return true
   end
@@ -584,24 +550,6 @@ local function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTag
     moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
   end
 end
-
-
-
--- local function getSelectedUnitsUpkeep()
---   local alreadyCounted = {}
-
---   local metal = 0
---   local energy = 0
-
---   for _, unitID in ipairs(selectedUnits) do
---     if builders[unitID] then
---       local metalUse, energyUse = traceUpkeep(unitID, alreadyCounted)
---       metal = metal + metalUse
---       energy = energy + energyUse
---     end
---   end
---   return { ["metal"] = metal, ["energy"] = energy }
--- end
 
 local function getReclaimableFeatures(x, z, radius)
   local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
@@ -628,15 +576,12 @@ local function getReclaimableFeatures(x, z, radius)
       if metal > 0 and energy > 0 then
         nME = nME + 1
         features['metalenergy'][nME] = featureId
-        -- table.insert(features['metalenergy'], featureId)
       elseif metal > 0 then
         nM = nM + 1
         features['metal'][nM] = featureId
-        -- table.insert(features['metal'], featureId)
       elseif energy > 0 then
         nE = nE + 1
         features['energy'][nE] = featureId
-        -- table.insert(features['energy'], featureId)
       end
     end
   end
@@ -734,7 +679,8 @@ local function builderIteration(n)
           gotoContinue = true
         elseif #neighboursUnfinished > 0 and nCmdQueue == 0 then
           table.sort(neighboursUnfinished, SortBuildDesc)
-          repair(builderId, neighboursUnfinished[1].id)
+          targetId = neighboursUnfinished[1].id
+          repair(builderId, targetId)
         end
       end
 
