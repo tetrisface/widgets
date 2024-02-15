@@ -287,7 +287,7 @@ end
 --   end
 -- end
 
-local function getUnitResourceProperties(unitDefID, _unitDef)
+local function getUnitResourceProperties(_unitDef)
   local metalMakingEfficiency = getMetalMakingEfficiencyDef(_unitDef)
   if metalMakingEfficiency == nil then
     metalMakingEfficiency = 0
@@ -532,7 +532,7 @@ local function getBestCandidate(candidatesOriginal, assistType)
   return candidates[1]
 end
 
-local function builderForceAssist(assistType, builderId, targetId, targetDefID, neighbours)
+local function builderForceAssist(assistType, builderId, targetId, neighbours)
   local bestCandidate = getBestCandidate(neighbours, assistType)
 
   if bestCandidate and targetId ~= bestCandidate.id then
@@ -633,6 +633,7 @@ local function builderIteration(n)
 
     cmdQueue = purgeCompleteRepairs(builderId, cmdQueue)
     local nCmdQueue = #cmdQueue
+    local features = nil
 
     if not gotoContinue then
       builderPosX, _, builderPosZ = GetUnitPosition(builderId, true)
@@ -684,7 +685,6 @@ local function builderIteration(n)
         end
       end
 
-      local features
       local needMetal = metalLevel < 0.15
       local needEnergy = energyLevel < 0.15
       if not gotoContinue and (needMetal or needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
@@ -715,8 +715,7 @@ local function builderIteration(n)
 
     if not gotoContinue and targetId then
       -- target id recieved
-      local targetDefID = GetUnitDefID(targetId)
-      local targetDef = UnitDefs[targetDefID]
+      local targetDef = UnitDefs[GetUnitDefID(targetId)]
 
       -- queue fast forwarder
       if cmdQueue then
@@ -740,11 +739,16 @@ local function builderIteration(n)
 
       -- refresh for possible target change
       targetId = GetUnitIsBuilding(builderId)
-      targetDefID = GetUnitDefID(targetId)
-      targetDef = UnitDefs[targetDefID]
+      local targetUnitMM = 0
+      local targetUnitE = 0
+      if targetId then
+        targetDef = UnitDefs[GetUnitDefID(targetId)]
+        targetUnitMM, targetUnitE = getUnitResourceProperties(targetDef)
+      else
+        targetDef = nil
+      end
 
       -- mm/e switcher
-      local targetUnitMM, targetUnitE = getUnitResourceProperties(targetDefID, targetDef)
 
       --  log('targetUnitE > 0, positiveMMLevel, regpose or eleak #### ' .. tostring(targetUnitE > 0) .. ', ' .. tostring(positiveMMLevel) .. ', ' .. tostring((regularizedPositiveEnergy or isEnergyLeaking) ))
       --  if targetUnitE > 0 then
@@ -772,19 +776,19 @@ local function builderIteration(n)
         local foundPowerCandidate = false
         if (shouldAssisstPower) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist buildPower target ' .. targetId .. ' ' .. targetDef.translatedHumanName .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
-          foundPowerCandidate = builderForceAssist('buildPower', builderId, targetId, targetDefID, neighboursUnfinished)
+          foundPowerCandidate = builderForceAssist('buildPower', builderId, targetId, neighboursUnfinished)
         end
         if (not shouldAssisstPower or not foundPowerCandidate)
             and not regularizedPositiveEnergy and not isEnergyLeaking
             and ((targetUnitMM > 0 and not positiveMMLevel) or (targetUnitE <= 0 and isEnergyStalling)) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist energy target ' .. targetId .. ' ' .. targetDef.translatedHumanName)
-          builderForceAssist('energy', builderId, targetId, targetDefID, neighboursUnfinished)
+          builderForceAssist('energy', builderId, targetId, neighboursUnfinished)
         elseif positiveMMLevel and (
               (
                 (not regularizedNegativeEnergy or isEnergyLeaking) and targetUnitE > 0) or
-              (isMetalStalling and targetDef.buildSpeed > 0)) then
+              (isMetalStalling and (targetDef and targetDef.buildSpeed > 0 or true))) then
           -- log(builderDef.translatedHumanName .. ' ForceAssist mm target ' .. targetId .. ' ' .. targetDef.humanName)
-          builderForceAssist('mm', builderId, targetId, targetDefID, neighboursUnfinished)
+          builderForceAssist('mm', builderId, targetId, neighboursUnfinished)
         end
       end
 
@@ -809,8 +813,7 @@ local function builderIteration(n)
       if not gotoContinue then
         -- refresh for possible target change
         targetId = GetUnitIsBuilding(builderId)
-        targetDefID = GetUnitDefID(targetId)
-        targetDef = UnitDefs[targetDefID]
+        targetDef = UnitDefs[GetUnitDefID(targetId)]
 
         -- easy finish neighbour
         local _, _, _, _, targetBuild = GetUnitHealth(targetId)
