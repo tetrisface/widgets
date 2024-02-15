@@ -36,7 +36,7 @@ function widget:KeyPress(key, mods, isRepeat)
     local maxReloadWeaponNumber = -1
     for i = 1, #weapons do
       local weaponDef = WeaponDefs[weapons[i].weaponDef]
-      local weaponReloadTime = weaponDef.stockpileTime or weaponDef.reloadTime
+      local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
       if weaponReloadTime > maxReloadTime then
         maxReloadTime = weaponReloadTime
         maxReloadWeaponNumber = i
@@ -104,6 +104,7 @@ local function RegisterUnit(unitId, unitDefId, unitTeam)
     return
   end
   if unitDefId == armjuno or unitDefId == corjuno then
+    Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REPEAT, { 1 }, 0)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
   end
@@ -126,13 +127,12 @@ function widget:GameFrame(n)
   for i = 1, nReloadWaitUnits do
     local reloadWaitUnit = reloadWaitUnits[i]
     if reloadWaitUnit.attackAtTime <= Spring.GetGameFrame() then
-      Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REPEAT, { 1 }, 0)
       Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.ATTACK, reloadWaitUnit.attackAtPos, 0)
       Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, 0)
       removeUntil = i
     else
       local stockpile, queued = Spring.GetUnitStockpile(reloadWaitUnit.unitId)
-      if stockpile > 0 and queued > 0 then
+      if stockpile and queued and stockpile > 0 and queued > 0 then
         Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
       end
     end
