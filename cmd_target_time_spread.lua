@@ -50,6 +50,8 @@ function widget:KeyPress(key, mods, isRepeat)
     for i = 1, nUnits do
       local unitId = units[i]
 
+      Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
+
       local reloadTimeLeft = maxReloadTime
       if isStockpiling then
         local _, _, reloadPercent = Spring.GetUnitStockpile(units[i])
@@ -104,7 +106,7 @@ local function RegisterUnit(unitId, unitDefId, unitTeam)
     return
   end
   if unitDefId == armjuno or unitDefId == corjuno then
-    Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REPEAT, { 1 }, 0)
+    Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
   end

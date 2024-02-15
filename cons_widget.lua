@@ -644,8 +644,11 @@ local function builderIteration(n)
         for i = 1, #neighbourIds do
           local candidateId = neighbourIds[i]
           local candidateHealth, candidateMaxHealth, _, _, candidateBuild = GetUnitHealth(candidateId)
+          local candidateDefId = GetUnitDefID(candidateId)
           local candidate = {
             id = candidateId,
+            defId = candidateDefId,
+            def = UnitDefs[candidateDefId],
             health = candidateHealth,
             maxHealth = candidateMaxHealth,
             build = candidateBuild,
@@ -813,21 +816,22 @@ local function builderIteration(n)
       if not gotoContinue then
         -- refresh for possible target change
         targetId = GetUnitIsBuilding(builderId)
-        targetDef = UnitDefs[GetUnitDefID(targetId)]
+        if targetId then
+          local targetDefId = GetUnitDefID(targetId)
 
-        -- easy finish neighbour
-        local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-        for i = 1, #neighbours do
-          local candidate = neighbours[i]
-          local candidateId = candidate.id
-          local candidateDef = unitDef(candidate.id)
-          -- same type and not actually same building
-          if candidateId ~= targetId and candidateDef == targetDef then
-            local candidateBuild = candidate.build
-            if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
-              if candidateBuild > targetBuild then
-                repair(builderId, candidateId)
-                break
+          -- easy finish neighbour
+          local _, _, _, _, targetBuild = GetUnitHealth(targetId)
+          for i = 1, #neighbours do
+            local candidate = neighbours[i]
+            local candidateId = candidate.id
+            -- same type and not actually same building
+            if candidateId ~= targetId and candidate.defId == targetDefId then
+              local candidateBuild = candidate.build
+              if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
+                if candidateBuild > targetBuild then
+                  repair(builderId, candidateId)
+                  break
+                end
               end
             end
           end
