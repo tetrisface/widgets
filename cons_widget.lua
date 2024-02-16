@@ -177,14 +177,22 @@ local function reclaimCheckAction(builderId, features, needMetal, needEnergy)
   end
 end
 
-local function purgeCompleteRepairs(builderId, cmdQueue)
+local function isBeingReclaimed(targetId)
+  return reclaimTargetsPrev.hash[targetId] ~= nil or reclaimTargets.hash[targetId] ~= nil
+end
+
+local function purgeRepairs(builderId, cmdQueue)
+  if not cmdQueue then
+    return {}
+  end
   local cmd
   for i = 1, #cmdQueue do
     cmd = cmdQueue[i]
     local targetId = cmd.params[1]
     if cmd.id == CMD.REPAIR then -- 40
-      local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-      if not targetBuild or targetBuild == 1 then
+      local health, maxHealth, _, _, targetBuild = GetUnitHealth(targetId)
+      if (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) or isBeingReclaimed(targetId) then
+        log('repair target remove', targetId, health, maxHealth, targetBuild)
         local _, _, cmdTag2 = Spring.GetUnitCurrentCommand(builderId, i + 1)
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmdTag2, cmd.tag }, { "ctrl" })
@@ -608,6 +616,7 @@ local function builderIteration(n)
   updateFastResourceStatus()
 
   for builderId, builder in pairs(builders) do
+    -- if builderId == 1707 then
     gotoContinue = false
     local builderDef = builder.def
     local cmdQueue = GetUnitCommands(builderId, 3)
@@ -631,7 +640,7 @@ local function builderIteration(n)
       GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
     end
 
-    cmdQueue = purgeCompleteRepairs(builderId, cmdQueue)
+    cmdQueue = purgeRepairs(builderId, cmdQueue)
     local nCmdQueue = #cmdQueue
     local features = nil
 
@@ -675,8 +684,10 @@ local function builderIteration(n)
 
             if targetId ~= damagedTargetId
                 and (not targetHealthRatio or targetHealthRatio == 0 or damagedTarget.healthRatio * 0.95 < targetHealthRatio)
-                and reclaimTargets.hash[targetId] == nil and reclaimTargetsPrev.hash[targetId] == nil then
-              repair(builderId, damagedTargetId)
+                and not isBeingReclaimed(damagedTargetId) then
+              targetId = damagedTargetId
+              -- log('repair damaged', targetId, 'not isBeingReclaimed(targetId)', not isBeingReclaimed(targetId))
+              repair(builderId, targetId)
             end
           end
           -- log('gotoContinue', 'neighboursDamaged', 'targetId', targetId, 'damagedTargetId', damagedTargetId, 'targetHealthRatio', targetHealthRatio, 'damagedTarget.healthRatio', damagedTarget.healthRatio)
@@ -684,6 +695,7 @@ local function builderIteration(n)
         elseif #neighboursUnfinished > 0 and nCmdQueue == 0 then
           table.sort(neighboursUnfinished, SortBuildDesc)
           targetId = neighboursUnfinished[1].id
+          -- log('repair unfinished', builderId, 'not isBeingReclaimed(targetId)', not isBeingReclaimed(targetId))
           repair(builderId, targetId)
         end
       end
@@ -762,7 +774,7 @@ local function builderIteration(n)
       --   builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
       -- )
       -- if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
-      if #neighboursUnfinished > 1 then
+      if not gotoContinue and #neighboursUnfinished > 1 then
         -- log(
         --   'metalLevel ' .. metalLevel ..
         --   ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) ..
@@ -836,6 +848,7 @@ local function builderIteration(n)
             end
           end
         end
+        -- end
       end
     end
   end
