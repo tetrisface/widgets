@@ -192,7 +192,6 @@ local function purgeRepairs(builderId, cmdQueue)
     if cmd.id == CMD.REPAIR then -- 40
       local health, maxHealth, _, _, targetBuild = GetUnitHealth(targetId)
       if (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) or isBeingReclaimed(targetId) then
-        log('repair target remove', targetId, health, maxHealth, targetBuild)
         local _, _, cmdTag2 = Spring.GetUnitCurrentCommand(builderId, i + 1)
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
         GiveOrderToUnit(builderId, CMD.REMOVE, { cmdTag2, cmd.tag }, { "ctrl" })
@@ -604,6 +603,10 @@ local function SortBuildDesc(a, b)
   return a.build > b.build
 end
 
+-- local busyCmds = NewSetListMin()
+-- busyCmds:Add(CMD.MOVE)
+
+
 local function builderIteration(n)
   local gotoContinue
 
@@ -635,13 +638,18 @@ local function builderIteration(n)
     local neighboursUnfinished = {}
     local targetId = GetUnitIsBuilding(builderId)
 
+    cmdQueue = purgeRepairs(builderId, cmdQueue)
+    local nCmdQueue = #cmdQueue
+
     -- dont wait if has queued stuff and leaking
-    if cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 5 and (isMetalLeaking or isEnergyLeaking) then
+    if cmdQueue and nCmdQueue > 0 and (isMetalLeaking or isEnergyLeaking) and cmdQueue[1].id == CMD.WAIT then
       GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
     end
 
-    cmdQueue = purgeRepairs(builderId, cmdQueue)
-    local nCmdQueue = #cmdQueue
+    if nCmdQueue > 0 and (cmdQueue[1].id == CMD.MOVE or cmdQueue[1].id == CMD.RECLAIM) then
+      gotoContinue = true
+    end
+
     local features = nil
 
     if not gotoContinue then

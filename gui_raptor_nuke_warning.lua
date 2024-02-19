@@ -18,6 +18,11 @@ local alive           = true
 local nukeList
 local font
 
+local armamdId        = UnitDefNames['armamd'].id
+local armscabId       = UnitDefNames['armscab'].id
+local corfmdId        = UnitDefNames['corfmd'].id
+local cormabmId       = UnitDefNames['cormabm'].id
+
 function widget:ViewResize()
   vsx, vsy = Spring.GetViewGeometry()
   font     = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
@@ -48,10 +53,10 @@ function widget:GameFrame(n)
   if alive then
     if n % 100 == 0 then
       local myTeamId = Spring.GetMyTeamID()
-      hasAnti = Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['armamd'].id) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['armscab'].id) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['corfmd'].id) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, UnitDefNames['cormabm'].id) > 0
+      hasAnti = Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0
+          or Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0
+          or Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0
+          or Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0
     end
     if n % 25 == 0 then
       local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
