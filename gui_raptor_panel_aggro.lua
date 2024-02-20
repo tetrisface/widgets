@@ -193,7 +193,7 @@ local function updatePos(x, y)
 
 	updatePanel = true
 end
-local function PlayerAggroAggregation()
+local function EcoAggroPlayerAggregation()
 	local myTeamId      = GetMyTeamID()
 	local teamList      = GetTeamList()
 	local playerAggros  = {}
@@ -230,9 +230,9 @@ local function SortValueDesc(a, b)
 	return a.value > b.value
 end
 
-local function PlayerAggroLimitFormat(maxRows)
+local function EcoAggrosByPlayer(maxRows)
 	maxRows                 = (maxRows or 3) - 1
-	local playerAggros, sum = PlayerAggroAggregation()
+	local playerAggros, sum = EcoAggroPlayerAggregation()
 
 	if sum == 0 then
 		return {}
@@ -297,31 +297,30 @@ end
 
 local function DrawPlayerAggros(row)
 	font:Print(I18N("ui.raptors.playerAggroLabel"):gsub("ui.raptors.playerAggroLabel", 'Player Aggros:'), panelMarginX, PanelRow(row), panelFontSize, "")
-	local playersEcoInfo = PlayerAggroLimitFormat(7 - row)
+	local ecoAggrosByPlayer = EcoAggrosByPlayer(7 - row)
 
-	for i = 1, #playersEcoInfo do
-		local playerEcoInfo = playersEcoInfo[i]
-		if playerEcoInfo.name then
-			local gb = 1
+	for i = 1, #ecoAggrosByPlayer do
+		local ecoAggro = ecoAggrosByPlayer[i]
+		if ecoAggro.name then
+			local greenBlue = 1
 			local alpha = 1
-			if playerEcoInfo.aggroMultiple > 1.7 then
-				gb = Interpolate(playerEcoInfo.aggroMultiple, 1.7, 6, 0.5, 0.3)
-			elseif playerEcoInfo.aggroMultiple > 1.2 then
-				gb = Interpolate(playerEcoInfo.aggroMultiple, 1.2, 1.7, 0.8, 0.5)
-			elseif playerEcoInfo.aggroMultiple < 0.8 then
-				alpha = Interpolate(playerEcoInfo.aggroMultiple, 0, 0.7, 1, 0.8)
+			if ecoAggro.aggroMultiple > 1.7 then
+				greenBlue = Interpolate(ecoAggro.aggroMultiple, 1.7, 6, 0.5, 0.3)
+			elseif ecoAggro.aggroMultiple > 1.2 then
+				greenBlue = Interpolate(ecoAggro.aggroMultiple, 1.2, 1.7, 0.8, 0.5)
+			elseif ecoAggro.aggroMultiple < 0.8 then
+				alpha = Interpolate(ecoAggro.aggroMultiple, 0, 0.7, 1, 0.8)
 			end
-			font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
+			font:SetTextColor(1, greenBlue, greenBlue, ecoAggro.forced and 0.6 or alpha)
 
 			local namePosX = i == 7 - row and 80 or panelMarginX + 11
-			local aggroFractionStringWidth = math.floor(0.5 + font:GetTextWidth(playerEcoInfo.aggroFractionString) * panelFontSize)
+			local aggroFractionStringWidth = math.floor(0.5 + font:GetTextWidth(ecoAggro.aggroFractionString) * panelFontSize)
 			local valuesRightX = panelMarginX + 220
 			local valuesLeftX = panelMarginX + 145
 			local rowY = PanelRow(row + i)
-			font:SetTextColor(1, gb, gb, playerEcoInfo.forced and 0.6 or alpha)
-			font:Print(CutStringAtPixelWidth(playerEcoInfo.name, valuesLeftX - namePosX - 2), namePosX, rowY, panelFontSize, "")
-			font:Print(playerEcoInfo.aggroMultipleString, valuesLeftX, rowY, panelFontSize, "")
-			font:Print(playerEcoInfo.aggroFractionString, valuesRightX - aggroFractionStringWidth, rowY, panelFontSize, "")
+			font:Print(CutStringAtPixelWidth(ecoAggro.name, valuesLeftX - namePosX - 2), namePosX, rowY, panelFontSize, "")
+			font:Print(ecoAggro.aggroMultipleString, valuesLeftX, rowY, panelFontSize, "")
+			font:Print(ecoAggro.aggroFractionString, valuesRightX - aggroFractionStringWidth, rowY, panelFontSize, "")
 		end
 	end
 	font:SetTextColor(1, 1, 1, 1)
