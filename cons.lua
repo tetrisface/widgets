@@ -14,6 +14,7 @@ end
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Widgets/helpers.lua')
 
+local GetFeatureHealth = Spring.GetFeatureHealth
 local GetFeatureResources = Spring.GetFeatureResources
 local GetFeatureResurrect = Spring.GetFeatureResurrect
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
@@ -158,21 +159,39 @@ local function getUnitsBuildingUnit(unitID)
   end
   return building
 end
+local function SortHealthAsc(a, b)
+  return a.health < b.health
+end
 
+local function SortBuildDesc(a, b)
+  return a.build > b.build
+end
 
+local function FeatureSortByHealth(features)
+  local feature
+  for i = 1, #features do
+    feature = features[i]
+    feature.health = GetFeatureHealth(feature.id)
+  end
+  table.sort(features, SortHealthAsc)
+  return features
+end
 
 local function reclaimCheckAction(builderId, features, needMetal, needEnergy)
   if needMetal and needEnergy and #features['metalenergy'] > 0 then
+    features['metalenergy'] = FeatureSortByHealth(features['metalenergy'])
     GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1] },
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1].id },
       { 'alt' })
   elseif needMetal and #features['metal'] > 0 then
+    features['metal'] = FeatureSortByHealth(features['metal'])
     GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1] },
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1].id },
       { 'alt' })
   elseif needEnergy and #features['energy'] > 0 then
+    features['energy'] = FeatureSortByHealth(features['energy'])
     GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1] },
+      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1].id },
       { 'alt' })
   end
 end
@@ -562,17 +581,20 @@ local function getReclaimableFeatures(x, z, radius)
   local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
 
   if #wrecksInRange == 0 then
-    return
+    return false
   end
 
   local features = {
     ['metalenergy'] = {},
     ['metal'] = {},
     ['energy'] = {},
+    ['all'] = {},
   }
-  local nME = 0
-  local nM = 0
-  local nE = 0
+
+  local nME      = 0
+  local nM       = 0
+  local nE       = 0
+  local nAll     = 0
   for i = 1, #wrecksInRange do
     local featureId = wrecksInRange[i]
 
@@ -580,32 +602,22 @@ local function getReclaimableFeatures(x, z, radius)
     if not table.has_value({ 'armcom', 'legcom', 'corcom' }, featureRessurrect) then
       local metal, _, energy = GetFeatureResources(featureId)
 
+      nAll = nAll + 1
+      features['all'][nAll] = { id = featureId }
       if metal > 0 and energy > 0 then
         nME = nME + 1
-        features['metalenergy'][nME] = featureId
+        features['metalenergy'][nME] = { id = featureId }
       elseif metal > 0 then
         nM = nM + 1
-        features['metal'][nM] = featureId
+        features['metal'][nM] = { id = featureId }
       elseif energy > 0 then
         nE = nE + 1
-        features['energy'][nE] = featureId
+        features['energy'][nE] = { id = featureId }
       end
     end
   end
   return features
 end
-
-local function SortHealthAsc(a, b)
-  return a.health < b.health
-end
-
-local function SortBuildDesc(a, b)
-  return a.build > b.build
-end
-
--- local busyCmds = NewSetListMin()
--- busyCmds:Add(CMD.MOVE)
-
 
 local function builderIteration(n)
   local gotoContinue
@@ -732,6 +744,21 @@ local function builderIteration(n)
           GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
         elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
           GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+        end
+      elseif math.random() < 0.2 then
+        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+        if features then
+          local featuresAll = FeatureSortByHealth(features.all)
+          local feature
+          for i = 1, #featuresAll do
+            feature = featuresAll[i]
+            if feature and feature.health and feature.health < 81 then
+              GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + feature.id }, { 'alt' })
+              break
+            elseif feature and feature.health and feature.health >= 81 then
+              break
+            end
+          end
         end
       end
     end
