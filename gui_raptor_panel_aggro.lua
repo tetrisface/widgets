@@ -544,7 +544,7 @@ function widget:GameFrame(n)
 			enabled = true
 		end
 	end
-	if n % 5 == 0 then
+	if n % 10 == 0 then
 		ecoAggrosByPlayerRender = EcoAggrosByPlayerRender()
 	end
 	if gotScore then
@@ -610,20 +610,12 @@ function widget:LanguageChanged()
 end
 
 local function RegisterUnit(unitID, unitDefID, unitTeam)
-	local unitDef = UnitDefs[unitDefID]
-
-	if RaptorCommon.IsValidEcoUnitDef(unitDef, unitTeam) then
-		ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + RaptorCommon.EcoValueDef(unitDef)
-	end
+	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
 end
 
 local function DeregisterUnit(unitID, unitDefID, unitTeam)
-	local unitDef = UnitDefs[unitDefID]
-
-	if RaptorCommon.IsValidEcoUnitDef(unitDef, unitTeam) then
-		local newRaw = (ecoAggrosByPlayerRaw[unitTeam] or 0) - RaptorCommon.EcoValueDef(unitDef)
-		ecoAggrosByPlayerRaw[unitTeam] = newRaw < 0 and 0 or newRaw
-	end
+	local newRaw = (ecoAggrosByPlayerRaw[unitTeam] or 0) - RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
+	ecoAggrosByPlayerRaw[unitTeam] = newRaw < 0 and 0 or newRaw
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
