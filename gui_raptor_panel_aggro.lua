@@ -268,19 +268,19 @@ local function UpdateEcoAggrosByPlayerRender()
 	table.sort(playerAggros, SortValueDesc)
 
 	-- add string formatting, forced current player result and limit results
-	local nPlayerAggrosLimited = 0
-	local nPlayerAggros        = #playerAggros
+	local nEcoAggrosByPlayerRender = 0
+	local nPlayerAggros            = #playerAggros
 	local playerAggro
 	for i = 1, nPlayerAggros do
 		playerAggro = playerAggros[i]
 
 		-- Always include current player
-		if playerAggro.me or nPlayerAggrosLimited < maxRows then
+		if playerAggro.me or nEcoAggrosByPlayerRender < maxRows then
 			if playerAggro.me then
 				maxRows = maxRows + 1
 			end
 			-- Current player added as last, so forced
-			if playerAggro.me and i > nPlayerAggrosLimited + 1 then
+			if playerAggro.me and i > nEcoAggrosByPlayerRender + 1 then
 				playerAggro.forced = true
 			end
 			playerAggro.aggroMultiple       = nPlayerAggros * playerAggro.value / sum
@@ -296,9 +296,9 @@ local function UpdateEcoAggrosByPlayerRender()
 			elseif playerAggro.aggroMultiple < 0.8 then
 				alpha = Interpolate(playerAggro.aggroMultiple, 0, 0.7, 1, 0.8)
 			end
-			playerAggro.color                             = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerAggro.forced and 0.6 or alpha }
-			nPlayerAggrosLimited                          = nPlayerAggrosLimited + 1
-			ecoAggrosByPlayerRender[nPlayerAggrosLimited] = playerAggro
+			playerAggro.color = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerAggro.forced and 0.6 or alpha }
+			nEcoAggrosByPlayerRender = nEcoAggrosByPlayerRender + 1
+			ecoAggrosByPlayerRender[nEcoAggrosByPlayerRender] = playerAggro
 		end
 	end
 end
