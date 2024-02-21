@@ -13,17 +13,10 @@ end
 local useWaveMsg        = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg
 
 local DiffTimers        = Spring.DiffTimers
-local GetAIInfo         = Spring.GetAIInfo
 local GetGameRulesParam = Spring.GetGameRulesParam
 local GetGameSeconds    = Spring.GetGameSeconds
-
-local GetMyTeamID       = Spring.GetMyTeamID
-local GetPlayerInfo     = Spring.GetPlayerInfo
-local GetPlayerList     = Spring.GetPlayerList
-local GetTeamList       = Spring.GetTeamList
 local GetTimer          = Spring.GetTimer
 local I18N              = Spring.I18N
-local UnitDefs          = UnitDefs
 
 -- to be deleted pending PR #2572
 local WALLS             = {
@@ -198,8 +191,8 @@ local function updatePos(x, y)
 end
 
 local function EcoAggroPlayerAggregation()
-	local myTeamId      = GetMyTeamID()
-	local teamList      = GetTeamList()
+	local myTeamId      = Spring.GetMyTeamID()
+	local teamList      = Spring.GetTeamList()
 	local playerAggros  = {}
 	local sum           = 0
 	local nPlayerAggros = 0
@@ -207,11 +200,11 @@ local function EcoAggroPlayerAggregation()
 	for i = 1, #teamList do
 		local teamID = teamList[i]
 		local playerName
-		local playerList = GetPlayerList(teamID)
+		local playerList = Spring.GetPlayerList(teamID)
 		if playerList[1] then
-			playerName = GetPlayerInfo(playerList[1])
+			playerName = Spring.GetPlayerInfo(playerList[1])
 		else
-			_, playerName = GetAIInfo(teamID)
+			_, playerName = Spring.GetAIInfo(teamID)
 		end
 
 		local aggroEcoValue = ecoAggrosByPlayerRaw[teamID] or 0
@@ -310,7 +303,7 @@ local function WaveRow(n)
 end
 
 local function CutStringAtPixelWidth(text, width)
-	while font:GetTextWidth(text) * panelFontSize > width and text:len() >= 0 do
+	while font:GetTextWidth(text) * panelFontSize > width and text:len() > 0 do
 		text = text:sub(1, -2)
 	end
 	return text
@@ -346,12 +339,12 @@ local function CreatePanelDisplayList()
 	local currentTime = GetGameSeconds()
 	local stage = RaptorStage(currentTime)
 
-	if stageGrace == stage then
+	if stage == stageGrace then
 		font:Print(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1), panelFontSize, "")
 		local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
 		font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1), panelFontSize, "")
 		DrawPlayerAggros(stage)
-	elseif stageMain == stage then
+	elseif stage == stageMain then
 		local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', { anger = gameInfo.raptorQueenAnger, techAnger = gameInfo.raptorTechAnger })
 		font:Print(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59), "")
 
@@ -366,7 +359,7 @@ local function CreatePanelDisplayList()
 			currentlyResistantToNames = {}
 			currentlyResistantTo = {}
 		end
-	elseif stageQueen == stage then
+	elseif stage == stageQueen then
 		font:Print(I18N('ui.raptors.queenHealth', { health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize, "")
 		local healthText = tostring(gameInfo.raptorQueenHealth)
 		font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize, "")
