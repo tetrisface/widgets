@@ -181,15 +181,6 @@ local rules                     = {
 	"raptorTechAnger",
 }
 
-local function updatePos(x, y)
-	local x0 = (viewSizeX * 0.94) - (w * widgetScale) / 2
-	local y0 = (viewSizeY * 0.89) - (h * widgetScale) / 2
-	x1 = x0 < x and x0 or x
-	y1 = y0 < y and y0 or y
-
-	updatePanel = true
-end
-
 local function EcoAggroPlayerAggregation()
 	local myTeamId      = Spring.GetMyTeamID()
 	local teamList      = Spring.GetTeamList()
@@ -249,7 +240,7 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 end
 
 local function UpdateEcoAggrosByPlayerRender()
-	local maxRows           = RaptorStage() == stageMain and 3 or 4
+	local maxRows           = (RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == 0 and 1 or 0)
 	local playerAggros, sum = EcoAggroPlayerAggregation()
 
 	if sum == 0 then
@@ -286,13 +277,22 @@ local function UpdateEcoAggrosByPlayerRender()
 			elseif playerAggro.aggroMultiple > 1.2 then
 				greenBlue = Interpolate(playerAggro.aggroMultiple, 1.2, 1.7, 0.8, 0.5)
 			elseif playerAggro.aggroMultiple < 0.8 then
-				alpha = Interpolate(playerAggro.aggroMultiple, 0, 0.7, 1, 0.8)
+				alpha = 0.8
 			end
 			playerAggro.color = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerAggro.forced and 0.6 or alpha }
 			nEcoAggrosByPlayerRender = nEcoAggrosByPlayerRender + 1
 			ecoAggrosByPlayerRender[nEcoAggrosByPlayerRender] = playerAggro
 		end
 	end
+end
+
+local function updatePos(x, y)
+	local x0 = (viewSizeX * 0.94) - (w * widgetScale) / 2
+	local y0 = (viewSizeY * 0.89) - (h * widgetScale) / 2
+	x1 = x0 < x and x0 or x
+	y1 = y0 < y and y0 or y
+
+	updatePanel = true
 end
 
 local function PanelRow(n)
@@ -352,7 +352,7 @@ local function CreatePanelDisplayList()
 		font:Print(I18N('ui.raptors.queenETA', { time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize, "")
 		local gain = gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
 		local time = string.formatTime((100 - gameInfo.raptorQueenAnger) / gain)
-		font:Print(time, panelMarginX + 200 - font:GetTextWidth(time:gsub(':.*', '')) * panelFontSize, PanelRow(2), panelFontSize, "")
+		font:Print(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2), panelFontSize, "")
 
 		DrawPlayerAggros(stage)
 
@@ -499,6 +499,59 @@ function RaptorEvent(raptorEventArgs)
 	end
 end
 
+local function RegisterUnit(unitID, unitDefID, unitTeam)
+	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
+end
+
+local function DeregisterUnit(unitID, unitDefID, unitTeam)
+	local newRaw = (ecoAggrosByPlayerRaw[unitTeam] or 0) - RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
+	ecoAggrosByPlayerRaw[unitTeam] = newRaw < 0 and 0 or newRaw
+end
+
+function widget:UnitCreated(unitID, unitDefID, unitTeam)
+	RegisterUnit(unitID, unitDefID, unitTeam)
+end
+
+function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
+	RegisterUnit(unitID, unitDefID, unitTeam)
+	DeregisterUnit(unitID, unitDefID, oldTeam)
+end
+
+function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
+	DeregisterUnit(unitID, unitDefID, unitTeam)
+end
+
+function widget:Initialize()
+	widget:ViewResize()
+
+	displayList = gl.CreateList(function()
+		gl.Blending(true)
+		gl.Color(1, 1, 1, 1)
+		gl.Texture(panelTexture)
+		gl.TexRect(0, 0, w, h)
+	end)
+
+	widgetHandler:RegisterGlobal("RaptorEvent", RaptorEvent)
+	UpdateRules()
+	viewSizeX, viewSizeY = gl.GetViewSizes()
+	local x = math.abs(math.floor(viewSizeX - 320))
+	local y = math.abs(math.floor(viewSizeY - 300))
+
+	-- reposition if scavengers panel is shown as well
+	if Spring.Utilities.Gametype.IsScavengers() then
+		x = x - 315
+	end
+
+	updatePos(x, y)
+
+	local allUnits = Spring.GetAllUnits()
+	for i = 1, #allUnits do
+		local unitID = allUnits[i]
+		local unitDefID = Spring.GetUnitDefID(unitID)
+		RegisterUnit(unitID, unitDefID, Spring.GetUnitTeam(unitID))
+	end
+end
+
 function widget:Shutdown()
 	if hasRaptorEvent then
 		Spring.SendCommands({ "luarules HasRaptorEvent 0" })
@@ -574,57 +627,4 @@ end
 function widget:LanguageChanged()
 	refreshMarqueeMessage = true
 	updatePanel = true
-end
-
-local function RegisterUnit(unitID, unitDefID, unitTeam)
-	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
-end
-
-local function DeregisterUnit(unitID, unitDefID, unitTeam)
-	local newRaw = (ecoAggrosByPlayerRaw[unitTeam] or 0) - RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
-	ecoAggrosByPlayerRaw[unitTeam] = newRaw < 0 and 0 or newRaw
-end
-
-function widget:UnitCreated(unitID, unitDefID, unitTeam)
-	RegisterUnit(unitID, unitDefID, unitTeam)
-end
-
-function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-	RegisterUnit(unitID, unitDefID, unitTeam)
-	DeregisterUnit(unitID, unitDefID, oldTeam)
-end
-
-function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
-	DeregisterUnit(unitID, unitDefID, unitTeam)
-end
-
-function widget:Initialize()
-	widget:ViewResize()
-
-	displayList = gl.CreateList(function()
-		gl.Blending(true)
-		gl.Color(1, 1, 1, 1)
-		gl.Texture(panelTexture)
-		gl.TexRect(0, 0, w, h)
-	end)
-
-	widgetHandler:RegisterGlobal("RaptorEvent", RaptorEvent)
-	UpdateRules()
-	viewSizeX, viewSizeY = gl.GetViewSizes()
-	local x = math.abs(math.floor(viewSizeX - 320))
-	local y = math.abs(math.floor(viewSizeY - 300))
-
-	-- reposition if scavengers panel is shown as well
-	if Spring.Utilities.Gametype.IsScavengers() then
-		x = x - 315
-	end
-
-	updatePos(x, y)
-
-	local allUnits = Spring.GetAllUnits()
-	for i = 1, #allUnits do
-		local unitID = allUnits[i]
-		local unitDefID = Spring.GetUnitDefID(unitID)
-		RegisterUnit(unitID, unitDefID, Spring.GetUnitTeam(unitID))
-	end
 end
