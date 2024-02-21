@@ -62,6 +62,11 @@ local mainIterationModuloLimit
 local nBuilders = 0
 local reclaimTargets = NewSetList()
 local reclaimTargetsPrev = NewSetList()
+local busyCommands = {
+  [CMD.GUARD] = true,
+  [CMD.MOVE] = true,
+  [CMD.RECLAIM] = true,
+}
 
 local function unitDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
@@ -658,7 +663,7 @@ local function builderIteration(n)
       GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
     end
 
-    if nCmdQueue > 0 and (cmdQueue[1].id == CMD.MOVE or cmdQueue[1].id == CMD.RECLAIM) then
+    if nCmdQueue > 0 and not busyCommands[cmdQueue and cmdQueue[1] and cmdQueue[1].id] then
       gotoContinue = true
     end
 
