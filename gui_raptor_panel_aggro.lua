@@ -229,7 +229,6 @@ local function EcoAggroPlayerAggregation()
 	return playerAggros, sum
 end
 
-
 local function RaptorStage(currentTime)
 	local stage = stageGrace
 	if (currentTime and currentTime or GetGameSeconds()) > gameInfo.raptorGracePeriod then
