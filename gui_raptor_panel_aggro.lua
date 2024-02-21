@@ -27,8 +27,8 @@ local WALLS             = {
 	scavdrag = true,
 	scavfort = true,
 }
+local teams             = Spring.GetTeamList()
 local raptorTeamID
-local teams             = GetTeamList()
 for _, teamID in ipairs(teams) do
 	local teamLuaAI = Spring.GetTeamLuaAI(teamID)
 	if (teamLuaAI and string.find(teamLuaAI, "Raptors")) then
