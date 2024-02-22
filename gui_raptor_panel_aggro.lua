@@ -114,49 +114,49 @@ if not GetGameRulesParam("raptorDifficulty") then
 end
 
 local displayList
-local panelTexture                 = ":n:LuaUI/Images/raptorpanel.tga"
+local panelTexture               = ":n:LuaUI/Images/raptorpanel.tga"
 
-local panelFontSize                = 14
-local waveFontSize                 = 36
+local panelFontSize              = 14
+local waveFontSize               = 36
 
-local vsx, vsy                     = Spring.GetViewGeometry()
-local fontfile2                    = "fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf")
+local vsx, vsy                   = Spring.GetViewGeometry()
+local fontfile2                  = "fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf")
 
-local viewSizeX, viewSizeY         = 0, 0
-local w                            = 300
-local h                            = 210
-local x1                           = 0
-local y1                           = 0
-local panelMarginX                 = 30
-local panelMarginY                 = 40
-local panelSpacingY                = 5
-local waveSpacingY                 = 7
+local viewSizeX, viewSizeY       = 0, 0
+local w                          = 300
+local h                          = 210
+local x1                         = 0
+local y1                         = 0
+local panelMarginX               = 30
+local panelMarginY               = 40
+local panelSpacingY              = 5
+local waveSpacingY               = 7
 local moving
 local capture
-local waveSpeed                    = 0.1
-local waveCount                    = 0
+local waveSpeed                  = 0.1
+local waveCount                  = 0
 local waveTime
 local gotScore
-local scoreCount                   = 0
-local gameInfo                     = {}
-local resistancesTable             = {}
-local currentlyResistantTo         = {}
-local currentlyResistantToNames    = {}
-local ecoAttractionsByPlayerRaw    = {}
-local ecoAttractionsByPlayerRender = {}
-local teamIDs                      = {}
+local scoreCount                 = 0
+local gameInfo                   = {}
+local resistancesTable           = {}
+local currentlyResistantTo       = {}
+local currentlyResistantToNames  = {}
+local playerEcoAttractionsRaw    = {}
+local playerEcoAttractionsRender = {}
+local teamIDs                    = {}
 local raptorTeamID
-local stageGrace                   = 0
-local stageMain                    = 1
-local stageQueen                   = 2
+local stageGrace                 = 0
+local stageMain                  = 1
+local stageQueen                 = 2
 
 local guiPanel --// a displayList
 local updatePanel
-local hasRaptorEvent               = false
+local hasRaptorEvent             = false
 
-local modOptions                   = Spring.GetModOptions()
+local modOptions                 = Spring.GetModOptions()
 
-local rules                        = {
+local rules                      = {
 	"lagging",
 	"raptorDifficulty",
 	"raptorGracePeriod",
@@ -179,23 +179,23 @@ local function PlayerName(teamID)
 end
 
 
-local function EcoAttractionPlayerAggregation()
-	local myTeamId           = Spring.GetMyTeamID()
-	local playerAttractions  = {}
-	local sum                = 0
-	local nPlayerAttractions = 0
+local function PlayerEcoAttractionsAggregation()
+	local myTeamId             = Spring.GetMyTeamID()
+	local playerEcoAttractions = {}
+	local sum                  = 0
+	local nPlayerAttractions   = 0
 
 	for i = 1, #teamIDs do
 		local teamID = teamIDs[i]
 		local playerName = PlayerName(teamID)
 
 		if playerName and not playerName:find("Raptors") then
-			local ecoAttractionValue = ecoAttractionsByPlayerRaw[teamID] or 0
+			local ecoAttractionValue = playerEcoAttractionsRaw[teamID] or 0
 			ecoAttractionValue = ecoAttractionValue > 0 and ecoAttractionValue or 0
 
 			sum = sum + ecoAttractionValue
 			nPlayerAttractions = nPlayerAttractions + 1
-			playerAttractions[nPlayerAttractions] = {
+			playerEcoAttractions[nPlayerAttractions] = {
 				value = ecoAttractionValue,
 				name = playerName,
 				teamID = teamID,
@@ -204,7 +204,7 @@ local function EcoAttractionPlayerAggregation()
 			}
 		end
 	end
-	return playerAttractions, sum
+	return playerEcoAttractions, sum
 end
 
 local function RaptorStage(currentTime)
@@ -232,49 +232,49 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 	return outMin + t * (outMax - outMin)
 end
 
-local function UpdateEcoAttractionByPlayerRender()
-	local maxRows                = (RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == raptorTeamID and 1 or 0)
-	local playerAttractions, sum = EcoAttractionPlayerAggregation()
+local function UpdatePlayerEcoAttractionRender()
+	local maxRows                   = (RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == raptorTeamID and 1 or 0)
+	local playerEcoAttractions, sum = PlayerEcoAttractionsAggregation()
 
 	if sum == 0 then
 		return
 	end
 
-	table.sort(playerAttractions, SortValueDesc)
+	table.sort(playerEcoAttractions, SortValueDesc)
 
 	-- add string formatting, forced current player result and limit results
-	ecoAttractionsByPlayerRender       = {}
-	local nEcoAttractionByPlayerRender = 0
-	local nPlayerAttractions           = #playerAttractions
-	local playerAttraction
-	for i = 1, nPlayerAttractions do
-		playerAttraction = playerAttractions[i]
+	playerEcoAttractionsRender        = {}
+	local nPlayerEcoAttractionsRender = 0
+	local nPlayerEcoAttractions       = #playerEcoAttractions
+	local playerEcoAttraction
+	for i = 1, nPlayerEcoAttractions do
+		playerEcoAttraction = playerEcoAttractions[i]
 
 		-- Always include current player
-		if playerAttraction.me or nEcoAttractionByPlayerRender < maxRows then
-			if playerAttraction.me then
+		if playerEcoAttraction.me or nPlayerEcoAttractionsRender < maxRows then
+			if playerEcoAttraction.me then
 				maxRows = maxRows + 1
 			end
 			-- Current player added as last, so forced
-			if playerAttraction.me and i > nEcoAttractionByPlayerRender + 1 then
-				playerAttraction.forced = true
+			if playerEcoAttraction.me and i > nPlayerEcoAttractionsRender + 1 then
+				playerEcoAttraction.forced = true
 			end
-			playerAttraction.AttractionMultiple       = nPlayerAttractions * playerAttraction.value / sum
-			playerAttraction.attractionFraction       = playerAttraction.value * 100 / sum
-			playerAttraction.attractionMultipleString = string.format("%.1fX", playerAttraction.AttractionMultiple)
-			playerAttraction.attractionFractionString = string.format(" (%.0f%%)", playerAttraction.attractionFraction)
-			local greenBlue                           = 1
-			local alpha                               = 1
-			if playerAttraction.AttractionMultiple > 1.7 then
-				greenBlue = Interpolate(playerAttraction.AttractionMultiple, 1.7, 6, 0.5, 0.3)
-			elseif playerAttraction.AttractionMultiple > 1.2 then
-				greenBlue = Interpolate(playerAttraction.AttractionMultiple, 1.2, 1.7, 0.8, 0.5)
-			elseif playerAttraction.AttractionMultiple < 0.8 then
+			playerEcoAttraction.multiple       = nPlayerEcoAttractions * playerEcoAttraction.value / sum
+			playerEcoAttraction.fraction       = playerEcoAttraction.value * 100 / sum
+			playerEcoAttraction.multipleString = string.format("%.1fX", playerEcoAttraction.multiple)
+			playerEcoAttraction.fractionString = string.format(" (%.0f%%)", playerEcoAttraction.fraction)
+			local greenBlue                    = 1
+			local alpha                        = 1
+			if playerEcoAttraction.multiple > 1.7 then
+				greenBlue = Interpolate(playerEcoAttraction.multiple, 1.7, 6, 0.5, 0.3)
+			elseif playerEcoAttraction.multiple > 1.2 then
+				greenBlue = Interpolate(playerEcoAttraction.multiple, 1.2, 1.7, 0.8, 0.5)
+			elseif playerEcoAttraction.multiple < 0.8 then
 				alpha = 0.8
 			end
-			playerAttraction.color = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerAttraction.forced and 0.6 or alpha }
-			nEcoAttractionByPlayerRender = nEcoAttractionByPlayerRender + 1
-			ecoAttractionsByPlayerRender[nEcoAttractionByPlayerRender] = playerAttraction
+			playerEcoAttraction.color = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerEcoAttraction.forced and 0.6 or alpha }
+			nPlayerEcoAttractionsRender = nPlayerEcoAttractionsRender + 1
+			playerEcoAttractionsRender[nPlayerEcoAttractionsRender] = playerEcoAttraction
 		end
 	end
 end
@@ -306,18 +306,18 @@ end
 local function DrawPlayerAttractions(stage)
 	local row = stageMain == stage and 3 or 2
 	font:Print(I18N("ui.raptors.playerAttractionLabel"):gsub("ui.raptors.playerAttractionLabel", 'Player Eco Attractions:'), panelMarginX, PanelRow(row), panelFontSize)
-	for i = 1, #ecoAttractionsByPlayerRender do
-		local ecoAttraction = ecoAttractionsByPlayerRender[i]
-		font:SetTextColor(ecoAttraction.color.red, ecoAttraction.color.green, ecoAttraction.color.blue, ecoAttraction.color.alpha)
+	for i = 1, #playerEcoAttractionsRender do
+		local playerEcoAttraction = playerEcoAttractionsRender[i]
+		font:SetTextColor(playerEcoAttraction.color.red, playerEcoAttraction.color.green, playerEcoAttraction.color.blue, playerEcoAttraction.color.alpha)
 
 		local namePosX = i == 7 - row and 80 or panelMarginX + 11
-		local attractionFractionStringWidth = math.floor(0.5 + font:GetTextWidth(ecoAttraction.attractionFractionString) * panelFontSize)
+		local attractionFractionStringWidth = math.floor(0.5 + font:GetTextWidth(playerEcoAttraction.fractionString) * panelFontSize)
 		local valuesRightX = panelMarginX + 220
 		local valuesLeftX = panelMarginX + 145
 		local rowY = PanelRow(row + i)
-		font:Print(CutStringAtPixelWidth(ecoAttraction.name, valuesLeftX - namePosX - 2), namePosX, rowY, panelFontSize)
-		font:Print(ecoAttraction.attractionMultipleString, valuesLeftX, rowY, panelFontSize)
-		font:Print(ecoAttraction.attractionFractionString, valuesRightX - attractionFractionStringWidth, rowY, panelFontSize)
+		font:Print(CutStringAtPixelWidth(playerEcoAttraction.name, valuesLeftX - namePosX - 2), namePosX, rowY, panelFontSize)
+		font:Print(playerEcoAttraction.multipleString, valuesLeftX, rowY, panelFontSize)
+		font:Print(playerEcoAttraction.fractionString, valuesRightX - attractionFractionStringWidth, rowY, panelFontSize)
 	end
 	font:SetTextColor(1, 1, 1, 1)
 end
@@ -490,11 +490,11 @@ function RaptorEvent(raptorEventArgs)
 end
 
 local function RegisterUnit(unitDefID, unitTeam)
-	ecoAttractionsByPlayerRaw[unitTeam] = ecoAttractionsByPlayerRaw[unitTeam] + (defIDsEcoValues[unitDefID] or 0)
+	playerEcoAttractionsRaw[unitTeam] = playerEcoAttractionsRaw[unitTeam] + (defIDsEcoValues[unitDefID] or 0)
 end
 
 local function DeregisterUnit(unitDefID, unitTeam)
-	ecoAttractionsByPlayerRaw[unitTeam] = ecoAttractionsByPlayerRaw[unitTeam] - (defIDsEcoValues[unitDefID] or 0)
+	playerEcoAttractionsRaw[unitTeam] = playerEcoAttractionsRaw[unitTeam] - (defIDsEcoValues[unitDefID] or 0)
 end
 
 function widget:UnitCreated(_, unitDefID, unitTeam)
@@ -544,7 +544,7 @@ function widget:Initialize()
 		if (teamLuaAI and string.find(teamLuaAI, "Raptors")) then
 			raptorTeamID = teamID
 		else
-			ecoAttractionsByPlayerRaw[teamID] = 0
+			playerEcoAttractionsRaw[teamID] = 0
 		end
 	end
 	if not raptorTeamID then
@@ -584,7 +584,7 @@ function widget:GameFrame(n)
 	end
 	if n % 30 == 0 then
 		UpdateRules()
-		UpdateEcoAttractionByPlayerRender()
+		UpdatePlayerEcoAttractionRender()
 	end
 	if gotScore then
 		local sDif = gotScore - scoreCount
