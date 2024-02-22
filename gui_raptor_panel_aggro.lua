@@ -41,7 +41,7 @@ end
 
 local function IsValidEcoUnitDef(unitDef, teamID)
 	-- skip Raptor AI, moving units and player built walls
-	if unitDef.canMove or WALLS[unitDef.name] or teamID == raptorTeamID then
+	if unitDef.canMove or WALLS[unitDef.name] then
 		return false
 	end
 	return true
