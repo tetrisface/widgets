@@ -305,7 +305,7 @@ end
 
 local function DrawPlayerAttractions(stage)
 	local row = stageMain == stage and 3 or 2
-	font:Print(I18N("ui.raptors.playerAttractionLabel"):gsub("ui.raptors.playerAttractionLabel", 'Player Eco Attractions:'), panelMarginX, PanelRow(row), panelFontSize)
+	font:Print(I18N("ui.raptors.playerEcoAttractionLabel"):gsub("ui.raptors.playerEcoAttractionLabel", 'Player Eco Attractions:'), panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
 		font:SetTextColor(playerEcoAttraction.color.red, playerEcoAttraction.color.green, playerEcoAttraction.color.blue, playerEcoAttraction.color.alpha)
