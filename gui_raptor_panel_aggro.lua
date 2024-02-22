@@ -41,7 +41,7 @@ end
 
 local function IsValidEcoUnitDef(unitDef, teamID)
 	-- skip Raptor AI, moving units and player built walls
-	if teamID == raptorTeamID or unitDef.canMove or WALLS[unitDef.name] then
+	if unitDef.canMove or WALLS[unitDef.name] or teamID == raptorTeamID then
 		return false
 	end
 	return true
@@ -58,58 +58,48 @@ end
 --	1000: [fusion]
 --	3000: [adv fusion]
 -- }
-local function EcoValueDef(unitDef)
+local function _EcoValueDef(unitDef)
 	if not IsValidEcoUnitDef(unitDef) then
 		return 0
 	end
 
 	local ecoValue = 1
-	if unitDef.energyMake then
-		ecoValue = ecoValue + unitDef.energyMake
-	end
-	if unitDef.energyUpkeep and unitDef.energyUpkeep < 0 then
-		ecoValue = ecoValue - unitDef.energyUpkeep
-	end
-	if unitDef.windGenerator then
-		ecoValue = ecoValue + unitDef.windGenerator * 0.75
-	end
-	if unitDef.tidalGenerator then
-		ecoValue = ecoValue + unitDef.tidalGenerator * 15
-	end
-	if unitDef.extractsMetal and unitDef.extractsMetal > 0 then
-		ecoValue = ecoValue + 200
-	end
-	if unitDef.customParams and unitDef.customParams.energyconv_capacity then
-		ecoValue = ecoValue + tonumber(unitDef.customParams.energyconv_capacity) / 2
-	end
+		+ unitDef.energyMake
+		- (unitDef.energyUpkeep < 0 and unitDef.energyUpkeep or 0)
+		+ (unitDef.windGenerator or 0) * 0.75
+		+ (unitDef.tidalGenerator or 0) * 15
+		+ unitDef.extractsMetal > 0 and 200 or 0
 
-	-- Decoy fusion support
-	if unitDef.customParams and unitDef.customParams.decoyfor == "armfus" then
-		ecoValue = ecoValue + 1000
-	end
+	if unitDef.customParams then
+		if unitDef.customParams.energyconv_capacity then
+			ecoValue = ecoValue + tonumber(unitDef.customParams.energyconv_capacity) / 2
+		end
 
-	-- Make it extra risky to build T2 eco
-	if unitDef.customParams and unitDef.customParams.techlevel and tonumber(unitDef.customParams.techlevel) > 1 then
-		ecoValue = ecoValue * tonumber(unitDef.customParams.techlevel) * 2
-	end
+		-- Decoy fusion support
+		if unitDef.customParams.decoyfor == "armfus" then
+			ecoValue = ecoValue + 1000
+		end
 
-	-- Anti-nuke - add value to force players to go T2 economy, rather than staying T1
-	if unitDef.customParams and (unitDef.customParams.unitgroup == "antinuke" or unitDef.customParams.unitgroup == "nuke") then
-		ecoValue = 1000
+		-- Make it extra risky to build T2 eco
+		if unitDef.customParams.techlevel and tonumber(unitDef.customParams.techlevel) > 1 then
+			ecoValue = ecoValue * tonumber(unitDef.customParams.techlevel) * 2
+		end
+
+		-- Anti-nuke - add value to force players to go T2 economy, rather than staying T1
+		if unitDef.customParams.unitgroup == "antinuke" or unitDef.customParams.unitgroup == "nuke" then
+			ecoValue = 1000
+		end
 	end
 
 	return ecoValue
 end
 
-local RaptorCommon
+local EcoValueDef
 if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
-	RaptorCommon = {
-		EcoValueDef       = EcoValueDef,
-		IsValidEcoUnitDef = IsValidEcoUnitDef
-	}
+	EcoValueDef = _EcoValueDef
 else
 	-- end of delete pending PR #2572
-	RaptorCommon = VFS.Include('LuaRules/gadgets/raptors/common.lua')
+	EcoValueDef = VFS.Include('LuaRules/gadgets/raptors/common.lua').EcoValueDef
 end
 
 local customScale           = 1
@@ -199,6 +189,7 @@ local function EcoAggroPlayerAggregation()
 		end
 
 		local aggroEcoValue = ecoAggrosByPlayerRaw[teamID] or 0
+		aggroEcoValue = aggroEcoValue > 0 and aggroEcoValue or 0
 		if playerName and not playerName:find("Raptors") then
 			sum = sum + aggroEcoValue
 			nPlayerAggros = nPlayerAggros + 1
@@ -499,26 +490,29 @@ function RaptorEvent(raptorEventArgs)
 	end
 end
 
-local function RegisterUnit(unitID, unitDefID, unitTeam)
-	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
+local function RegisterUnit(unitDefID, unitTeam)
+	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) + EcoValueDef(UnitDefs[unitDefID])
 end
 
-local function DeregisterUnit(unitID, unitDefID, unitTeam)
-	local newRaw = (ecoAggrosByPlayerRaw[unitTeam] or 0) - RaptorCommon.EcoValueDef(UnitDefs[unitDefID])
-	ecoAggrosByPlayerRaw[unitTeam] = newRaw < 0 and 0 or newRaw
+local function DeregisterUnit(unitDefID, unitTeam)
+	ecoAggrosByPlayerRaw[unitTeam] = (ecoAggrosByPlayerRaw[unitTeam] or 0) - EcoValueDef(UnitDefs[unitDefID])
 end
 
-function widget:UnitCreated(unitID, unitDefID, unitTeam)
-	RegisterUnit(unitID, unitDefID, unitTeam)
+function widget:UnitCreated(_, unitDefID, unitTeam)
+	if unitTeam ~= raptorTeamID then
+		RegisterUnit(unitDefID, unitTeam)
+	end
 end
 
-function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-	RegisterUnit(unitID, unitDefID, unitTeam)
-	DeregisterUnit(unitID, unitDefID, oldTeam)
+function widget:UnitGiven(_, unitDefID, unitTeam, oldTeam)
+	RegisterUnit(unitDefID, unitTeam)
+	DeregisterUnit(unitDefID, oldTeam)
 end
 
-function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
-	DeregisterUnit(unitID, unitDefID, unitTeam)
+function widget:UnitDestroyed(_, unitDefID, unitTeam)
+	if unitTeam ~= raptorTeamID then
+		DeregisterUnit(unitDefID, unitTeam)
+	end
 end
 
 function widget:Initialize()
@@ -548,7 +542,7 @@ function widget:Initialize()
 	for i = 1, #allUnits do
 		local unitID = allUnits[i]
 		local unitDefID = Spring.GetUnitDefID(unitID)
-		RegisterUnit(unitID, unitDefID, Spring.GetUnitTeam(unitID))
+		RegisterUnit(unitDefID, Spring.GetUnitTeam(unitID))
 	end
 end
 
@@ -572,7 +566,7 @@ function widget:GameFrame(n)
 		Spring.SendCommands({ "luarules HasRaptorEvent 1" })
 		hasRaptorEvent = true
 	end
-	if n % 10 == 0 then
+	if n % 30 == 0 then
 		UpdateRules()
 		UpdateEcoAggrosByPlayerRender()
 	end
