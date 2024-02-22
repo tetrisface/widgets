@@ -38,7 +38,7 @@ local WallDefNames      = {
 --	1000: [fusion]
 --	3000: [adv fusion]
 -- }
-local function _EcoValueDef(unitDef)
+local function EcoValueDef(unitDef)
 	if unitDef.canMove or WallDefNames[unitDef.name] then
 		return 0
 	end
@@ -84,21 +84,19 @@ local function _EcoValueDef(unitDef)
 	return ecoValue
 end
 
-local EcoValueDef
+local defIDsEcoValues = {}
 if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
-	EcoValueDef = _EcoValueDef
+	for unitDefID, unitDef in pairs(UnitDefs) do
+		local ecoValue = EcoValueDef(unitDef) or 0
+		if ecoValue > 0 then
+			defIDsEcoValues[unitDefID] = ecoValue
+		end
+	end
 else
 	-- end of delete pending PR #2572
-	EcoValueDef = VFS.Include('LuaRules/gadgets/raptors/common.lua').EcoValueDef
+	defIDsEcoValues = VFS.Include('LuaRules/gadgets/raptors/common.lua').defIDsEcoValues
 end
 
-local defIDsEcoValues = {}
-for unitDefID, unitDef in pairs(UnitDefs) do
-	local ecoValue = EcoValueDef(unitDef) or 0
-	if ecoValue > 0 then
-		defIDsEcoValues[unitDefID] = ecoValue
-	end
-end
 
 local customScale           = 1
 local widgetScale           = customScale
@@ -538,9 +536,8 @@ function widget:Initialize()
 	updatePos(x, y)
 
 	teamIDs = Spring.GetTeamList()
-	local teamID
 	for i = 1, #teamIDs do
-		teamID = teamIDs[i]
+		local teamID = teamIDs[i]
 		local teamLuaAI = Spring.GetTeamLuaAI(teamID)
 		if (teamLuaAI and string.find(teamLuaAI, "Raptors")) then
 			raptorTeamID = teamID
