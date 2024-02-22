@@ -19,7 +19,7 @@ local GetTimer          = Spring.GetTimer
 local I18N              = Spring.I18N
 
 -- to be deleted pending PR #2572
-local WALLS             = {
+local WallDefNames      = {
 	armdrag  = true,
 	armfort  = true,
 	cordrag  = true,
@@ -27,15 +27,6 @@ local WALLS             = {
 	scavdrag = true,
 	scavfort = true,
 }
-
-local function IsValidEcoUnitDef(unitDef, teamID)
-	-- skip Raptor AI, moving units and player built walls
-	if unitDef.canMove or WALLS[unitDef.name] then
-		return false
-	end
-	return true
-end
-
 -- Calculate an eco value based on energy and metal production
 -- Echo("Built units eco value: " .. ecoValue)
 
@@ -48,16 +39,26 @@ end
 --	3000: [adv fusion]
 -- }
 local function _EcoValueDef(unitDef)
-	if not IsValidEcoUnitDef(unitDef) then
+	if unitDef.canMove or WallDefNames[unitDef.name] then
 		return 0
 	end
 
 	local ecoValue = 1
-		+ unitDef.energyMake
-		- (unitDef.energyUpkeep < 0 and unitDef.energyUpkeep or 0)
-		+ (unitDef.windGenerator or 0) * 0.75
-		+ (unitDef.tidalGenerator or 0) * 15
-		+ unitDef.extractsMetal > 0 and 200 or 0
+	if unitDef.energyMake then
+		ecoValue = ecoValue + unitDef.energyMake
+	end
+	if unitDef.energyUpkeep and unitDef.energyUpkeep < 0 then
+		ecoValue = ecoValue - unitDef.energyUpkeep
+	end
+	if unitDef.windGenerator then
+		ecoValue = ecoValue + unitDef.windGenerator * 0.75
+	end
+	if unitDef.tidalGenerator then
+		ecoValue = ecoValue + unitDef.tidalGenerator * 15
+	end
+	if unitDef.extractsMetal and unitDef.extractsMetal > 0 then
+		ecoValue = ecoValue + 200
+	end
 
 	if unitDef.customParams then
 		if unitDef.customParams.energyconv_capacity then
@@ -89,6 +90,14 @@ if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
 else
 	-- end of delete pending PR #2572
 	EcoValueDef = VFS.Include('LuaRules/gadgets/raptors/common.lua').EcoValueDef
+end
+
+local defIDsEcoValues = {}
+for unitDefID, unitDef in pairs(UnitDefs) do
+	local ecoValue = EcoValueDef(unitDef) or 0
+	if ecoValue > 0 then
+		defIDsEcoValues[unitDefID] = ecoValue
+	end
 end
 
 local customScale           = 1
@@ -481,11 +490,11 @@ function RaptorEvent(raptorEventArgs)
 end
 
 local function RegisterUnit(unitDefID, unitTeam)
-	ecoAggrosByPlayerRaw[unitTeam] = ecoAggrosByPlayerRaw[unitTeam] + EcoValueDef(UnitDefs[unitDefID])
+	ecoAggrosByPlayerRaw[unitTeam] = ecoAggrosByPlayerRaw[unitTeam] + (defIDsEcoValues[unitDefID] or 0)
 end
 
 local function DeregisterUnit(unitDefID, unitTeam)
-	ecoAggrosByPlayerRaw[unitTeam] = ecoAggrosByPlayerRaw[unitTeam] - EcoValueDef(UnitDefs[unitDefID])
+	ecoAggrosByPlayerRaw[unitTeam] = ecoAggrosByPlayerRaw[unitTeam] - (defIDsEcoValues[unitDefID] or 0)
 end
 
 function widget:UnitCreated(_, unitDefID, unitTeam)
