@@ -4,7 +4,7 @@ function widget:GetInfo()
     author  = "-",
     version = "",
     date    = "feb, 2016",
-    name    = "cons widget",
+    name    = "cons",
     license = "",
     layer   = -99990,
     enabled = true,
@@ -63,10 +63,11 @@ local nBuilders = 0
 local reclaimTargets = NewSetList()
 local reclaimTargetsPrev = NewSetList()
 local busyCommands = {
-  [CMD.GUARD] = true,
-  [CMD.MOVE] = true,
+  [CMD.GUARD]   = true,
+  [CMD.MOVE]    = true,
   [CMD.RECLAIM] = true,
 }
+local anyBuildWillStall = false
 
 local function unitDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
@@ -237,7 +238,14 @@ local function repair(builderId, targetId)
   GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.REPAIR, CMD.OPT_CTRL, targetId }, { "alt" })
 end
 
-local function updateFastResourceStatus()
+local function updateFastResourceStatus(n)
+  local regMod = n % 7 + 1
+  regularizedResourceDerivativesMetal[regMod] = isPositiveMetalDerivative
+  regularizedResourceDerivativesEnergy[regMod] = isPositiveEnergyDerivative
+  regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
+  regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
+  regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
+
   metalMakersLevel = GetTeamRulesParam(myTeamId, 'mmLevel')
   local m_curr, m_max, m_pull, m_inc, m_exp = GetTeamResources(myTeamId, 'metal')
   local e_curr, e_max, e_pull, e_inc, e_exp = GetTeamResources(myTeamId, 'energy')
@@ -627,13 +635,7 @@ end
 local function builderIteration(n)
   local gotoContinue
 
-  local regMod = n % 11 + 1
-  regularizedResourceDerivativesMetal[regMod] = isPositiveMetalDerivative
-  regularizedResourceDerivativesEnergy[regMod] = isPositiveEnergyDerivative
-  regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
-  regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-  regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
-  updateFastResourceStatus()
+  updateFastResourceStatus(n)
 
   for builderId, builder in pairs(builders) do
     -- if builderId == 1707 then
@@ -727,41 +729,43 @@ local function builderIteration(n)
 
       local needMetal = metalLevel < 0.15
       local needEnergy = energyLevel < 0.15
-      if not gotoContinue and (needMetal or needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
-          (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
-        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
-        if features then
-          if needMetal and needEnergy then
-            reclaimCheckAction(builderId, features, true, true)
-          elseif needMetal then
-            reclaimCheckAction(builderId, features, true, false)
-          else
-            reclaimCheckAction(builderId, features, false, true)
+      if not gotoContinue then
+        if (needMetal or needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
+            (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
+          features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+          if features then
+            if needMetal and needEnergy then
+              reclaimCheckAction(builderId, features, true, true)
+            elseif needMetal then
+              reclaimCheckAction(builderId, features, true, false)
+            else
+              reclaimCheckAction(builderId, features, false, true)
+            end
+            gotoContinue = true
           end
-          gotoContinue = true
-        end
-      elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
-        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
-        local featureId = cmdQueue[1].params[1]
-        local metal, _, energy = GetFeatureResources(featureId)
+        elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90 and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
+          features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+          local featureId = cmdQueue[1].params[1]
+          local metal, _, energy = GetFeatureResources(featureId)
 
-        if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
-          GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
-        elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
-          GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
-        end
-      elseif math.random() < 0.2 then
-        features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
-        if features then
-          local featuresAll = FeatureSortByHealth(features.all)
-          local feature
-          for i = 1, #featuresAll do
-            feature = featuresAll[i]
-            if feature and feature.health and feature.health < 81 then
-              GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + feature.id }, { 'alt' })
-              break
-            elseif feature and feature.health and feature.health >= 81 then
-              break
+          if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
+            GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+          elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
+            GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
+          end
+        elseif math.random() < 0.2 then
+          features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+          if features then
+            local featuresAll = FeatureSortByHealth(features.all)
+            local feature
+            for i = 1, #featuresAll do
+              feature = featuresAll[i]
+              if feature and feature.health and feature.health < 81 then
+                GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + feature.id }, { 'alt' })
+                break
+              elseif feature and feature.health and feature.health >= 81 then
+                break
+              end
             end
           end
         end
@@ -848,7 +852,7 @@ local function builderIteration(n)
       end
 
       -- 90 == reclaim cmd
-      if (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
+      if not gotoContinue and (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
         if features == nil then
           features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
         end
