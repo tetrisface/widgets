@@ -1,3 +1,10 @@
+local utilitiesDirectory = 'common/springUtilities/'
+local debugUtilities = VFS.Include(utilitiesDirectory .. 'debug.lua')
+
+function table.tostring2(tbl)
+  debugUtilities.TableEcho(tbl)
+end
+
 log = Spring.Echo
 
 function deepcopy(orig)
