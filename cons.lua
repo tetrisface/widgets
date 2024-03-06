@@ -667,7 +667,7 @@ local function SortBuildEcoPrio(a, b)
     -- log('sortbuildecoprio anyBuildWillMStall and not anyBuildWillEStall', a, b)
     return nilDesc
         or sortMAndMMAndBuild(a, b)
-2  end
+  end
   -- log('sortbuildecoprio default', a, b)
   -- log('  conds',
   --   ((metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy)),
