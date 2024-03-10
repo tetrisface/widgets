@@ -681,23 +681,7 @@ local function getReclaimableFeatures(x, z, radius)
 end
 
 local function SortBuildEcoPrio(a, b)
-  -- local _nil = (a == nil and 0 or 1) > (b == nil and 0 or 1)
-  -- if _nil then
-  --   return true
-  -- end
-  -- local nilInv = (a == nil and 0 or 1) <= (b == nil and 0 or 1)
-  -- if nilInv then
-  --   return false
-  -- end
-
-  if a == nil and b == nil then
-    -- log('  Sort Eco false both nil')
-    return false
-  elseif a == nil and b ~= nil then
-    -- log('  Sort Eco false a nil', b.def.translatedHumanName, energyMakeDef(b.def) / b.def.cost, b.build)
-    return false
-  elseif a ~= nil and b == nil then
-    -- log('  Sort Eco true b nil ', a.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, a.build)
+  if a == nil or b == nil then
     return false
   end
 
