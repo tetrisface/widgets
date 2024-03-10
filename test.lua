@@ -11,6 +11,7 @@ function widget:GetInfo()
   }
 end
 
+VFS.Include('luaui/Widgets/helpers.lua')
 local Set                   = VFS.Include('common/SetList.lua').NewSetListNoTable
 local testSet               = Set()
 
@@ -126,6 +127,15 @@ function widget:MouseMove(x, y, dx, dy, button)
   -- return false
 end
 
+function widget:KeyPress(key, mods, isRepeat)
+  -- if (key == 114 and mods['ctrl'] and mods['alt']) then
+  --   widgetHandler:RemoveWidget()
+  --   widgetHandler:
+  --   return
+  -- end
+  -- log('key', key, mods, isRepeat)
+end
+
 -- function getReclaimableFeature(x , z, radius)
 --   local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
 
@@ -218,49 +228,3 @@ end
 --   end
 --   return xMin, xMax, yMin, yMax
 -- end
-
-
--- for printing tables
-function table.val_to_str(v)
-  if "string" == type(v) then
-    v = string.gsub(v, "\n", "\\n")
-    if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
-      return "'" .. v .. "'"
-    end
-    return '"' .. string.gsub(v, '"', '\\"') .. '"'
-  else
-    return "table" == type(v) and table.tostring(v) or
-        tostring(v)
-  end
-end
-
-function table.key_to_str(k)
-  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
-    return k
-  else
-    return "[" .. table.val_to_str(k) .. "]"
-  end
-end
-
-function table.tostring(tbl)
-  if not tbl then
-    return 'nil'
-  end
-  if type(tbl) == "string" then
-    return tbl
-  elseif type(tbl) ~= "table" then
-    return tostring(tbl)
-  end
-  local result, done = {}, {}
-  for k, v in ipairs(tbl) do
-    table.insert(result, table.val_to_str(v))
-    done[k] = true
-  end
-  for k, v in pairs(tbl) do
-    if not done[k] then
-      table.insert(result,
-        table.key_to_str(k) .. "=" .. table.val_to_str(v))
-    end
-  end
-  return "{" .. table.concat(result, ",") .. "}"
-end

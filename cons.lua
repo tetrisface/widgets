@@ -241,35 +241,33 @@ local function getUnitsBuildingUnit(unitID)
   return building
 end
 local function SortHealthAsc(a, b)
-  return a.health + a.maxHealth / 30 < b.health - b.maxHealth / 30
+  return (a.health + ((a.maxHealth or 0) / 30)) < (b.health - ((b.maxHealth or 0) / 30))
 end
 
 local function FeatureSortByHealth(features)
   local feature
   for i = 1, #features do
     feature = features[i]
-    feature.health = GetFeatureHealth(feature.id)
+    feature.health, feature.maxHealth = GetFeatureHealth(feature.id)
   end
   table.sort(features, SortHealthAsc)
   return features
 end
 
+local function reclaim(builderId, unitId)
+  GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, unitId }, { 'alt' })
+end
+
 local function reclaimCheckAction(builderId, features, _needMetal, _needEnergy)
   if _needMetal and (_needEnergy or needEnergy) and #features['metalenergy'] > 0 then
     features['metalenergy'] = FeatureSortByHealth(features['metalenergy'])
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metalenergy'][1].id },
-      { 'alt' })
+    reclaim(builderId, Game.maxUnits + features['metalenergy'][1].id)
   elseif _needMetal and #features['metal'] > 0 then
     features['metal'] = FeatureSortByHealth(features['metal'])
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['metal'][1].id },
-      { 'alt' })
+    reclaim(builderId, Game.maxUnits + features['metal'][1].id)
   elseif (_needEnergy or needEnergy) and #features['energy'] > 0 then
     features['energy'] = FeatureSortByHealth(features['energy'])
-    GiveOrderToUnit(builderId, CMD.INSERT,
-      { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + features['energy'][1].id },
-      { 'alt' })
+    reclaim(builderId, Game.maxUnits + features['energy'][1].id)
   end
 end
 
@@ -379,7 +377,7 @@ local function getUnitResourceProperties(_unitDef)
 end
 
 local function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
-  log('moveonfrombuilding', builderId, targetId, cmdQueueTag)
+  -- log('moveonfrombuilding', builderId, targetId, cmdQueueTag)
   GiveOrderToUnit(builderId, CMD.REMOVE, { cmdQueueTag }, 0)
 
   -- if not cmdQueueTagg then
@@ -683,12 +681,23 @@ local function getReclaimableFeatures(x, z, radius)
 end
 
 local function SortBuildEcoPrio(a, b)
-  local _nil = (a == nil and 0 or 1) > (b == nil and 0 or 1)
-  if _nil then
-    return true
-  end
-  local nilInv = (a == nil and 0 or 1) < (b == nil and 0 or 1)
-  if nilInv then
+  -- local _nil = (a == nil and 0 or 1) > (b == nil and 0 or 1)
+  -- if _nil then
+  --   return true
+  -- end
+  -- local nilInv = (a == nil and 0 or 1) <= (b == nil and 0 or 1)
+  -- if nilInv then
+  --   return false
+  -- end
+
+  if a == nil and b == nil then
+    -- log('  Sort Eco false both nil')
+    return false
+  elseif a == nil and b ~= nil then
+    -- log('  Sort Eco false a nil', b.def.translatedHumanName, energyMakeDef(b.def) / b.def.cost, b.build)
+    return false
+  elseif a ~= nil and b == nil then
+    -- log('  Sort Eco true b nil ', a.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, a.build)
     return false
   end
 
@@ -701,7 +710,7 @@ local function SortBuildEcoPrio(a, b)
         or ((a.defId == b.defId) and (a.build > b.build))
   elseif anyBuildWillMStall and not anyBuildWillEStall then
     -- log('sortbuildecoprio anyBuildWillMStall and not anyBuildWillEStall', a, b)
-    _return = sortMAndMMAndBuild(a, b)
+    _return = sortMAndMM(a, b)
         or ((a.defId == b.defId) and (a.build > b.build))
   end
   -- log('sortbuildecoprio default', a, b)
@@ -779,7 +788,6 @@ local function BuilderIteration(n)
   end
 
   for builderId, builder in pairs(builders) do
-    -- if builderId == 1707 then
     gotoContinue = false
     local builderDef = builder.def
     local cmdQueue = GetUnitCommands(builderId, 3)
@@ -854,9 +862,7 @@ local function BuilderIteration(n)
             end
           end
         end
-        if builderId == 10667 then
-          log(builder.def.translatedHumanName, '#neighboursUnfinished', #neighboursUnfinished)
-        end
+        -- log(builder.def.translatedHumanName, '#neighboursUnfinished', #neighboursUnfinished)
         if #neighboursDamaged > 0 then
           table.sort(neighboursDamaged, SortHealthAsc)
           local damagedTarget = neighboursDamaged[1]
@@ -870,9 +876,7 @@ local function BuilderIteration(n)
                 and (not targetHealthRatio or targetHealthRatio == 0 or damagedTarget.healthRatio * 0.95 < targetHealthRatio)
                 and not isBeingReclaimed(damagedTargetId) and AllowBuilderOrder(builderId) then
               targetId = damagedTargetId
-              if builderId == 10667 then
-                log('repair damaged', targetId, 'not isBeingReclaimed(targetId)', not isBeingReclaimed(targetId))
-              end
+              -- log('repair damaged', targetId, 'not isBeingReclaimed(targetId)', not isBeingReclaimed(targetId))
               repair(builderId, targetId, false)
             end
           end
@@ -892,9 +896,7 @@ local function BuilderIteration(n)
           local candidateId = neighboursUnfinished[1].id
           if targetId ~= candidateId and AllowBuilderOrder(builderId) then
             targetId = candidateId
-            if builderId == 10667 then
-              log('repair unfinished', n, builderId, targetId, neighboursUnfinished[1].def.translatedHumanName)
-            end
+            -- log('repair unfinished', n, builderId, targetId, neighboursUnfinished[1].def.translatedHumanName)
             -- TODO protect against "move ahead remove build queue"
             repair(builderId, targetId, false)
           end
@@ -1064,9 +1066,7 @@ local function BuilderIteration(n)
             local candidateBuild = candidate.build
             if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
               if candidateBuild > targetBuild and AllowBuilderOrder(builderId) then
-                if builderId == 10667 then
-                  log('repair easy finish', UnitIdDef(candidateId).translatedHumanName)
-                end
+                -- log('repair easy finish', UnitIdDef(candidateId).translatedHumanName)
                 repair(builderId, candidateId, true)
                 break
               end
@@ -1085,7 +1085,7 @@ function widget:GameFrame(n)
   if builderUnitIds.count > 300 then
     mainIterationModuloLimit = 70
   elseif builderUnitIds.count > 200 then
-    mainIterationModuloLimit = 20
+    mainIterationModuloLimit = 40
   elseif builderUnitIds.count > 60 then
     mainIterationModuloLimit = 5
   elseif builderUnitIds.count > 10 then
@@ -1107,5 +1107,25 @@ function widget:GameFrame(n)
         end
       end
     end
+  end
+end
+
+function widget:KeyPress(key, mods, isRepeat)
+  -- if (key == 114 and mods['ctrl'] and mods['alt']) then
+  --   widgetHandler:RemoveWidget()
+  --   widgetHandler:
+  --   return
+  -- end
+
+  if key == 113 and mods['alt'] and mods['ctrl'] then -- 'q'
+    table.tostring2({
+      -- needPower = (metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy)
+      -- needEnergy = (not (regularizedPositiveEnergy and isEnergyLeaking and positiveMMLevel)) or isEnergyStalling
+      -- needMM = positiveMMLevel and (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
+      needPower = (needPower and 'true' or 'false') .. ' metalLevel ' .. tostring((metalLevel > 0.8) or (regularizedPositiveMetal and metalLevel > 0.15)) .. ' positiveMMLevel ' .. positiveMMLevel .. ' not regularizedNegativeEnergy ' .. (not regularizedNegativeEnergy),
+      needEnergy = (needEnergy and 'true' or 'false') .. ' not (regularizedPositiveEnergy ' .. (not regularizedPositiveEnergy) .. ' and isEnergyLeaking ' .. (not isEnergyLeaking) .. ' and positiveMMLevel ' .. (not positiveMMLevel) .. ') or isEnergyStalling ' .. (isEnergyStalling and 'true' or 'false'),
+      needMM = (needMM and 'true' or 'false') .. 'positiveMMLevel ' .. positiveMMLevel .. ' '
+    })
+    return true
   end
 end
