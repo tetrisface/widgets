@@ -1,4 +1,5 @@
-if not (Spring.Utilities.Gametype.IsRaptors() and not Spring.Utilities.Gametype.IsScavengers()) then
+if not Spring.Utilities.Gametype.IsRaptors()
+	or Spring.Utilities.Gametype.IsScavengers() then
 	return false
 end
 
@@ -14,19 +15,8 @@ function widget:GetInfo()
 	}
 end
 
-local useWaveMsg            = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg
-
-local I18N                  = Spring.I18N
-
-local customScale           = 1
-local widgetScale           = customScale
-local font, font2
-local messageArgs, marqueeMessage
-local refreshMarqueeMessage = false
-local showMarqueeMessage    = false
-
 -- to be deleted pending PR #2572
-local WallDefNames          = {
+local WallDefNames = {
 	armdrag  = true,
 	armfort  = true,
 	cordrag  = true,
@@ -100,18 +90,20 @@ if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
 		end
 	end
 else
-	-- end of delete pending PR #2572
+	-- keep this line,  pending PR #2572
 	defIDsEcoValues = VFS.Include('LuaRules/gadgets/raptors/common.lua').defIDsEcoValues
 end
 
+local useWaveMsg                 = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg
 
-if not Spring.Utilities.Gametype.IsRaptors() then
-	return false
-end
+local I18N                       = Spring.I18N
 
-if not Spring.GetGameRulesParam("raptorDifficulty") then
-	return false
-end
+local customScale                = 1
+local widgetScale                = customScale
+local font, font2
+local messageArgs, marqueeMessage
+local refreshMarqueeMessage      = false
+local showMarqueeMessage         = false
 
 local displayList
 local panelTexture               = ":n:LuaUI/Images/raptorpanel.tga"
