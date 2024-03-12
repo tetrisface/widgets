@@ -90,7 +90,7 @@ if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
 		end
 	end
 else
-	-- keep this line,  pending PR #2572
+	-- keep this line, pending PR #2572
 	defIDsEcoValues = VFS.Include('LuaRules/gadgets/raptors/common.lua').defIDsEcoValues
 end
 
