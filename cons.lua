@@ -30,7 +30,7 @@ local GetUnitResources                     = Spring.GetUnitResources
 local GetUnitsInCylinder                   = Spring.GetUnitsInCylinder
 local GiveOrderToUnit                      = Spring.GiveOrderToUnit
 local log                                  = Spring.Echo
-local MRandom                              = math.random()
+local MRandom                              = math.random
 local UnitDefs                             = UnitDefs
 
 local abandonedTargetIDs                   = {}
@@ -767,13 +767,13 @@ local every166MSProb = 1 / (30 * 0.1666)
 local every66MSProb = 1 / (30 * 0.0666)
 
 local function NBuildersThrottle()
-  return MRandom() <
-      -- builderUnitIds.count > 1000 and ev
-      builderUnitIds.count > 300 and Interpolate(builderUnitIds.count, 300, 1000, every2330MSProb, every6000MSProb) or
-      builderUnitIds.count > 200 and Interpolate(builderUnitIds.count, 200, 300, every1333MSProb, every2330MSProb) or
-      builderUnitIds.count > 60 and Interpolate(builderUnitIds.count, 60, 200, every166MSProb, every1333MSProb) or
-      builderUnitIds.count > 10 and Interpolate(builderUnitIds.count, 10, 60, every66MSProb, every166MSProb) or
-      1
+  return MRandom() < (
+    builderUnitIds.count > 300 and Interpolate(builderUnitIds.count, 300, 1000, every2330MSProb, every6000MSProb) or
+    builderUnitIds.count > 200 and Interpolate(builderUnitIds.count, 200, 300, every1333MSProb, every2330MSProb) or
+    builderUnitIds.count > 60 and Interpolate(builderUnitIds.count, 60, 200, every166MSProb, every1333MSProb) or
+    builderUnitIds.count > 10 and Interpolate(builderUnitIds.count, 10, 60, every66MSProb, every166MSProb) or
+    1)
+  -- builderUnitIds.count > 1000 and ev
 end
 
 local function Builders(gameFrame)
