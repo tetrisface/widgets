@@ -629,7 +629,7 @@ local function SortFactor(a, b)
   return result
 end
 
-local function SortBuildEcoPrio2(a, b)
+local function SortBuildEcoPrio(a, b)
   if a == nil or b == nil then
     return false
   end
@@ -644,29 +644,11 @@ local function SortBuildEcoPrio2(a, b)
         not needMM
         and ((a.def.buildSpeed / a.def.cost) > (b.def.buildSpeed / b.def.cost))
       )
-  if a and b then
-    -- log('Sort Eco p', powerNeed, 'e', energyNeed, 'm', mMMNeed, result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
-    -- log('SortBuildEcoPrio p', math.floor(0.5 + powerNeed * 100), 'e', math.floor(0.5 + energyNeed * 100), 'm', math.floor(0.5 + mMMNeed * 100), result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
-    log(string.format('sort %s p %.0f e %.0f m %.0f %s %s', tostring(result), powerNeed * 100, energyNeed * 100, mMMNeed * 100, a.def.translatedHumanName, b.def.translatedHumanName
-
-    -- (
-    --   ((a.def.extractsMetal / a.def.cost) / ((b.def.extractsMetal / b.def.cost) or 0.000001))
-    --   + (
-    --     MetalMakingEfficiencyDef(a.def) / (MetalMakingEfficiencyDef(b.def) or 0.000001)
-    --   )
-    -- )
-    -- ,
-    -- (
-    --   ((b.def.extractsMetal / b.def.cost) / ((a.def.extractsMetal / a.def.cost) or 0.000001))
-    --   + (
-    --     MetalMakingEfficiencyDef(b.def) / (MetalMakingEfficiencyDef(a.def) or 0.000001)
-    --   )
-    -- )
-    -- ),
-    -- (MetalMakingEfficiencyDef(a.def) / (MetalMakingEfficiencyDef(b.def) or 0.000001)) or 'asdf',
-    -- a.def.extractsMetal, a.def.cost, MetalMakingEfficiencyDef(a.def), b.def.extractsMetal, b.def.cost, MetalMakingEfficiencyDef(b.def)
-    ))
-  end
+  -- if a and b then
+  -- log('Sort Eco p', powerNeed, 'e', energyNeed, 'm', mMMNeed, result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
+  -- log('SortBuildEcoPrio p', math.floor(0.5 + powerNeed * 100), 'e', math.floor(0.5 + energyNeed * 100), 'm', math.floor(0.5 + mMMNeed * 100), result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
+  -- log(string.format('sort %s p %.0f e %.0f m %.0f %s %s', tostring(result), powerNeed * 100, energyNeed * 100, mMMNeed * 100, a.def.translatedHumanName, b.def.translatedHumanName))
+  -- end
   return result
 end
 
@@ -823,27 +805,11 @@ local function Builders(gameFrame)
             -- log('gotoContinue neighboursDamaged')
           elseif #neighboursUnfinished > 0 then
             -- log('sort', builder.def.translatedHumanName, #neighboursUnfinished, nNeighboursUnfinished)
-            -- table.echo(neighboursUnfinished)
-            -- for i = 1, #neighboursUnfinished do
-            --   if neighboursUnfinished[i] == nil then
-            --     log('wtf nil', i)
-            --     -- table.echo(neighboursUnfinished[i])
-            --   end
-            -- end
-            -- if not pcall(function()
-            --       table.sort(neighboursUnfinished, SortBuildEcoPrio)
-            --     end) then
-            --   log('sort error', #neighboursUnfinished)
-            -- log(#neighboursUnfinished)
-            -- table.echo(neighboursUnfinished)
-            table.sort(neighboursUnfinished, SortBuildEcoPrio2)
-            -- end
-            -- log('sorted')
-            -- table.tostring2(neighboursUnfinished)
+            table.sort(neighboursUnfinished, SortBuildEcoPrio)
             local candidateId = neighboursUnfinished[1].id
             if targetId ~= candidateId then
               targetId = candidateId
-              -- log('repair unfinished', builderId, targetId, neighboursUnfinished[1].def.translatedHumanName)
+              -- log('repair unfinished', builder.def.translatedHumanName, builderId, neighboursUnfinished[1].def.translatedHumanName, targetId, neighboursUnfinished[1].def.translatedHumanName)
               -- TODO protect against "move ahead remove build queue"
               repair(builderId, targetId, false)
             end
