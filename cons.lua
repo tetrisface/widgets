@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    desc    = "Lots of code from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc",
+    desc    = "Some code from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc",
     author  = "tetrisface",
     version = "",
     date    = "feb, 2016",
@@ -54,12 +54,16 @@ local isPositiveMetalDerivative            = false
 local metalLevel                           = 0.5
 local metalMakersLevel                     = 0.5
 local positiveMMLevel                      = true
+local regularizedNegativeMetal             = false
 local regularizedNegativeEnergy            = false
 local regularizedPositiveEnergy            = true
 local regularizedPositiveMetal             = true
 local needPower                            = true
 local needEnergy                           = true
 local needMM                               = true
+local powerNeed                            = 0.5
+local energyNeed                           = 0.5
+local mMMNeed                              = 0.5
 local windMax                              = Game.windMax
 local windMin                              = Game.windMin
 local mainIterationModuloLimit
@@ -90,6 +94,16 @@ local function MetalMakingEfficiencyDef(unitDef)
   end
 end
 
+local function SetBuilderLastOrder(builderId)
+  builders[builderId].lastOrder = Spring.GetGameFrame()
+end
+
+local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
+  currentGameFrame = currentGameFrame or Spring.GetGameFrame()
+  waitGameFrames = waitGameFrames or 15
+  return builders[builderId].lastOrder < currentGameFrame - waitGameFrames
+end
+
 
 local function RegisterUnit(unitID, unitDefID)
   local candidateBuilderDef = UnitDefs[unitDefID]
@@ -112,23 +126,13 @@ local function RegisterUnit(unitID, unitDefID)
   end
 end
 
-local function SetBuilderLastOrder(builderId)
-  builders[builderId].lastOrder = Spring.GetGameFrame()
-end
-
-local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
-  currentGameFrame = currentGameFrame or Spring.GetGameFrame()
-  waitGameFrames = waitGameFrames or 15
-  return builders[builderId].lastOrder < currentGameFrame - waitGameFrames
-end
-
 local function DeregisterUnit(unitID, unitDefID)
   builderUnitIds:Remove(unitID)
   metalMakers:Remove(unitID)
   builders[unitID] = nil
 end
 
-local function energyMakeDef(_unitDef)
+local function EnergyMakeDef(_unitDef)
   local totalEOut = _unitDef.energyMake or 0
 
   totalEOut = totalEOut + -1 * _unitDef.energyUpkeep
@@ -172,7 +176,7 @@ function widget:Initialize()
           or unitDef.extractsMetal > 0
           or MetalMakingEfficiencyDef(unitDef) > 0
           or unitDef.metalMake > 0
-          or energyMakeDef(unitDef) > 0
+          or EnergyMakeDef(unitDef) > 0
         ) then
       ecoBuildDefs:Add(unitDefID)
     end
@@ -195,6 +199,12 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
   if unitTeam == myTeamId then
     DeregisterUnit(unitID, unitDefID)
   end
+end
+
+local function Interpolate(value, inMin, inMax, outMin, outMax)
+  -- Ensure the value is within the specified range
+  -- Calculate the interpolation
+  return outMin + ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) * (outMax - outMin)
 end
 
 local function getBuildersBuildSpeed(tempBuilders)
@@ -316,66 +326,65 @@ local function repair(builderId, targetId, shift)
 end
 
 local function UpdateResources(n)
+  local metalCurrent, metalStorage, metalExpenseWanted, metalIncome, metalExpenseActual = GetTeamResources(myTeamId, 'metal')
+  local energyCurrent, energyStorage, energyExpenseWanted, energyIncome, energyExpenseActual = GetTeamResources(myTeamId, 'energy')
+
   regMod = regMod > 11 and 1 or regMod + 1
-  regularizedResourceDerivativesMetal[regMod] = isPositiveMetalDerivative
-  regularizedResourceDerivativesEnergy[regMod] = isPositiveEnergyDerivative
+  regularizedResourceDerivativesMetal[regMod] = metalIncome > metalExpenseActual
+  regularizedResourceDerivativesEnergy[regMod] = energyIncome > energyExpenseActual
   regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
   regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
+  regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
   regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
 
-  local m_curr, metalStorage, m_pull, m_inc, m_exp = GetTeamResources(myTeamId, 'metal')
-  local e_curr, energyStorage, e_pull, e_inc, e_exp = GetTeamResources(myTeamId, 'energy')
+  -- regularizedPositiveMetal = metalIncome > metalExpenseActual
+  -- regularizedPositiveEnergy = energyIncome > energyExpenseActual
+  -- regularizedNegativeEnergy = energyIncome < energyExpenseActual
 
-  isPositiveMetalDerivative = m_inc > (m_pull + m_exp) / 2
-  metalLevel = m_curr / metalStorage
-
-  isPositiveEnergyDerivative = e_inc > (e_pull + e_exp) / 2
-  energyLevel = e_curr / energyStorage
+  metalLevel = metalCurrent / metalStorage
+  energyLevel = energyCurrent / energyStorage
 
   metalMakersLevel = Spring.GetTeamRulesParam(myTeamId, 'mmLevel')
   positiveMMLevel = metalMakers.count > 0 and true or false
   -- log('energyLevel - 0.3 < metalMakersLevel', energyLevel - 0.3 < metalMakersLevel)
+  -- local mmOn = metalMakers.count / 2
   if energyLevel - 0.3 < metalMakersLevel then
     for i = 1, metalMakers.count do
       local unitId = metalMakers.list[i]
       local health, _, _, _, build = GetUnitHealth(unitId)
       local _, _, _, energy = GetUnitResources(unitId)
+      -- mmOn = i
       if health > 0 and build == 1 and energy < tonumber(UnitIdDef(unitId).customParams.energyconv_capacity) then
         positiveMMLevel = false
         break
       end
     end
   end
+  -- mmOn = mmOn / metalMakers.count
 
   isMetalStalling = metalLevel < 0.01 and not regularizedPositiveMetal
   isEnergyStalling = energyLevel < 0.01 and not regularizedPositiveEnergy
   isMetalLeaking = metalLevel > 0.99 and regularizedPositiveMetal
-  isEnergyLeaking = energyLevel > 0.99 and isPositiveEnergyDerivative
+  isEnergyLeaking = energyLevel > 0.99 and regularizedPositiveEnergy
 
   needPower = (metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy)
   needEnergy = (not (regularizedPositiveEnergy and isEnergyLeaking and positiveMMLevel)) or isEnergyStalling
   needMM = positiveMMLevel and (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
-  -- log('needMM', needMM, 'positiveMMLevel', positiveMMLevel, 'not regularizedNegativeEnergy', not regularizedNegativeEnergy, 'isEnergyLeaking', isEnergyLeaking, 'isMetalStalling', isMetalStalling)
-end
 
--- todo
--- local function getTraveltime(unitDef, A, B)
---   selectedUnits = GetSelectedUnits()
---   local totalBuildSpeed = getBuildersBuildSpeed(getUnitsBuildingUnit(targetId))
---   local secondsLeft = getBuildTimeLeft(targetId)
---   local unitDef = UnitDefs[GetUnitDefID(targetId)]
---   if isTimeToMoveOn(secondsLeft, builderId, unitDef, totalBuildSpeed) and not targetWillStall(targetId, unitDef, totalBuildSpeed, secondsLeft) then
---     moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
---   end
--- end
+  powerNeed = math.max(0, math.min(1,
+    (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or 1) * metalLevel
+    -- * (energyIncome / energyExpenseActual)
+    * (regularizedNegativeEnergy and Interpolate((energyExpenseActual - energyIncome) / energyCurrent, 0, 10, 1, 0) or 1) * (not needMM and 1 or energyLevel)
+  ))
+  energyNeed = math.max(0, math.min(1, ((positiveMMLevel or not (regularizedNegativeEnergy and regularizedPositiveEnergy)) and (1 - Interpolate(energyLevel, metalMakersLevel, 1, 0, 1))
+    or Interpolate(energyExpenseActual / energyIncome, 2, 1, 0.5, 0.5) * (1 - energyLevel))))
+  -- mMMNeed = math.max(0, math.min(1, (needMM and 1 or 0) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
+  -- mMMNeed = math.max(0, math.min(1, (positiveMMLevel and 1 or 0) * (regularizedNegativeEnergy and 1 or 0.5) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
+  mMMNeed = math.max(0, math.min(1, (positiveMMLevel and 1 or 0) * (energyIncome / energyExpenseActual) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
 
-local function getUnitResourceProperties(_unitDef)
-  local metalMakingEfficiency = MetalMakingEfficiencyDef(_unitDef)
-  if metalMakingEfficiency == nil then
-    metalMakingEfficiency = 0
-  end
-  local energyMaking = energyMakeDef(_unitDef)
-  return metalMakingEfficiency, energyMaking
+  -- log('power', 'needMM', needMM, (metalLevel + (not needMM and 1 or energyLevel)) / 2)
+  -- log('energy', needEnergy, (not (regularizedPositiveEnergy and isEnergyLeaking and positiveMMLevel)))
+  -- log('MM', 'positiveMMLevel', positiveMMLevel, 'regularizedPositiveMetal', 'regularizedNegativeEnergy', regularizedNegativeEnergy, 'isEnergyLeaking', isEnergyLeaking, 'isMetalStalling', isMetalStalling)
 end
 
 local function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg)
@@ -537,99 +546,11 @@ local function TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft
   return mStall or eStall, mStall, eStall
 end
 
-local function sortBuildPower(a, b)
-  local aWillStall = TargetWillStall(a.id)
-  local bWillStall = TargetWillStall(b.id)
-  if aWillStall and bWillStall then
-    return a.def.power < b.def.power
-  elseif aWillStall and not bWillStall then
-    return false
-  elseif not aWillStall and bWillStall then
-    return true
-  else
-    return a.def.buildSpeed * (1 / getBuildTimeLeft(a.id)) * (1 / a.def.power) >
-        b.def.buildSpeed * (1 / getBuildTimeLeft(b.id)) * (1 / b.def.power)
-        or a.build > b.build
-  end
-end
-
-local function sortEnergy(a, b)
-  local aWillStall = TargetWillStall(a.id)
-  local bWillStall = TargetWillStall(b.id)
-  if aWillStall and bWillStall then
-    return energyMakeDef(a.def) * (1 / getBuildTimeLeft(a.id) * a.def.power) >
-        energyMakeDef(b.def) * (1 / getBuildTimeLeft(b.id) * b.def.power)
-  elseif aWillStall and not bWillStall then
-    return false
-  elseif not aWillStall and bWillStall then
-    return true
-  else
-    return energyMakeDef(a.def) * a.def.power > energyMakeDef(b.def) * b.def.power
-        or a.build > b.build
-  end
-end
-
-local function sortMAndMMAndBuild(a, b)
-  return ((a.def.extractsMetal / a.def.cost) > (b.def.extractsMetal / b.def.cost))
-      or (MetalMakingEfficiencyDef(a.def) > MetalMakingEfficiencyDef(b.def))
-      or (a.build > b.build)
-end
-
-local function sortMAndMM(a, b)
+local function SortMAndMM(a, b)
   return ((a.def.extractsMetal / a.def.cost) > (b.def.extractsMetal / b.def.cost))
       or (MetalMakingEfficiencyDef(a.def) > MetalMakingEfficiencyDef(b.def))
 end
 
-local function getBestCandidate(candidatesOriginal, assistType)
-  if #candidatesOriginal == 0 or assistType == 'metal' then
-    return false
-  end
-  local candidates = {}
-  local nCandidates = 0
-
-  for i = 1, #candidatesOriginal do
-    local candidateOriginal = candidatesOriginal[i]
-    local candidateId = candidateOriginal.id
-    -- local candidateDefId = GetUnitDefID(candidateId)
-    -- local candidateDefId = GetUnitDefID(candidateId)
-    local candidateDef = candidateOriginal.def
-    local MMEff = MetalMakingEfficiencyDef(candidateDef)
-    local M = candidateDef.extractsMetal or 0
-    if
-        (assistType == 'buildPower' and candidateDef.buildSpeed > 0) or
-        (assistType == 'energy' and (energyMakeDef(candidateDef) > 0)) or
-        (assistType == 'mm' and (MMEff > 0 or M > 0)) then
-      nCandidates = nCandidates + 1
-      candidates[nCandidates] = candidateOriginal
-    end
-  end
-
-  if #candidates == 1 then
-    return candidates[1]
-  elseif #candidates == 0 then
-    return false
-  end
-  log('candidates', table.tostring(candidates))
-  if assistType == 'buildPower' then
-    table.sort(candidates, sortBuildPower)
-  elseif assistType == 'energy' then
-    table.sort(candidates, sortEnergy)
-  elseif assistType == 'mm' then
-    table.sort(candidates, sortMAndMMAndBuild)
-  end
-  return candidates[1]
-end
-
-local function builderForceAssist(assistType, builderId, targetId, neighbours)
-  local bestCandidate = getBestCandidate(neighbours, assistType)
-
-  if bestCandidate and targetId ~= bestCandidate.id then
-    log('forceassisting', assistType, bestCandidate.def.translatedHumanName)
-    repair(builderId, bestCandidate.id)
-    return true
-  end
-  return false
-end
 
 local function doFastForwardDecision(builder, targetId, cmdQueueTag, cmdQueueTagg)
   local targetDef = UnitDefs[GetUnitDefID(targetId)]
@@ -682,82 +603,71 @@ local function getReclaimableFeatures(x, z, radius)
   return features
 end
 
-local function SortBuildEcoPrio(a, b)
+local function SortFactor(a, b)
+  local buildSpeed = a.def.buildSpeed > b.def.buildSpeed and 1 or 0
+  -- log('SortFactor', a.def.translatedHumanName, b.def.translatedHumanName)
+  -- log('SortFactor p', buildSpeed)
+  local energyMakeDefA = EnergyMakeDef(a.def) / a.def.cost
+  local energyMakeDefB = EnergyMakeDef(b.def) / b.def.cost
+  local energyMakeDef = energyMakeDefA <= 0 and energyMakeDefB <= 0 and 0 or energyMakeDefA > 0 and energyMakeDefB > 0 and Interpolate(energyMakeDefA / energyMakeDefB, 0.2, 2, 0, 1) or energyMakeDefA > 0 and 1 or 0
+  -- log('SortFactor e', energyMakeDef, energyMakeDefA, energyMakeDefB)
+  local sortMAndMM = SortMAndMM(a, b) and 1 or 0
+  -- log('SortFactor m', sortMAndMM)
+  -- log('SortFactor comp', powerNeed * buildSpeed
+  --   + energyNeed * energyMakeDef
+  --   + mMMNeed * sortMAndMM, powerNeed * (1 - buildSpeed)
+  --   + energyNeed * (1 - energyMakeDef)
+  --   + mMMNeed * (1 - sortMAndMM))
+  local result =
+      powerNeed * buildSpeed
+      + energyNeed * energyMakeDef
+      + mMMNeed * sortMAndMM
+      >
+      powerNeed * (1 - buildSpeed)
+      + energyNeed * (1 - energyMakeDef)
+      + mMMNeed * (1 - sortMAndMM)
+  return result
+end
+
+local function SortBuildEcoPrio2(a, b)
   if a == nil or b == nil then
     return false
   end
-
-  -- if anyBuildWillMStall and anyBuildWillEStall then
-  --   -- log('sortbuildecoprio anyBuildWillMStall and anyBuildWillEStall', a, b)
-  --   return a.build > b.build
-  local result
-  -- if not anyBuildWillMStall and anyBuildWillEStall then
-  --   _return = (energyMakeDef(a.def) / a.def.cost) > (energyMakeDef(b.def) / b.def.cost)
-  --       or ((a.defId == b.defId) and (a.build > b.build))
-  -- elseif anyBuildWillMStall and not anyBuildWillEStall then
-  --   -- log('sortbuildecoprio anyBuildWillMStall and not anyBuildWillEStall', a, b)
-  --   _return = sortMAndMM(a, b)
-  --       or ((a.defId == b.defId) and (a.build > b.build))
-  -- end
-  -- log('sortbuildecoprio default', a, b)
-  -- log('  conds',
-  --   ((metalLevel > 0.8 or (regularizedPositiveMetal and metalLevel > 0.15)) and (positiveMMLevel or not regularizedNegativeEnergy)),
-  --   (not regularizedPositiveEnergy and not isEnergyLeaking and not positiveMMLevel),
-  --   (positiveMMLevel and (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)),
-  --   ' --- ', tostring(not regularizedPositiveEnergy), tostring(not isEnergyLeaking), tostring(not positiveMMLevel)
-  -- )
-  -- if not anyBuildWillMStall and not anyBuildWillEStall then
-  result = (
+  -- log('sort defid', (a.defId == b.defId) and (a.build > b.build))
+  local result = (
         (a.defId == b.defId) and (a.build > b.build)
       )
-      or (
-      -- sort by buildpower
-        needPower and ((a.def.buildSpeed / getBuildTimeLeft(a.id)) > (b.def.buildSpeed / getBuildTimeLeft(b.id)))
-      )
-      -- or (function(_a, _b)
-      --   log('  no sort build power', _a.def.translatedHumanName, _b.def.translatedHumanName, _a.def.buildSpeed, _b.def.buildSpeed)
-      --   return false
-      -- end)(a, b)
-      or (
-      -- failed sorting build power, try energy
-        (needEnergy or (not anyBuildWillMStall and anyBuildWillEStall)) and ((energyMakeDef(a.def) / a.def.cost) > (energyMakeDef(b.def) / b.def.cost))
-      )
-      -- or (function(_a, _b)
-      --   log('  no sort energy, try metal', _a.def.translatedHumanName, _b.def.translatedHumanName)
-      --   return false
-      -- end)(a, b)
-      or (
-      -- failed sorting energy, try metal
-        (needMM or ((anyBuildWillMStall and not anyBuildWillEStall))) and sortMAndMM(a, b)
-      )
-      -- or (function(_a, _b)
-      --   log('  no sort bp, e and m', _a.def.translatedHumanName, _b.def.translatedHumanName)
-      --   return false
-      -- end)(a, b)
+      or SortFactor(a, b)
       or (
         not needPower and
         not needEnergy and
         not needMM
-        -- and (energyMakeDef(a.def) / a.def.cost) > (energyMakeDef(b.def) / b.def.cost)
         and ((a.def.buildSpeed / a.def.cost) > (b.def.buildSpeed / b.def.cost))
       )
-  -- end
   if a and b then
-    local one = needPower
-    local two = needEnergy or (not anyBuildWillMStall and anyBuildWillEStall)
-    local three = needMM or ((anyBuildWillMStall and not anyBuildWillEStall))
+    -- log('Sort Eco p', powerNeed, 'e', energyNeed, 'm', mMMNeed, result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
+    -- log('SortBuildEcoPrio p', math.floor(0.5 + powerNeed * 100), 'e', math.floor(0.5 + energyNeed * 100), 'm', math.floor(0.5 + mMMNeed * 100), result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
+    log(string.format('sort %s p %.0f e %.0f m %.0f %s %s', tostring(result), powerNeed * 100, energyNeed * 100, mMMNeed * 100, a.def.translatedHumanName, b.def.translatedHumanName
 
-    log('Sort Eco p', one, 'e', two, 'm', three, result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
+    -- (
+    --   ((a.def.extractsMetal / a.def.cost) / ((b.def.extractsMetal / b.def.cost) or 0.000001))
+    --   + (
+    --     MetalMakingEfficiencyDef(a.def) / (MetalMakingEfficiencyDef(b.def) or 0.000001)
+    --   )
+    -- )
+    -- ,
+    -- (
+    --   ((b.def.extractsMetal / b.def.cost) / ((a.def.extractsMetal / a.def.cost) or 0.000001))
+    --   + (
+    --     MetalMakingEfficiencyDef(b.def) / (MetalMakingEfficiencyDef(a.def) or 0.000001)
+    --   )
+    -- )
+    -- ),
+    -- (MetalMakingEfficiencyDef(a.def) / (MetalMakingEfficiencyDef(b.def) or 0.000001)) or 'asdf',
+    -- a.def.extractsMetal, a.def.cost, MetalMakingEfficiencyDef(a.def), b.def.extractsMetal, b.def.cost, MetalMakingEfficiencyDef(b.def)
+    ))
   end
   return result
-end
-
-local function Interpolate(value, inMin, inMax, outMin, outMax)
-  -- Ensure the value is within the specified range
-  value = (value < inMin) and inMin or ((value > inMax) and inMax or value)
-
-  -- Calculate the interpolation
-  return outMin + ((value - inMin) / (inMax - inMin)) * (outMax - outMin)
 end
 
 local every6000MSProb = 1 / (30 * 6) -- 1/(30*6) = 0.005555, every 6th second max
@@ -769,8 +679,9 @@ local every66MSProb = 1 / (30 * 0.0666)
 local function NBuildersThrottle()
   return MRandom() < (
     builderUnitIds.count > 300 and Interpolate(builderUnitIds.count, 300, 1000, every2330MSProb, every6000MSProb) or
-    builderUnitIds.count > 200 and Interpolate(builderUnitIds.count, 200, 300, every1333MSProb, every2330MSProb) or
-    builderUnitIds.count > 60 and Interpolate(builderUnitIds.count, 60, 200, every166MSProb, every1333MSProb) or
+    builderUnitIds.count > 200 and Interpolate(builderUnitIds.count, 200, 300, every2330MSProb, every2330MSProb) or
+    builderUnitIds.count > 100 and Interpolate(builderUnitIds.count, 100, 200, every1333MSProb, every2330MSProb) or
+    builderUnitIds.count > 60 and Interpolate(builderUnitIds.count, 60, 100, every166MSProb, every1333MSProb) or
     builderUnitIds.count > 10 and Interpolate(builderUnitIds.count, 10, 60, every66MSProb, every166MSProb) or
     1)
   -- builderUnitIds.count > 1000 and ev
@@ -852,6 +763,16 @@ local function Builders(gameFrame)
           local nNeighboursUnfinished = 0
           local nNeighboursDamaged    = 0
 
+          local isBuildingEco         = nCmdQueue == 0
+              or (cmdQueue[1] and (
+                ((cmdQueue[1].id == CMD.REPAIR) and (ecoBuildDefs.hash[GetUnitDefID(cmdQueue[1].params[1])] ~= nil))
+                or ((ecoBuildDefs.hash[-cmdQueue[1].id] ~= nil) and GetUnitIsBuilding(builderId) ~= nil)
+              ))
+
+          local notHasBuildingQueue   = not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0)))
+
+          --   log(builder.def.translatedHumanName, 'isBuildingEco', isBuildingEco, 'notHasBuildingQueue', notHasBuildingQueue, cmdQueue[1] and cmdQueue[1].id, cmdQueue[2] and cmdQueue[2].id)
+
           for i = 1, #neighbourIds do
             local candidateId = neighbourIds[i]
             if candidateId ~= builderId then
@@ -868,18 +789,18 @@ local function Builders(gameFrame)
               }
               nNeighbours = nNeighbours + 1
               neighbours[nNeighbours] = candidate
-              if candidateBuild ~= nil and candidateBuild < 1 then
+              if candidateBuild ~= nil and candidateBuild < 1 and isBuildingEco and notHasBuildingQueue then
                 nNeighboursUnfinished = nNeighboursUnfinished + 1
                 neighboursUnfinished[nNeighboursUnfinished] = candidate
-                -- log('neighboursUnfinished', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio)
-              elseif not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0))) and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
+                -- log('neighboursUnfinished', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursUnfinished)
+              elseif not notHasBuildingQueue and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
                 nNeighboursDamaged = nNeighboursDamaged + 1
                 neighboursDamaged[nNeighboursDamaged] = candidate
-                -- log('neighboursDamaged', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio)
+                -- log('neighboursDamaged', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursDamaged)
               end
             end
           end
-          -- log(builder.def.translatedHumanName, '#neighboursUnfinished', #neighboursUnfinished)
+          -- log(builder.def.translatedHumanName, '#neighboursUnfinished', #neighboursUnfinished, nNeighboursUnfinished)
           if #neighboursDamaged > 0 then
             table.sort(neighboursDamaged, SortHealthAsc)
             local damagedTarget = neighboursDamaged[1]
@@ -900,32 +821,29 @@ local function Builders(gameFrame)
             -- log('gotoContinue', 'neighboursDamaged', 'targetId', targetId, 'damagedTargetId', damagedTargetId, 'targetHealthRatio', targetHealthRatio, 'damagedTarget.healthRatio', damagedTarget.healthRatio)
             gotoContinue = true
             -- log('gotoContinue neighboursDamaged')
-          elseif #neighboursUnfinished > 0 and (nCmdQueue == 0
-                or (cmdQueue[1] and (
-                  ((cmdQueue[1].id == CMD.REPAIR) and (ecoBuildDefs.hash[GetUnitDefID(cmdQueue[1].params[1])] ~= nil))
-                  or ((ecoBuildDefs.hash[-cmdQueue[1].id] ~= nil) and GetUnitIsBuilding(builderId) ~= nil)
-                ))) then
-            -- log('sort')
+          elseif #neighboursUnfinished > 0 then
+            -- log('sort', builder.def.translatedHumanName, #neighboursUnfinished, nNeighboursUnfinished)
             -- table.echo(neighboursUnfinished)
-            for i = 1, #neighboursUnfinished do
-              if neighboursUnfinished[i] == nil then
-                log('wtf nil', i)
-                -- table.echo(neighboursUnfinished[i])
-              end
-            end
+            -- for i = 1, #neighboursUnfinished do
+            --   if neighboursUnfinished[i] == nil then
+            --     log('wtf nil', i)
+            --     -- table.echo(neighboursUnfinished[i])
+            --   end
+            -- end
             -- if not pcall(function()
             --       table.sort(neighboursUnfinished, SortBuildEcoPrio)
             --     end) then
             --   log('sort error', #neighboursUnfinished)
+            -- log(#neighboursUnfinished)
             -- table.echo(neighboursUnfinished)
-            table.sort(neighboursUnfinished, SortBuildEcoPrio)
+            table.sort(neighboursUnfinished, SortBuildEcoPrio2)
             -- end
             -- log('sorted')
             -- table.tostring2(neighboursUnfinished)
             local candidateId = neighboursUnfinished[1].id
-            if targetId ~= candidateId and AllowBuilderOrder(builderId, gameFrame) then
+            if targetId ~= candidateId then
               targetId = candidateId
-              -- log('repair unfinished', n, builderId, targetId, neighboursUnfinished[1].def.translatedHumanName)
+              -- log('repair unfinished', builderId, targetId, neighboursUnfinished[1].def.translatedHumanName)
               -- TODO protect against "move ahead remove build queue"
               repair(builderId, targetId, false)
             end
@@ -951,7 +869,7 @@ local function Builders(gameFrame)
               -- log('gotoContinue reclaimCheckAction can reclaim')
             end
           elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == CMD.RECLAIM and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
-            log('should stop reclaim', builderDef.translatedHumanName)
+            -- log('should stop reclaim', builderDef.translatedHumanName)
             features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
             local featureId = cmdQueue[1].params[1]
             local metal, _, energy = GetFeatureResources(featureId)
@@ -998,68 +916,6 @@ local function Builders(gameFrame)
             end
           end
         end
-
-        -- refresh for possible target change
-        -- builder.target.id = GetUnitIsBuilding(builderId)
-        -- targetId = builder.target.id
-        -- local targetUnitMM = 0
-        -- local targetUnitE = 0
-        -- if targetId then
-        --   targetDef = UnitDefs[GetUnitDefID(targetId)]
-        --   targetUnitMM, targetUnitE = getUnitResourceProperties(targetDef)
-        -- else
-        --   targetDef = nil
-        -- end
-
-        -- mm/e switcher
-
-        --  log('targetUnitE > 0, positiveMMLevel, regpose or eleak #### ' .. tostring(targetUnitE > 0) .. ', ' .. tostring(positiveMMLevel) .. ', ' .. tostring((regularizedPositiveEnergy or isEnergyLeaking) ))
-        --  if targetUnitE > 0 then
-        --    log(isEnergyLeaking)
-        --    log('positiveMMLevel, not regnege or eleak === ' .. tostring(positiveMMLevel) .. ', ' .. tostring((regularizedPositiveEnergy or isEnergyLeaking) ))
-        --  end
-        -- log(
-        --   builderDef.translatedHumanName .. ' targetId ' .. targetId .. ' #candidateNeighbours ' .. #candidateNeighbours
-        -- )
-        -- if n % (mainIterationModuloLimit * 3) == 0 and #candidateNeighbours > 1 then
-        -- if not gotoContinue and #neighboursUnfinished > 1 then
-        --   -- log(
-        --   --   'metalLevel ' .. metalLevel ..
-        --   --   ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) ..
-        --   --   ' positiveMMLevel ' .. tostring(positiveMMLevel) ..
-        --   --   ' not regularizedNegativeEnergy ' .. tostring(not regularizedNegativeEnergy) ..
-        --   --   ' not regularizedPositiveEnergy ' .. tostring(not regularizedPositiveEnergy) ..
-        --   --   ' not isEnergyLeaking ' .. tostring(not isEnergyLeaking) ..
-        --   --   ' targetUnitMM > 0 ' .. tostring(targetUnitMM > 0) ..
-        --   --   ' targetUnitE > 0 ' .. tostring(targetUnitE > 0) ..
-        --   --   ' isMetalStalling ' .. tostring(isMetalStalling) ..
-        --   --   ' targetDef.buildSpeed ' .. tostring(targetDef and targetDef.buildSpeed or nil)
-        --   -- )
-        --   log('needPower', needPower, 'needEnergy', needEnergy, 'needMM', needMM)
-
-        --   local foundPowerCandidate = false
-        --   if (needPower) then
-        --     -- log('ForceAssist buildPower target ' .. builderDef.translatedHumanName) -- .. (targetId or '-') .. ' ' .. (targetDef and targetDef.translatedHumanName or '-') .. ' regularizedPositiveMetal ' .. tostring(regularizedPositiveMetal) .. ' metalLevel ' .. metalLevel)
-        --     foundPowerCandidate = builderForceAssist('buildPower', builderId, targetId, neighboursUnfinished)
-        --   end
-        --   if (not needPower or not foundPowerCandidate)
-        --       and needEnergy and ((targetUnitMM > 0) or (targetUnitE <= 0)) then
-        --     log('ForceAssist energy target ' .. builderDef.translatedHumanName) -- .. (targetId or '-') .. ' ' .. (targetDef and targetDef.translatedHumanName or '-'))
-        --     builderForceAssist('energy', builderId, targetId, neighboursUnfinished)
-        --     -- elseif positiveMMLevel and (((not regularizedNegativeEnergy or isEnergyLeaking) and targetUnitE > 0)
-        --   elseif (not needPower or not foundPowerCandidate) and needMM and targetUnitE > 0 then
-        --     -- log('ForceAssist mm target ' .. builderDef.translatedHumanName) -- .. (targetId or '-') .. ' ' .. (targetDef and targetDef.translatedHumanName or '-'))
-        --     builderForceAssist('mm', builderId, targetId, neighboursUnfinished)
-        --   else
-        --     table.sort(neighboursUnfinished, SortBuildEcoPrio)
-        --     local candidateId = neighboursUnfinished[1].id
-        --     if targetId ~= candidateId then
-        --       targetId = candidateId
-        --       -- log('repair sorted no eco force', UnitIdDef(targetId).translatedHumanName)
-        --       repair(builderId, targetId)
-        --     end
-        --   end
-        -- end
 
         -- 90 == reclaim cmd
         if not gotoContinue and (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
@@ -1112,21 +968,21 @@ local function Builders(gameFrame)
 end
 
 function widget:GameFrame(gameFrame)
-  -- mainIterationModuloLimit = 1
-  -- if builderUnitIds.count > 300 then
-  --   mainIterationModuloLimit = 70
-  -- elseif builderUnitIds.count > 200 then
-  --   mainIterationModuloLimit = 40
-  -- elseif builderUnitIds.count > 60 then
-  --   mainIterationModuloLimit = 5
-  -- elseif builderUnitIds.count > 10 then
-  --   mainIterationModuloLimit = 2
-  -- end
+  mainIterationModuloLimit = 1
+  if builderUnitIds.count > 300 then
+    mainIterationModuloLimit = 20
+  elseif builderUnitIds.count > 200 then
+    mainIterationModuloLimit = 10
+  elseif builderUnitIds.count > 60 then
+    mainIterationModuloLimit = 5
+    -- elseif builderUnitIds.count > 10 then
+    -- mainIterationModuloLimit = 2
+  end
 
-  -- if n % mainIterationModuloLimit == 0 then
-  -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
-  Builders(gameFrame)
-  -- end
+  if n % mainIterationModuloLimit == 0 then
+    -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
+    Builders(gameFrame)
+  end
 
   if gameFrame % 100 == 0 then
     for i = 1, #abandonedTargetIDs do
