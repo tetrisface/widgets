@@ -27,6 +27,7 @@ local GetUnitHealth                        = Spring.GetUnitHealth
 local GetUnitIsBuilding                    = Spring.GetUnitIsBuilding
 local GetUnitPosition                      = Spring.GetUnitPosition
 local GetUnitResources                     = Spring.GetUnitResources
+local GetUnitSeparation                    = Spring.GetUnitSeparation
 local GetUnitsInCylinder                   = Spring.GetUnitsInCylinder
 local GiveOrderToUnit                      = Spring.GiveOrderToUnit
 local log                                  = Spring.Echo
@@ -94,23 +95,27 @@ local function MetalMakingEfficiencyDef(unitDef)
   end
 end
 
+local function BuilderById(id)
+  return builders[builderUnitIds.hash[id]]
+end
+
 local function SetBuilderLastOrder(builderId)
-  builders[builderId].lastOrder = Spring.GetGameFrame()
+  BuilderById(builderId).lastOrder = Spring.GetGameFrame()
 end
 
 local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
   currentGameFrame = currentGameFrame or Spring.GetGameFrame()
   waitGameFrames = waitGameFrames or 15
-  return builders[builderId].lastOrder < currentGameFrame - waitGameFrames
+  return BuilderById(builderId).lastOrder < currentGameFrame - waitGameFrames
 end
 
 
-local function RegisterUnit(unitID, unitDefID)
+local function RegisterBuilder(unitID, unitDefID)
   local candidateBuilderDef = UnitDefs[unitDefID]
 
   if candidateBuilderDef.isBuilder and candidateBuilderDef.canAssist and not candidateBuilderDef.isFactory then
     builderUnitIds:Add(unitID)
-    builders[unitID] = {
+    builders[builderUnitIds.count] = {
       id                 = unitID,
       buildSpeed         = candidateBuilderDef.buildSpeed,
       originalBuildSpeed = candidateBuilderDef.buildSpeed,
@@ -126,10 +131,13 @@ local function RegisterUnit(unitID, unitDefID)
   end
 end
 
-local function DeregisterUnit(unitID, unitDefID)
+local function DeregisterBuilder(unitID)
+  local index = builderUnitIds.hash[unitID]
+  if index ~= nil then
+    builders[index] = nil
+  end
   builderUnitIds:Remove(unitID)
   metalMakers:Remove(unitID)
-  builders[unitID] = nil
 end
 
 local function EnergyMakeDef(_unitDef)
@@ -166,7 +174,7 @@ function widget:Initialize()
   local myUnits = GetTeamUnits(myTeamId)
   for _, unitID in ipairs(myUnits) do
     local unitDefID = GetUnitDefID(unitID)
-    RegisterUnit(unitID, unitDefID)
+    RegisterBuilder(unitID, unitDefID)
   end
 
   for unitDefID, unitDef in pairs(UnitDefs) do
@@ -185,19 +193,19 @@ end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
   if unitTeam == myTeamId then
-    RegisterUnit(unitID, unitDefID)
+    RegisterBuilder(unitID, unitDefID)
   end
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
   if unitTeam == myTeamId then
-    RegisterUnit(unitID, unitDefID)
+    RegisterBuilder(unitID, unitDefID)
   end
 end
 
 function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
   if unitTeam == myTeamId then
-    DeregisterUnit(unitID, unitDefID)
+    DeregisterBuilder(unitID)
   end
 end
 
@@ -211,9 +219,10 @@ local function getBuildersBuildSpeed(tempBuilders)
   local totalSpeed = 0
 
   for _, unitID in pairs(tempBuilders) do
-    local targetId = builders[unitID].targetId
+    local builder = BuilderById(unitID)
+    local targetId = builder.targetId
     if not targetId or not isAlreadyInTable(targetId, tempBuilders) then
-      totalSpeed = totalSpeed + builders[unitID].buildSpeed
+      totalSpeed = totalSpeed + builder.buildSpeed
     end
   end
 
@@ -223,10 +232,12 @@ end
 local function getBuildTimeLeft(targetId, targetDef)
   local _, _, _, _, build = GetUnitHealth(targetId)
   local currentBuildSpeed = 0
-  for builderId, _ in pairs(builders) do
-    local testTargetId = GetUnitIsBuilding(builderId)
-    if testTargetId == targetId and builderId ~= targetId then
-      currentBuildSpeed = currentBuildSpeed + builders[builderId].originalBuildSpeed
+  -- for builderId, _ in pairs(builders) do
+  for i = 1, builderUnitIds.count do
+    local builder = BuilderById(builderUnitIds.list[i])
+    local testTargetId = GetUnitIsBuilding(builder.id)
+    if testTargetId == targetId and builder.id ~= targetId then
+      currentBuildSpeed = currentBuildSpeed + builder.originalBuildSpeed
     end
   end
 
@@ -287,7 +298,7 @@ local function isBeingReclaimed(targetId)
   return reclaimTargetsPrev.hash[targetId] ~= nil or reclaimTargets.hash[targetId] ~= nil
 end
 
-local function purgeRepairs(builderId, cmdQueue)
+local function purgeRepairs(builderId, cmdQueue, queueSize)
   if not cmdQueue then
     return {}
   end
@@ -310,7 +321,7 @@ local function purgeRepairs(builderId, cmdQueue)
       reclaimTargets:Add(targetId)
     end
   end
-  return GetUnitCommands(builderId, 3)
+  return GetUnitCommands(builderId, queueSize)
 end
 
 
@@ -395,7 +406,7 @@ local function moveOnFromBuilding(builderId, targetId, cmdQueueTag, cmdQueueTagg
   -- else
   --   GiveOrderToUnit(builderId, CMD.REMOVE, {cmdQueueTag,cmdQueueTagg}, {"ctrl"})
   -- end
-  builders[builderId].previousBuilding = targetId
+  BuilderById(builderId).previousBuilding = targetId
   abandonedTargetIDs[targetId] = true
   -- local x, _, z = GetUnitPosition(targetId, true)
   -- Spring.MarkerAddPoint(x, 0, z)
@@ -476,7 +487,7 @@ local function traceUpkeep(unitID, alreadyCounted)
     return 0, 0
   end
 
-  local builder = builders[unitID]
+  local builder = BuilderById(unitID)
   if not builder then
     return 0, 0
   end
@@ -484,7 +495,7 @@ local function traceUpkeep(unitID, alreadyCounted)
   local metalMake, metal, energyMake, energy = GetUnitResources(unitID)
 
   for _, guardID in ipairs(builder.guards) do
-    if builders[guardID].owned then
+    if BuilderById(guardID).owned then
       local guarderMetal, guarderEnergy = traceUpkeep(guardID, alreadyCounted)
       metal = metal + guarderMetal
       energy = energy + guarderEnergy
@@ -515,7 +526,7 @@ local function getUnitsUpkeep()
 end
 
 local function IsTimeToMoveOn(secondsLeft, builderId, builderDef, totalBuildSpeed)
-  local plannerBuildSpeed = builders[builderId].originalBuildSpeed
+  local plannerBuildSpeed = BuilderById(builderId).originalBuildSpeed
   local plannerBuildShare = plannerBuildSpeed / totalBuildSpeed
   local slowness = 45 / builderDef.speed
   if ((plannerBuildShare < 0.75 and secondsLeft < 1.2 * slowness) or (plannerBuildShare < 0.5 and secondsLeft < 3.4 * slowness) or (plannerBuildShare < 0.15 and secondsLeft < 8 * slowness) or (plannerBuildShare < 0.05 and secondsLeft < 12 * slowness)) then
@@ -563,8 +574,9 @@ end
 
 local function getReclaimableFeatures(x, z, radius)
   local wrecksInRange = GetFeaturesInCylinder(x, z, radius)
+  local nWrecksInRange = #wrecksInRange
 
-  if #wrecksInRange == 0 then
+  if nWrecksInRange == 0 then
     return false
   end
 
@@ -579,7 +591,7 @@ local function getReclaimableFeatures(x, z, radius)
   local nM       = 0
   local nE       = 0
   local nAll     = 0
-  for i = 1, #wrecksInRange do
+  for i = 1, nWrecksInRange do
     local featureId = wrecksInRange[i]
 
     local featureRessurrect = GetFeatureResurrect(featureId)
@@ -600,7 +612,7 @@ local function getReclaimableFeatures(x, z, radius)
       end
     end
   end
-  return features
+  return features, nAll
 end
 
 local function SortFactor(a, b)
@@ -659,14 +671,27 @@ local every166MSProb = 1 / (30 * 0.1666)
 local every66MSProb = 1 / (30 * 0.0666)
 
 local function NBuildersThrottle()
+  local nBuilderUnitIds = builderUnitIds.count
   return MRandom() < (
-    builderUnitIds.count > 300 and Interpolate(builderUnitIds.count, 300, 1000, every2330MSProb, every6000MSProb) or
-    builderUnitIds.count > 200 and Interpolate(builderUnitIds.count, 200, 300, every2330MSProb, every2330MSProb) or
-    builderUnitIds.count > 100 and Interpolate(builderUnitIds.count, 100, 200, every1333MSProb, every2330MSProb) or
-    builderUnitIds.count > 60 and Interpolate(builderUnitIds.count, 60, 100, every166MSProb, every1333MSProb) or
-    builderUnitIds.count > 10 and Interpolate(builderUnitIds.count, 10, 60, every66MSProb, every166MSProb) or
+    nBuilderUnitIds > 300 and Interpolate(nBuilderUnitIds, 300, 1000, every2330MSProb, every6000MSProb) or
+    nBuilderUnitIds > 200 and Interpolate(nBuilderUnitIds, 200, 300, every2330MSProb, every2330MSProb) or
+    nBuilderUnitIds > 100 and Interpolate(nBuilderUnitIds, 100, 200, every1333MSProb, every2330MSProb) or
+    nBuilderUnitIds > 60 and Interpolate(nBuilderUnitIds, 60, 100, every166MSProb, every1333MSProb) or
+    nBuilderUnitIds > 10 and Interpolate(nBuilderUnitIds, 10, 60, every66MSProb, every166MSProb) or
     1)
-  -- builderUnitIds.count > 1000 and ev
+  -- nBuilderUnitIds > 1000 and ev
+end
+
+local function GetPurgedUnitCommands(builderId, queueSize)
+  local gotoContinue = false
+  local cmdQueue = GetUnitCommands(builderId, queueSize)
+  if cmdQueue == nil then
+    DeregisterBuilder(builderId)
+    gotoContinue = true
+  end
+
+  cmdQueue = purgeRepairs(builderId, cmdQueue, queueSize)
+  return cmdQueue, #cmdQueue, gotoContinue
 end
 
 local function Builders(gameFrame)
@@ -677,9 +702,8 @@ local function Builders(gameFrame)
   anyBuildWillMStall = false
   anyBuildWillEStall = false
   for i = 1, builderUnitIds.count do
-    local builderId = builderUnitIds.list[i]
-    local builder = builders[builderId]
-    builder.target = { id = GetUnitIsBuilding(builderId) }
+    local builder = builders[i]
+    builder.target = { id = GetUnitIsBuilding(builder.id) }
     if builder.target.id then
       -- local targetHealth, targetMaxHealth, _, _, targetBuild = GetUnitHealth(builder.target.id)
       -- builder.target.health                                  = targetHealth
@@ -692,25 +716,20 @@ local function Builders(gameFrame)
     end
   end
 
-  for builderId, builder in pairs(builders) do
-    if AllowBuilderOrder(builderId, gameFrame) and NBuildersThrottle() then
-      gotoContinue = false
+  -- for _, builder in pairs(builders) do
+  for i = 1, builderUnitIds.count do
+    local builder = builders[i]
+    if AllowBuilderOrder(builder.id, gameFrame) and NBuildersThrottle() then
+      local builderId = builder.id
       local builderDef = builder.def
-      local cmdQueue = GetUnitCommands(builderId, 3)
+      local cmdQueue, nCmdQueue
+      cmdQueue, nCmdQueue, gotoContinue = GetPurgedUnitCommands(builderId, 3)
       local builderPosX, _, builderPosZ
 
       -- log('builder ', builderId, builderDef.translatedHumanName, 'cmdQueue', table.tostring(cmdQueue))
 
-      if cmdQueue == nil then
-        -- builderNItemMap:Remove(builderNItemMap.hash[builderId]) = nil
-        builderUnitIds:Remove(builderId)
-        builders[builderId] = nil
-        -- log('gotoContinue', 'builder removed')
-        gotoContinue = true
-      end
-
-      local neighbours = {}
-      local nNeighbours = 0
+      local candidates = {}
+      local nCandidates = 0
       -- local targetId = GetUnitIsBuilding(builderId)
       -- if GetUnitIsBuilding(builderId) ~= builder.target.id then
       --   log('target match errror', builderId, builder.target.id, GetUnitIsBuilding(builderId))
@@ -719,9 +738,6 @@ local function Builders(gameFrame)
       -- end
 
       local targetId = builder.target.id
-
-      cmdQueue = purgeRepairs(builderId, cmdQueue)
-      local nCmdQueue = #cmdQueue
 
       -- dont wait if has queued stuff and leaking
       if cmdQueue and nCmdQueue > 0 and (isMetalLeaking or isEnergyLeaking) and cmdQueue[1].id == CMD.WAIT then
@@ -736,14 +752,15 @@ local function Builders(gameFrame)
       local features = nil
 
       if not gotoContinue then
-        builderPosX, _, builderPosZ = GetUnitPosition(builderId, true)
+        builderPosX, builderPosY, builderPosZ = GetUnitPosition(builderId, true)
 
         if not gotoContinue then
-          local neighbourIds          = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance, myTeamId)
-          local neighboursDamaged     = {}
-          local neighboursUnfinished  = {}
-          local nNeighboursUnfinished = 0
-          local nNeighboursDamaged    = 0
+          -- log('builder ', builderId, builderDef.translatedHumanName, builder.def.radius)
+          local candidateIds          = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance + 96, myTeamId)
+          local candidatesDamaged     = {}
+          local candidatesUnfinished  = {}
+          local nCandidatesUnfinished = 0
+          local nCandidatesDamaged    = 0
 
           local isBuildingEco         = nCmdQueue == 0
               or (cmdQueue[1] and (
@@ -753,39 +770,42 @@ local function Builders(gameFrame)
 
           local notHasBuildingQueue   = not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0)))
 
-          --   log(builder.def.translatedHumanName, 'isBuildingEco', isBuildingEco, 'notHasBuildingQueue', notHasBuildingQueue, cmdQueue[1] and cmdQueue[1].id, cmdQueue[2] and cmdQueue[2].id)
+          -- log(builder.def.translatedHumanName, 'isBuildingEco', isBuildingEco, 'notHasBuildingQueue', notHasBuildingQueue, cmdQueue[1] and cmdQueue[1].id, cmdQueue[2] and cmdQueue[2].id)
 
-          for i = 1, #neighbourIds do
-            local candidateId = neighbourIds[i]
+          for j = 1, #candidateIds do
+            local candidateId = candidateIds[j]
             if candidateId ~= builderId then
-              local candidateHealth, candidateMaxHealth, _, _, candidateBuild = GetUnitHealth(candidateId)
               local candidateDefId = GetUnitDefID(candidateId)
-              local candidate = {
-                id = candidateId,
-                defId = candidateDefId,
-                def = UnitDefs[candidateDefId],
-                health = candidateHealth,
-                maxHealth = candidateMaxHealth,
-                build = candidateBuild,
-                healthRatio = candidateHealth / candidateMaxHealth,
-              }
-              nNeighbours = nNeighbours + 1
-              neighbours[nNeighbours] = candidate
-              if candidateBuild ~= nil and candidateBuild < 1 and isBuildingEco and notHasBuildingQueue then
-                nNeighboursUnfinished = nNeighboursUnfinished + 1
-                neighboursUnfinished[nNeighboursUnfinished] = candidate
-                -- log('neighboursUnfinished', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursUnfinished)
-              elseif not notHasBuildingQueue and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
-                nNeighboursDamaged = nNeighboursDamaged + 1
-                neighboursDamaged[nNeighboursDamaged] = candidate
-                -- log('neighboursDamaged', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursDamaged)
+              local def = UnitDefs[candidateDefId]
+              if GetUnitSeparation(builderId, candidateId, true, true) + builder.def.radius <= builderDef.buildDistance then
+                local candidateHealth, candidateMaxHealth, _, _, candidateBuild = GetUnitHealth(candidateId)
+                local candidate = {
+                  id = candidateId,
+                  defId = candidateDefId,
+                  def = def,
+                  health = candidateHealth,
+                  maxHealth = candidateMaxHealth,
+                  build = candidateBuild,
+                  healthRatio = candidateHealth / candidateMaxHealth,
+                }
+                nCandidates = nCandidates + 1
+                candidates[nCandidates] = candidate
+                if candidateBuild ~= nil and candidateBuild < 1 and isBuildingEco and notHasBuildingQueue then
+                  nCandidatesUnfinished = nCandidatesUnfinished + 1
+                  candidatesUnfinished[nCandidatesUnfinished] = candidate
+                  -- log('neighboursUnfinished', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursUnfinished)
+                elseif not notHasBuildingQueue and candidateHealth and candidateMaxHealth and candidateHealth < candidateMaxHealth then
+                  nCandidatesDamaged = nCandidatesDamaged + 1
+                  candidatesDamaged[nCandidatesDamaged] = candidate
+                  -- log('neighboursDamaged', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursDamaged)
+                end
               end
             end
           end
           -- log(builder.def.translatedHumanName, '#neighboursUnfinished', #neighboursUnfinished, nNeighboursUnfinished)
-          if #neighboursDamaged > 0 then
-            table.sort(neighboursDamaged, SortHealthAsc)
-            local damagedTarget = neighboursDamaged[1]
+          if nCandidatesDamaged > 0 then
+            table.sort(candidatesDamaged, SortHealthAsc)
+            local damagedTarget = candidatesDamaged[1]
             local damagedTargetId = damagedTarget.id
             local targetHealthRatio
             if targetId then
@@ -803,10 +823,10 @@ local function Builders(gameFrame)
             -- log('gotoContinue', 'neighboursDamaged', 'targetId', targetId, 'damagedTargetId', damagedTargetId, 'targetHealthRatio', targetHealthRatio, 'damagedTarget.healthRatio', damagedTarget.healthRatio)
             gotoContinue = true
             -- log('gotoContinue neighboursDamaged')
-          elseif #neighboursUnfinished > 0 then
+          elseif nCandidatesUnfinished > 0 then
             -- log('sort', builder.def.translatedHumanName, #neighboursUnfinished, nNeighboursUnfinished)
-            table.sort(neighboursUnfinished, SortBuildEcoPrio)
-            local candidateId = neighboursUnfinished[1].id
+            table.sort(candidatesUnfinished, SortBuildEcoPrio)
+            local candidateId = candidatesUnfinished[1].id
             if targetId ~= candidateId then
               targetId = candidateId
               -- log('repair unfinished', builder.def.translatedHumanName, builderId, neighboursUnfinished[1].def.translatedHumanName, targetId, neighboursUnfinished[1].def.translatedHumanName)
@@ -820,8 +840,9 @@ local function Builders(gameFrame)
         if not gotoContinue then
           local _needMetal = metalLevel < 0.15
           local _needEnergy = needEnergy or energyLevel < 0.15
+          cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId, 3)
           if (_needMetal or _needEnergy) and not isMetalLeaking and not isEnergyLeaking and builderDef and
-              (#builderDef.buildOptions == 0 or #cmdQueue == 0) then
+              (#builderDef.buildOptions == 0 or nCmdQueue == 0) then
             features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
             if features then
               if _needMetal and _needEnergy then
@@ -834,7 +855,7 @@ local function Builders(gameFrame)
               gotoContinue = true
               -- log('gotoContinue reclaimCheckAction can reclaim')
             end
-          elseif cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == CMD.RECLAIM and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
+          elseif cmdQueue and nCmdQueue > 0 and cmdQueue[1].id == CMD.RECLAIM and (metalLevel > 0.97 or energyLevel > 0.97 or isMetalLeaking or isEnergyLeaking) then
             -- log('should stop reclaim', builderDef.translatedHumanName)
             features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
             local featureId = cmdQueue[1].params[1]
@@ -846,11 +867,12 @@ local function Builders(gameFrame)
               GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
             end
           elseif MRandom() < 0.001 then -- every 30 sec?
-            features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
+            local nFeaturesAll
+            features, nFeaturesAll = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
             if features then
               local featuresAll = FeatureSortByHealth(features.all)
               local feature
-              for i = 1, #featuresAll do
+              for i = 1, nFeaturesAll do
                 feature = featuresAll[i]
                 if feature and feature.health and feature.health < 81 then
                   GiveOrderToUnit(builderId, CMD.INSERT, { 0, CMD.RECLAIM, CMD.OPT_SHIFT, Game.maxUnits + feature.id }, { 'alt' })
@@ -869,8 +891,9 @@ local function Builders(gameFrame)
         -- local targetDef = UnitDefs[GetUnitDefID(targetId)]
 
         -- queue fast forwarder
+        cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId, 3)
         if cmdQueue then
-          if #cmdQueue > 1 and cmdQueue[1].id < 0 and cmdQueue[2].id < 0 then
+          if nCmdQueue > 1 and cmdQueue[1].id < 0 and cmdQueue[2].id < 0 then
             -- next command is build command
             if not abandonedTargetIDs[targetId] then
               -- target has not previously been abandoned
@@ -884,7 +907,7 @@ local function Builders(gameFrame)
         end
 
         -- 90 == reclaim cmd
-        if not gotoContinue and (isMetalStalling or isEnergyStalling) and not (cmdQueue and #cmdQueue > 0 and cmdQueue[1].id == 90) then
+        if not gotoContinue and (isMetalStalling or isEnergyStalling) and not (cmdQueue and nCmdQueue > 0 and cmdQueue[1].id == 90) then
           if features == nil then
             features = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
           end
@@ -910,18 +933,17 @@ local function Builders(gameFrame)
           local targetDefId = GetUnitDefID(targetId)
 
           local _, _, _, _, targetBuild = GetUnitHealth(targetId)
-          for i = 1, #neighbours do
-            local candidate = neighbours[i]
+          for j = 1, nCandidates do
+            local candidate = candidates[j]
             local candidateId = candidate.id
+            -- log('easy finish check', candidate.def.translatedHumanName)
             -- same type and not actually same building
-            if candidateId ~= targetId and candidate.defId == targetDefId then
-              local candidateBuild = candidate.build
-              if candidateBuild and candidateBuild < 1 and candidateBuild > targetBuild then
-                if candidateBuild > targetBuild and AllowBuilderOrder(builderId, gameFrame) then
-                  -- log('repair easy finish', UnitIdDef(candidateId).translatedHumanName)
-                  repair(builderId, candidateId, true)
-                  break
-                end
+            if candidate.defId == targetDefId and candidateId ~= targetId then
+              if candidate.build and candidate.build < 1 and candidate.build > targetBuild and AllowBuilderOrder(builderId, gameFrame) then
+                -- log('easy finish repair', candidate.id, candidate.def.translatedHumanName, gameFrame)
+                repair(builderId, candidateId, true)
+                -- repair(builderId, candidateId, false) -- shift = false seems to fix issue with builders
+                break
               end
             end
           end
@@ -933,20 +955,24 @@ local function Builders(gameFrame)
   reclaimTargets = NewSetList()
 end
 
-function widget:GameFrame(gameFrame)
-  mainIterationModuloLimit = 1
-  if builderUnitIds.count > 300 then
-    mainIterationModuloLimit = 20
-  elseif builderUnitIds.count > 200 then
-    mainIterationModuloLimit = 10
-  elseif builderUnitIds.count > 60 then
-    mainIterationModuloLimit = 5
-    -- elseif builderUnitIds.count > 10 then
-    -- mainIterationModuloLimit = 2
+local function MainIterationModuloLimit()
+  local value = 1
+  local nBuilderUnitIds = builderUnitIds.count
+  if nBuilderUnitIds > 200 then
+    value = math.floor(0.5 + Interpolate(nBuilderUnitIds, 201, 300, 21, 50))
+  elseif nBuilderUnitIds > 100 then
+    value = math.floor(0.5 + Interpolate(nBuilderUnitIds, 101, 200, 11, 20))
+  elseif nBuilderUnitIds > 30 then
+    value = math.floor(0.5 + Interpolate(nBuilderUnitIds, 30, 100, 5, 10))
   end
+  return value
+end
 
-  if n % mainIterationModuloLimit == 0 then
-    -- log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. nBuilders)
+function widget:GameFrame(gameFrame)
+  mainIterationModuloLimit = MainIterationModuloLimit()
+
+  if gameFrame % mainIterationModuloLimit == 0 then
+    log('iterationmodulo ' .. mainIterationModuloLimit .. ' nBuilders ' .. builderUnitIds.count)
     Builders(gameFrame)
   end
 
