@@ -5,7 +5,7 @@ end
 
 function widget:GetInfo()
 	return {
-		name = "Raptor Stats Panel",
+		name = "Raptor Stats Panel aggro",
 		desc = "Shows statistics and progress when fighting vs Raptors",
 		author = "quantum",
 		date = "May 04, 2008",
