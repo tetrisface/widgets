@@ -1,6 +1,5 @@
 VFS.Include('luaui/Headers/keysym.h.lua')
-local utilitiesDirectory = 'common/springUtilities/'
-local debugUtilities = VFS.Include(utilitiesDirectory .. 'debug.lua')
+local debugUtilities = VFS.Include('common/springUtilities/debug.lua')
 
 function table.echo(tbl)
   debugUtilities.TableEcho(tbl)
