@@ -11,17 +11,6 @@ function widget:GetInfo()
   }
 end
 
---[[
-  builder sort prio
-  0. will idle
-  1. has been abandoned for many gameframes (ascending)
-  2. has unique def id (descending)
-  3. tech level (descending)
-  4. time left until idle (ascending)
-  5. distance to cursor (ascending)
-]]
-
-
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Widgets/helpers.lua')
 
@@ -65,8 +54,8 @@ local function DeregisterBuilder(unitID)
   end
   builderUnitIds:Remove(unitID)
 end
-
-local function ToBeIdleBuilders()
+local builderDefIdCount = {}
+local function IdleBuilders()
   local filteredBuilders = {}
   local nFilteredBuilders = 0
   for i = 1, builderUnitIds.count do
@@ -77,23 +66,40 @@ local function ToBeIdleBuilders()
       builder.lastActivity = gameFrame
     end
 
-    if gameFrame - builder.lastActivity < 1800 and (nCommands == 0 or nCommands == 1 and (commands[1].id < 0 or commands[1].id == CMD.REPAIR)) then
+    if gameFrame - builder.lastActivity < 1800                                                      -- abandoned
+        and (
+          nCommands == 0 or nCommands == 1 and (commands[1].id < 0 or commands[1].id == CMD.REPAIR) -- is building or repairing
+        )
+    then
       nFilteredBuilders = nFilteredBuilders + 1
       filteredBuilders[nFilteredBuilders] = builder
+      builderDefIdCount[builder.defID] = (builderDefIdCount[builder.defID] or 0) + 1
     end
   end
   return filteredBuilders
 end
 
+--[[
+  builder sort prio
+  -- 0. will idle
+  1. has been abandoned for many gameframes (ascending)
+  2. has unique def id (descending)
+  3. tech level (descending)
+  4. time left until idle (ascending)
+  5. distance to cursor (ascending)
+]]
 local function SortBuilders(a, b)
-  local result = asd
-  return a.willIdle and not b.willIdle
+  return
+      a.willIdle and not b.willIdle
+      or builderDefIdCount[a.def.defID] == 0 and builderDefIdCount[b.def.defID] > 0
+      or builderDefIdCount[a]
 end
 
 
 function widget:GameFrame(_gameFrame)
   gameFrame = _gameFrame
-  table.sort(ToBeIdleBuilders(), SortBuilders)
+  local idleBuilders = IdleBuilders()
+  table.sort(idleBuilders, SortBuilders)
 end
 
 local function RegisterUnit(unitID, unitDefID)
@@ -106,7 +112,7 @@ local function RegisterUnit(unitID, unitDefID)
         id           = unitID,
         def          = candidateBuilderDef,
         defID        = unitDefID,
-        lastActivity = 0,
+        lastActivity = Spring.GetGameFrame(),
       }
     end
   end
