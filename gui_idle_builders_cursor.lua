@@ -29,20 +29,32 @@ local builders             = {}
 local builderUnitIds       = NewSetList()
 local distinctIdleBuilders = {}
 local anyIdleTargetEtas    = {}
+local color                = {
+  yellow  = { 181 / 256, 137 / 256, 0 },
+  blue    = { 38 / 256, 139 / 256, 210 / 256 },
+  magenta = { 211 / 256, 54 / 256, 130 / 256 },
+  violet  = { 108 / 256, 113 / 256, 196 / 256 },
+  cyan    = { 42 / 256, 161 / 256, 152 / 256 },
+  red     = { 220 / 256, 50 / 256, 47 / 256 },
+  orange  = { 203 / 256, 75 / 256, 22 / 256 },
+  green   = { 133, 153, 0 }
+}
 
 local fontSize             = 20
 local gameFrame            = 0
 local lastEtaUpdate        = 0
 local myTeamId             = Spring.GetMyTeamID()
 local shortcutsActive      = false
-local etaUpdates           = false
+local updateEtas           = false
+local yellowTime           = 14
+local redTime              = 5
 
+local list
 local font
--- local fontfile2            =
 
-local function BuilderById(id)
-  return builders[builderUnitIds.hash[id]]
-end
+-- local function BuilderById(id)
+--   return builders[builderUnitIds.hash[id]]
+-- end
 
 local function makeETA(unitID, unitDefID)
   if unitDefID == nil then
@@ -66,7 +78,7 @@ end
 local function AddTargetEta(targetId)
   if not anyIdleTargetEtas[targetId] then
     anyIdleTargetEtas[targetId] = makeETA(targetId, Spring.GetUnitDefID(targetId))
-    etaUpdates = true
+    updateEtas = true
   end
 end
 
@@ -108,16 +120,15 @@ end
 local function UpdateTargetsFinishedAt()
   local gameSeconds = Spring.GetGameSeconds()
 
-  if gameSeconds == lastEtaUpdate and not etaUpdates then
+  if gameSeconds == lastEtaUpdate and not updateEtas then
     return
   end
   lastEtaUpdate = gameSeconds
-  etaUpdates = false
+  updateEtas = false
 
   local killTable = {}
   local count = 0
   for unitID, bi in pairs(anyIdleTargetEtas) do
-    log('UpdateTargetsFinishedAt', UnitDefs[Spring.GetUnitDefID(unitID)].translatedHumanName)
     local _, _, _, _, buildProgress = Spring.GetUnitHealth(unitID)
     if not buildProgress or buildProgress >= 1.0 then
       count = count + 1
@@ -163,7 +174,7 @@ local function UpdateTargetsFinishedAt()
             end
           end
           bi.finishedAt = gameSeconds + bi.timeLeft
-          log('UpdateTargetsFinishedAt', UnitDefs[Spring.GetUnitDefID(unitID)].translatedHumanName)
+          redraw = true
         end
         bi.lastTime = gameSeconds
         bi.lastProg = buildProgress
@@ -233,6 +244,7 @@ function widget:GameFrame(_gameFrame)
   UpdateTargetsFinishedAt()
   distinctIdleBuilders = DistinctSortedIdleBuilders(idleBuilderDefGroups)
   table.sort(distinctIdleBuilders, CompareTechLevel)
+  redrawList = true
 end
 
 function widget:UnitCreated(unitId, unitDefID, unitTeam)
@@ -299,22 +311,29 @@ function widget:Initialize()
   end
 end
 
-function widget:DrawScreen()
+local function Interpolate(value, inMin, inMax, outMin, outMax)
+  -- Ensure the value is within the specified range
+  -- Calculate the interpolation
+  return outMin + ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) * (outMax - outMin)
+end
+
+local function CreateIdleBuilderList()
   local gameSeconds = Spring.GetGameSeconds()
 
   local mouseX, mouseY = Spring.GetMouseState()
 
   font:Begin()
   for i = 1, #distinctIdleBuilders do
-    local builder = distinctIdleBuilders[i]
-    local target = anyIdleTargetEtas[builder.targetId]
+    local builder        = distinctIdleBuilders[i]
+    local target         = anyIdleTargetEtas[builder.targetId]
 
     -- log('builder.targetId', builder.targetId, 'target', target)
     -- table.echo(target)
 
-    log('draw builder', builder.def.translatedHumanName, 'targetId', builder.targetId, 'target', target)
+    -- log('draw builder', builder.def.translatedHumanName, 'targetId', builder.targetId, 'target', target)
 
     local timeLeftString = ''
+    local lineColor      = { 1, 1, 1 }
     if target then
       local secondsLeft = target.finishedAt and target.finishedAt - gameSeconds or false
       if not secondsLeft then
@@ -323,32 +342,62 @@ function widget:DrawScreen()
         timeLeftString = string.format(' %dm', math.floor(0.5 + secondsLeft / 60))
       else
         timeLeftString = string.format(' %ds', math.floor(0.5 + secondsLeft))
+        if secondsLeft < redTime then
+          lineColor = {
+            Interpolate(secondsLeft, 0, redTime, color.red[1], color.yellow[1]),
+            Interpolate(secondsLeft, 0, redTime, color.red[2], color.yellow[2]),
+            Interpolate(secondsLeft, 0, redTime, color.red[3], color.yellow[3]),
+          }
+        elseif secondsLeft < yellowTime then
+          lineColor = {
+            Interpolate(secondsLeft, 3, yellowTime, color.yellow[1], 1),
+            Interpolate(secondsLeft, 3, yellowTime, color.yellow[2], 1),
+            Interpolate(secondsLeft, 3, yellowTime, color.yellow[3], 1),
+          }
+        end
       end
     end
-    local builderString = builder.def.translatedHumanName .. timeLeftString
-    font:Print(builderString, mouseX + 80, mouseY - (i - 1) * 20, fontSize, 'o')
+
+    font:SetAutoOutlineColor(true)
+    font:SetTextColor(lineColor[1], lineColor[2], lineColor[3])
+    local builderString = string.format(
+      '%d. %s %s %s',
+      i,
+      builder.def.name:sub(1, 3):gsub("^%l", string.upper),
+      builder.def.translatedHumanName,
+      timeLeftString
+    )
+    -- font:Print(builderString, mouseX + 80, mouseY - (i - 1) * 20, fontSize, 'o')
+    font:Print(builderString, mouseX + 80, mouseY - (i - 1) * 20 - 8, fontSize, 'o')
   end
 
   font:End()
 end
 
-local function Interpolate(value, inMin, inMax, outMin, outMax)
-  -- Ensure the value is within the specified range
-  -- Calculate the interpolation
-  return outMin + ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) * (outMax - outMin)
+function widget:DrawScreen()
+  gl.CallList(gl.CreateList(CreateIdleBuilderList))
 end
 
 function widget:ViewResize()
   local viewSizeX, viewSizeY = gl.GetViewSizes()
 
-  fontSize = Interpolate((viewSizeX + viewSizeY) / 2, 600, 8000, 16, 30)
+  fontSize = Interpolate((viewSizeX + viewSizeY) / 2, 600, 8000, 10, 50)
   -- font = WG['fonts'].getFont(nil, 33, 0.19, 1.75)
-  font = WG['fonts'].getFont(nil, nil, 0.2, 10)
+  font = WG['fonts'].getFont(nil, nil, 0.3, 7)
+  redraw = true
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
-  -- log('press', key, mods, key == KEYSYMS.LSHIFT)
-  -- if key == KEYSYMS.CAPSLOCK then
+  log('Spring.GetActiveCommand()', Spring.GetActiveCommand())
+  if Spring.GetActiveCommand() ~= 0 then
+    return
+  end
+
+  log('press', key, mods['shift'], key == KEYSYMS.LSHIFT)
+  if key == KEYSYMS.CAPSLOCK then
+    log('caps')
+    return true
+  end
   if key == KEYSYMS.LSHIFT then
     shortcutsActive = true
   end
@@ -358,5 +407,12 @@ function widget:KeyRelease(key, mods, label)
   -- if key == KEYSYMS.CAPSLOCK then
   if key == KEYSYMS.LSHIFT then
     shortcutsActive = false
+  end
+end
+
+function widget:Shutdown()
+  if list then
+    gl.DeleteList(list);
+    list = nil
   end
 end
