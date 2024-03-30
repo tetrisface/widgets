@@ -34,14 +34,14 @@ local log                                  = Spring.Echo
 local MRandom                              = math.random
 local UnitDefs                             = UnitDefs
 
-local abandonedTargetIDs                   = {}
-local builders                             = {}
+local abandonedTargetIDs
+local builders
 local myTeamId                             = Spring.GetMyTeamID()
 local possibleMetalMakersProduction        = 0
 local possibleMetalMakersUpkeep            = 0
 local regularizedResourceDerivativesMetal  = { true }
 local regularizedResourceDerivativesEnergy = { true }
-local regMod                               = 1
+local regularizationCounter                = 1
 local releasedMetal                        = 0
 local tidalStrength                        = Game.tidal
 local totalSavedTime                       = 0
@@ -50,8 +50,6 @@ local isEnergyLeaking                      = true
 local isEnergyStalling                     = false
 local isMetalLeaking                       = true
 local isMetalStalling                      = false
-local isPositiveEnergyDerivative           = false
-local isPositiveMetalDerivative            = false
 local metalLevel                           = 0.5
 local metalMakersLevel                     = 0.5
 local positiveMMLevel                      = true
@@ -68,11 +66,11 @@ local mMMNeed                              = 0.5
 local windMax                              = Game.windMax
 local windMin                              = Game.windMin
 local mainIterationModuloLimit
-local builderUnitIds                       = NewSetList()
-local metalMakers                          = NewSetList()
-local reclaimTargets                       = NewSetList()
-local reclaimTargetsPrev                   = NewSetList()
-local ecoBuildDefs                         = NewSetList()
+local builderUnitIds
+local metalMakers
+local reclaimTargets
+local reclaimTargetsPrev
+local ecoBuildDefs
 local busyCommands                         = {
   [CMD.GUARD]   = true,
   [CMD.MOVE]    = true,
@@ -86,13 +84,7 @@ local function UnitIdDef(unitId)
 end
 
 local function MetalMakingEfficiencyDef(unitDef)
-  -- if unitDef.customParams.energyconv_capacity and unitDef.customParams.energyconv_efficiency then
-  if unitDef.customParams.energyconv_efficiency then
-    -- local asdf = { tonumber(unitDef.customParams.energyconv_capacity), tonumber(unitDef.customParams.energyconv_efficiency) }
-    return tonumber(unitDef.customParams.energyconv_efficiency)
-  else
-    return 0
-  end
+  return unitDef.customParams.energyconv_efficiency and tonumber(unitDef.customParams.energyconv_efficiency) or 0
 end
 
 local function BuilderById(id)
@@ -107,37 +99,6 @@ local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
   currentGameFrame = currentGameFrame or Spring.GetGameFrame()
   waitGameFrames = waitGameFrames or 15
   return BuilderById(builderId).lastOrder < currentGameFrame - waitGameFrames
-end
-
-
-local function RegisterBuilder(unitID, unitDefID)
-  local candidateBuilderDef = UnitDefs[unitDefID]
-
-  if candidateBuilderDef.isBuilder and candidateBuilderDef.canAssist and not candidateBuilderDef.isFactory then
-    builderUnitIds:Add(unitID)
-    builders[builderUnitIds.count] = {
-      id                 = unitID,
-      buildSpeed         = candidateBuilderDef.buildSpeed,
-      originalBuildSpeed = candidateBuilderDef.buildSpeed,
-      def                = candidateBuilderDef,
-      defID              = unitDefID,
-      targetId           = nil,
-      guards             = {},
-      previousBuilding   = nil,
-      lastOrder          = 0,
-    }
-  elseif MetalMakingEfficiencyDef(UnitDefs[unitDefID]) > 0 then
-    metalMakers:Add(unitID)
-  end
-end
-
-local function DeregisterBuilder(unitID)
-  local index = builderUnitIds.hash[unitID]
-  if index ~= nil then
-    builders[index] = nil
-  end
-  builderUnitIds:Remove(unitID)
-  metalMakers:Remove(unitID)
 end
 
 local function EnergyMakeDef(_unitDef)
@@ -171,10 +132,18 @@ function widget:Initialize()
     widgetHandler:RemoveWidget()
   end
 
-  local myUnits = GetTeamUnits(myTeamId)
+  abandonedTargetIDs = {}
+  builders           = {}
+  builderUnitIds     = NewSetList()
+  ecoBuildDefs       = NewSetList()
+  metalMakers        = NewSetList()
+  reclaimTargets     = NewSetList()
+  reclaimTargetsPrev = NewSetList()
+
+  local myUnits      = GetTeamUnits(myTeamId)
   for _, unitID in ipairs(myUnits) do
     local unitDefID = GetUnitDefID(unitID)
-    RegisterBuilder(unitID, unitDefID)
+    widget:UnitCreated(unitID, unitDefID, myTeamId)
   end
 
   for unitDefID, unitDef in pairs(UnitDefs) do
@@ -193,20 +162,41 @@ end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
   if unitTeam == myTeamId then
-    RegisterBuilder(unitID, unitDefID)
+    local candidateBuilderDef = UnitDefs[unitDefID]
+
+    if candidateBuilderDef.isBuilder and candidateBuilderDef.canAssist and not candidateBuilderDef.isFactory then
+      builderUnitIds:Add(unitID)
+      builders[builderUnitIds.count] = {
+        id                 = unitID,
+        buildSpeed         = candidateBuilderDef.buildSpeed,
+        originalBuildSpeed = candidateBuilderDef.buildSpeed,
+        def                = candidateBuilderDef,
+        defID              = unitDefID,
+        targetId           = nil,
+        guards             = {},
+        previousBuilding   = nil,
+        lastOrder          = 0,
+      }
+    elseif MetalMakingEfficiencyDef(UnitDefs[unitDefID]) > 0 then
+      metalMakers:Add(unitID)
+    end
+  end
+end
+
+function widget:UnitDestroyed(unitID, _, unitTeam)
+  if unitTeam == myTeamId then
+    local index = builderUnitIds.hash[unitID]
+    if index ~= nil then
+      builders[index] = nil
+    end
+    builderUnitIds:Remove(unitID)
+    metalMakers:Remove(unitID)
   end
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  if unitTeam == myTeamId then
-    RegisterBuilder(unitID, unitDefID)
-  end
-end
-
-function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
-  if unitTeam == myTeamId then
-    DeregisterBuilder(unitID)
-  end
+  widget:UnitCreated(unitID, unitDefID, unitTeam)
+  widget:UnitDestroyed(unitID, nil, oldTeam)
 end
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
@@ -235,9 +225,11 @@ local function getBuildTimeLeft(targetId, targetDef)
   -- for builderId, _ in pairs(builders) do
   for i = 1, builderUnitIds.count do
     local builder = BuilderById(builderUnitIds.list[i])
-    local testTargetId = GetUnitIsBuilding(builder.id)
-    if testTargetId == targetId and builder.id ~= targetId then
-      currentBuildSpeed = currentBuildSpeed + builder.originalBuildSpeed
+    if builder then -- todo investigate
+      local testTargetId = GetUnitIsBuilding(builder.id)
+      if testTargetId == targetId and builder.id ~= targetId then
+        currentBuildSpeed = currentBuildSpeed + builder.originalBuildSpeed
+      end
     end
   end
 
@@ -340,9 +332,9 @@ local function UpdateResources(n)
   local metalCurrent, metalStorage, metalExpenseWanted, metalIncome, metalExpenseActual = GetTeamResources(myTeamId, 'metal')
   local energyCurrent, energyStorage, energyExpenseWanted, energyIncome, energyExpenseActual = GetTeamResources(myTeamId, 'energy')
 
-  regMod = regMod > 11 and 1 or regMod + 1
-  regularizedResourceDerivativesMetal[regMod] = metalIncome > metalExpenseActual
-  regularizedResourceDerivativesEnergy[regMod] = energyIncome > energyExpenseActual
+  regularizationCounter = regularizationCounter > 5 and 1 or regularizationCounter + 1
+  regularizedResourceDerivativesMetal[regularizationCounter] = metalIncome > metalExpenseActual
+  regularizedResourceDerivativesEnergy[regularizationCounter] = energyIncome > energyExpenseActual
   regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
   regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
   regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
@@ -686,7 +678,7 @@ local function GetPurgedUnitCommands(builderId, queueSize)
   local gotoContinue = false
   local cmdQueue = GetUnitCommands(builderId, queueSize)
   if cmdQueue == nil then
-    DeregisterBuilder(builderId)
+    widget:UnitDestroyed(builderId, nil, myTeamId)
     gotoContinue = true
   end
 
