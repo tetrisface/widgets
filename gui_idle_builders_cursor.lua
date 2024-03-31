@@ -25,6 +25,7 @@ local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Headers/keysym.h.lua')
 VFS.Include('luaui/Widgets/helpers.lua')
 
+local activationScreenPos  = {}
 local builders             = {}
 local builderUnitIds       = NewSetList()
 local distinctIdleBuilders = {}
@@ -49,6 +50,7 @@ local updateEtas           = false
 local yellowTime           = 14
 local redTime              = 5
 
+local viewSizeX, viewSizeY
 local list
 local font
 
@@ -81,35 +83,48 @@ local function AddTargetEta(targetId)
     updateEtas = true
   end
 end
+local function BuilderById(id)
+  local builder = builders[builderUnitIds.hash[id]]
+  if not builder then
+    widget:UnitDestroyed(id)
+    return
+  end
+  return builder
+end
 
 local function IdleBuilderDefGroups()
   local idleDefIdBuilders = {}
   local idleDefIdBuildersCounts = {}
   for i = 1, builderUnitIds.count do
-    local builder = builders[i]
-    local commands = Spring.GetUnitCommands(builder.id, 2)
-    local nCommands = #commands
-    if nCommands > 0 then
-      builder.lastActivity = gameFrame
-    end
+    local builder = BuilderById(builderUnitIds.list[i])
+    if builder then
+      local commands = Spring.GetUnitCommands(builder.id, 2)
+      if not commands then
+        widget:UnitDestroyed(builder.id)
+      end
+      local nCommands = #commands
+      if nCommands > 0 then
+        builder.lastActivity = gameFrame
+      end
 
-    if gameFrame - builder.lastActivity < 1800 then -- not abandoned
-      local isFinishingUpTarget = nCommands == 1
-          and (commands[1].id < 0
-            or commands[1].id == CMD.REPAIR
-            or select(5, Spring.GetUnitHealth(builder.id)) < 1
-          ) -- Is building or repairing as last activity or being built
+      if gameFrame - builder.lastActivity < 1800 then -- not abandoned
+        local isFinishingUpTarget = nCommands == 1
+            and (commands[1].id < 0
+              or commands[1].id == CMD.REPAIR
+              or select(5, Spring.GetUnitHealth(builder.id)) < 1
+            ) -- Is building or repairing as last activity or being built
 
-      if nCommands == 0 or isFinishingUpTarget then
-        if isFinishingUpTarget then
-          builder.targetId = Spring.GetUnitIsBuilding(builder.id) or select(5, Spring.GetUnitHealth(builder.id))
-          AddTargetEta(builder.targetId)
+        if nCommands == 0 or isFinishingUpTarget then
+          if isFinishingUpTarget then
+            builder.targetId = Spring.GetUnitIsBuilding(builder.id) or select(5, Spring.GetUnitHealth(builder.id))
+            AddTargetEta(builder.targetId)
+          end
+          idleDefIdBuildersCounts[builder.def.id] = (idleDefIdBuildersCounts[builder.def.id] or 0) + 1
+          if not idleDefIdBuilders[builder.def.id] then
+            idleDefIdBuilders[builder.def.id] = {}
+          end
+          idleDefIdBuilders[builder.def.id][idleDefIdBuildersCounts[builder.def.id]] = builder
         end
-        idleDefIdBuildersCounts[builder.def.id] = (idleDefIdBuildersCounts[builder.def.id] or 0) + 1
-        if not idleDefIdBuilders[builder.def.id] then
-          idleDefIdBuilders[builder.def.id] = {}
-        end
-        idleDefIdBuilders[builder.def.id][idleDefIdBuildersCounts[builder.def.id]] = builder
       end
     end
   end
@@ -244,7 +259,6 @@ function widget:GameFrame(_gameFrame)
   UpdateTargetsFinishedAt()
   distinctIdleBuilders = DistinctSortedIdleBuilders(idleBuilderDefGroups)
   table.sort(distinctIdleBuilders, CompareTechLevel)
-  redrawList = true
 end
 
 function widget:UnitCreated(unitId, unitDefID, unitTeam)
@@ -301,6 +315,12 @@ function widget:Initialize()
     widgetHandler:RemoveWidget()
   end
 
+  activationScreenPos  = {}
+  builders             = {}
+  builderUnitIds       = NewSetList()
+  distinctIdleBuilders = {}
+  anyIdleTargetEtas    = {}
+
   widget:ViewResize()
 
   local myUnits = Spring.GetTeamUnits(myTeamId)
@@ -326,11 +346,6 @@ local function CreateIdleBuilderList()
   for i = 1, #distinctIdleBuilders do
     local builder        = distinctIdleBuilders[i]
     local target         = anyIdleTargetEtas[builder.targetId]
-
-    -- log('builder.targetId', builder.targetId, 'target', target)
-    -- table.echo(target)
-
-    -- log('draw builder', builder.def.translatedHumanName, 'targetId', builder.targetId, 'target', target)
 
     local timeLeftString = ''
     local lineColor      = { 1, 1, 1 }
@@ -367,7 +382,6 @@ local function CreateIdleBuilderList()
       builder.def.translatedHumanName,
       timeLeftString
     )
-    -- font:Print(builderString, mouseX + 80, mouseY - (i - 1) * 20, fontSize, 'o')
     font:Print(builderString, mouseX + 80, mouseY - (i - 1) * 20 - 8, fontSize, 'o')
   end
 
@@ -379,27 +393,36 @@ function widget:DrawScreen()
 end
 
 function widget:ViewResize()
-  local viewSizeX, viewSizeY = gl.GetViewSizes()
+  viewSizeX, viewSizeY = gl.GetViewSizes()
 
   fontSize = Interpolate((viewSizeX + viewSizeY) / 2, 600, 8000, 10, 50)
-  -- font = WG['fonts'].getFont(nil, 33, 0.19, 1.75)
   font = WG['fonts'].getFont(nil, nil, 0.3, 7)
-  redraw = true
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
-  log('Spring.GetActiveCommand()', Spring.GetActiveCommand())
+  -- log('Spring.GetActiveCommand()', Spring.GetActiveCommand())
   if Spring.GetActiveCommand() ~= 0 then
     return
   end
 
-  log('press', key, mods['shift'], key == KEYSYMS.LSHIFT)
-  if key == KEYSYMS.CAPSLOCK then
-    log('caps')
-    return true
-  end
+  -- log('press', key, mods['shift'], key == KEYSYMS.LSHIFT)
   if key == KEYSYMS.LSHIFT then
     shortcutsActive = true
+    -- activationScreenPos = { Spring.GetCameraPosition() }
+    _, activationScreenPos = Spring.TraceScreenRay(viewSizeX / 2, viewSizeY / 2, my, true, false, true)
+  elseif mods['shift'] then
+    if key >= KEYSYMS.N_0 and key <= KEYSYMS.N_9 then
+      local groupNumber = key == KEYSYMS.N_0 and 10 or key - KEYSYMS.N_0
+      if shortcutsActive and distinctIdleBuilders[groupNumber] then
+        Spring.SelectUnit(distinctIdleBuilders[groupNumber].id)
+        local x, y, z = Spring.GetUnitPosition(distinctIdleBuilders[groupNumber].id, true)
+        Spring.SetCameraTarget(x, y, z, 0.07)
+        return true
+      end
+    elseif key == KEYSYMS.FIRST then
+      Spring.SetCameraTarget(activationScreenPos[1], activationScreenPos[2], activationScreenPos[3])
+      return true
+    end
   end
 end
 

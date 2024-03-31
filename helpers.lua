@@ -5,7 +5,13 @@ function table.echo(tbl)
   debugUtilities.TableEcho(tbl)
 end
 
-log = Spring.Echo
+local logGameFrame = false
+if logGameFrame then
+  log = function(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v) Spring.Echo(Spring.GetGameFrame(), a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v) end
+else
+  log = Spring.Echo
+end
+
 
 function deepcopy(orig)
   local orig_type = type(orig)
