@@ -404,13 +404,13 @@ local function UpdateResources(n)
 end
 
 local function getMyResources(type)
-  local lvl, storage, pull, inc, exp, share, sent, recieved = GetTeamResources(myTeamId, type)
+  local lvl, storage, pullExpWanted, inc, expActual, shareSlider, sent, recieved = GetTeamResources(myTeamId, type)
 
   if not inc then
-    log("ERROR", myTeamId, type)
     return
   end
-
+  -- local total = recieved + inc - exp
+  --  todo maybe remove
   local total = recieved
   local exp = 0
   local units = GetTeamUnits(myTeamId)
@@ -429,7 +429,7 @@ local function getMyResources(type)
     end
   end
 
-  local alreadyInStall = pull > exp and lvl < pull
+  local alreadyInStall = pullExpWanted > exp and lvl < pullExpWanted
 
   return total, lvl, storage, exp, alreadyInStall
 end
@@ -779,9 +779,9 @@ local function DamagedUnfinishedFeatures(builder, targetId, cmdQueue, nCmdQueue,
     if targetId ~= candidateId then
       targetId = candidateId
       if not returnForEasyFinish then
-        log('repair unfinished',
-          -- , builder.def.translatedHumanName, builderId,
-          candidatesUnfinished[1].def.translatedHumanName, targetId)
+        -- log('repair unfinished',
+        --   -- , builder.def.translatedHumanName, builderId,
+        --   candidatesUnfinished[1].def.translatedHumanName, targetId)
         repair(builderId, targetId, false)
       end
     end
@@ -894,13 +894,13 @@ local function Builders(gameFrame, buildersRandomModulo)
           end
 
           -- queue fast forward
-          if builder.def.name == 'armck' then
-            log('isMultiBuilding', isMultiBuilding, 'targetId', targetId)
-          end
+          -- if builder.def.name == 'armck' then
+          --   log('isMultiBuilding', isMultiBuilding, 'targetId', targetId)
+          -- end
           if targetId and isMultiBuilding then
-            if builder.def.name == 'armck' then
-              log('ff?', nCmdQueue, cmdQueue and cmdQueue[1] and cmdQueue[1].id, cmdQueue and cmdQueue[2] and cmdQueue[2].id, cmdQueue and cmdQueue[3] and cmdQueue[3].id)
-            end
+            -- if builder.def.name == 'armck' then
+            --   log('ff?', nCmdQueue, cmdQueue and cmdQueue[1] and cmdQueue[1].id, cmdQueue and cmdQueue[2] and cmdQueue[2].id, cmdQueue and cmdQueue[3] and cmdQueue[3].id)
+            -- end
             FastForward(builder, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
           end
 
@@ -927,9 +927,9 @@ local function Builders(gameFrame, buildersRandomModulo)
           if AllowBuilderOrder(builderId, gameFrame, 2) then
             -- refresh for possible target change
             targetId = GetUnitIsBuilding(builderId)
-            if builder.def.name == 'armck' then
-              log('ef', 'targetId', targetId, 'nCandidatesUnfinished', nCandidatesUnfinished)
-            end
+            -- if builder.def.name == 'armck' then
+            --   log('ef', 'targetId', targetId, 'nCandidatesUnfinished', nCandidatesUnfinished)
+            -- end
             if targetId then
               local targetDefId = GetUnitDefID(targetId)
 
@@ -938,19 +938,19 @@ local function Builders(gameFrame, buildersRandomModulo)
                 local candidate = candidatesUnfinished[j]
                 local candidateId = candidate.id
                 if builder.def.name == 'armck' then
-                  log('ef'
-                  -- , candidate.def.translatedHumanName
-                  , candidate.defId, targetDefId, candidateId, targetId
-                  )
+                  -- log('ef'
+                  -- -- , candidate.def.translatedHumanName
+                  -- , candidate.defId, targetDefId, candidateId, targetId
+                  -- )
                 end
                 -- same type and not actually same building
                 if candidate.defId == targetDefId
                     and candidateId ~= targetId
                     and candidate.build and candidate.build < 1 and candidate.build > targetBuild
                     and AllowBuilderOrder(builderId, gameFrame) then
-                  if builder.def.name == 'armck' then
-                    log('ef repair', candidate.id, candidate.def.translatedHumanName, gameFrame)
-                  end
+                  -- if builder.def.name == 'armck' then
+                  --   log('ef repair', candidate.id, candidate.def.translatedHumanName, gameFrame)
+                  -- end
                   repair(builderId, candidateId, not isMultiBuilding)
                   -- repair(builderId, candidateId, false) -- shift = false seems to fix issue with builders
                   break
