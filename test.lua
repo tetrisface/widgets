@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name    = "(test)",
+    name    = "reload widgets",
     desc    = "",
     author  = "tetrisface",
     version = "",
@@ -49,91 +49,97 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
   return result
 end
 
-function widget:MouseRelease(x, y, button)
-  -- log('mouse release ' .. x .. " " .. y .. " " .. button)
-  -- return false
-end
+-- function widget:MouseRelease(x, y, button)
+-- log('mouse release ' .. x .. " " .. y .. " " .. button)
+-- return false
+-- end
 
-function widget:MousePress(x, y, button)
-  -- local cmdQueue = GetUnitCommands(16230, 3)
-  -- log(cmdQueue[1].params[1])
-  -- local unitDef = UnitDefs[GetUnitDefID(24505)]
+-- function widget:MousePress(x, y, button)
+-- local cmdQueue = GetUnitCommands(16230, 3)
+-- log(cmdQueue[1].params[1])
+-- local unitDef = UnitDefs[GetUnitDefID(24505)]
 
-  -- log(table.tostring(unitDef.wDefs[1]))
-  -- log(unitDef.wDefs[1].projectilespeed)
+-- log(table.tostring(unitDef.wDefs[1]))
+-- log(unitDef.wDefs[1].projectilespeed)
 
-  -- local desc, args = TraceScreenRay(x, y, true)
-  -- if nil == desc then return end -- off map
-  -- local worldX = args[1]
-  -- local worldY = args[2]
-  -- local worldZ = args[3]
-  -- log('x ' .. math.floor(worldX) .. ' z ' .. math.floor(worldZ))
+-- local desc, args = TraceScreenRay(x, y, true)
+-- if nil == desc then return end -- off map
+-- local worldX = args[1]
+-- local worldY = args[2]
+-- local worldZ = args[3]
+-- log('x ' .. math.floor(worldX) .. ' z ' .. math.floor(worldZ))
 
-  -- log('mouse press ' .. x .. " " .. y .. " " .. button)
-  -- return false
-  -- local unitStates = GetUnitStates(20448)
-  -- log('unitStates')
-  -- log(table.tostring(unitStates))
-  -- SetUnitTarget(30651, 6298)
-  -- GiveOrderToUnit(4281, CMD.FIGHT, 22248, {})
-  -- log('Spring.GetGameRulesParam(raptorPlayerAggressionEcoValues)')
-  -- log(table.tostring(Json.decode(Spring.GetGameRulesParam('raptorPlayerAggressionEcoValues') or '{}')))
-  -- log(Spring.SetTeamRulesParam(myTeamId, 'mmLevel', 0.2))
-  -- get all teams
-  -- for _, teamID in ipairs(teams) do
-  -- log(table.tostring(teams))
-  -- log(GetMyAllyTeamID())
+-- log('mouse press ' .. x .. " " .. y .. " " .. button)
+-- return false
+-- local unitStates = GetUnitStates(20448)
+-- log('unitStates')
+-- log(table.tostring(unitStates))
+-- SetUnitTarget(30651, 6298)
+-- GiveOrderToUnit(4281, CMD.FIGHT, 22248, {})
+-- log('Spring.GetGameRulesParam(raptorPlayerAggressionEcoValues)')
+-- log(table.tostring(Json.decode(Spring.GetGameRulesParam('raptorPlayerAggressionEcoValues') or '{}')))
+-- log(Spring.SetTeamRulesParam(myTeamId, 'mmLevel', 0.2))
+-- get all teams
+-- for _, teamID in ipairs(teams) do
+-- log(table.tostring(teams))
+-- log(GetMyAllyTeamID())
 
-  -- local ecoValues = {}
-  -- local teams = GetTeamList(GetMyAllyTeamID())
-  -- for i = 1, #teams do
-  --   local teamID = teams[i]
-  --   for team, _value in pairs(GetTeamStatsHistory(teamID, 1234)) do
-  --     for key, value in pairs(_value) do
-  --       if key == 'energyProduced' then
-  --         ecoValues[team] = value
-  --       end
-  --     end
-  --   end
-  -- end
-  -- log(table.tostring(ecoValues))
+-- local ecoValues = {}
+-- local teams = GetTeamList(GetMyAllyTeamID())
+-- for i = 1, #teams do
+--   local teamID = teams[i]
+--   for team, _value in pairs(GetTeamStatsHistory(teamID, 1234)) do
+--     for key, value in pairs(_value) do
+--       if key == 'energyProduced' then
+--         ecoValues[team] = value
+--       end
+--     end
+--   end
+-- end
+-- log(table.tostring(ecoValues))
 
-  -- testSet:Add(Spring.GetGameFrame())
-  -- testSet:Add(123)
-  -- log('testSet.count ' .. tostring(testSet.count) .. ' ' .. table.tostring(testSet.data))
+-- testSet:Add(Spring.GetGameFrame())
+-- testSet:Add(123)
+-- log('testSet.count ' .. tostring(testSet.count) .. ' ' .. table.tostring(testSet.data))
 
-  -- log('interpolating:')
-  -- log(Interpolate(243.2 - 235, 0, 12, 0, 0.6))
-  -- log(Interpolate(240 - 235, 0, 12, 0, 0.6))
-  -- log(Interpolate(235 - 235, 0, 12, 0, 0.6))
-  -- log(Interpolate(230 - 235, 0, 12, 0, 0.6))
-  -- local metalMake = Spring.GetUnitResources(19453)
-  -- metalMake, metalUse, energyMake, energyUse = Spring.GetUnitResources(29148)
-  -- log(table.tostring(Spring.GetUnitIsActive(19453)))
-  -- log(table.tostring(Spring.GetUnitIsActive(29148)))
-end
+-- log('interpolating:')
+-- log(Interpolate(243.2 - 235, 0, 12, 0, 0.6))
+-- log(Interpolate(240 - 235, 0, 12, 0, 0.6))
+-- log(Interpolate(235 - 235, 0, 12, 0, 0.6))
+-- log(Interpolate(230 - 235, 0, 12, 0, 0.6))
+-- local metalMake = Spring.GetUnitResources(19453)
+-- metalMake, metalUse, energyMake, energyUse = Spring.GetUnitResources(29148)
+-- log(table.tostring(Spring.GetUnitIsActive(19453)))
+-- log(table.tostring(Spring.GetUnitIsActive(29148)))
+-- end
 
-function widget:MouseMove(x, y, dx, dy, button)
-  -- log('move1 ' .. x .. ' ' .. y .. " " .. button)
-  -- if not keyHold then
-  --   return
-  -- end
-  -- log('move ' .. x .. ' ' .. y)
+-- function widget:MouseMove(x, y, dx, dy, button)
+-- log('move1 ' .. x .. ' ' .. y .. " " .. button)
+-- if not keyHold then
+--   return
+-- end
+-- log('move ' .. x .. ' ' .. y)
 
 
-  -- if math.abs(x-keyPressMouseX) > 50 or math.abs(y-keyPressMouseY) > 50 then
-  --   log('moved ' .. x-keyPressMouseX ' and ' .. y-keyPressMouseY)
-  -- end
-  -- return false
-end
+-- if math.abs(x-keyPressMouseX) > 50 or math.abs(y-keyPressMouseY) > 50 then
+--   log('moved ' .. x-keyPressMouseX ' and ' .. y-keyPressMouseY)
+-- end
+-- return false
+-- end
 
 function widget:KeyPress(key, mods, isRepeat)
-  -- if (key == 114 and mods['ctrl'] and mods['alt']) then
-  --   widgetHandler:RemoveWidget()
-  --   widgetHandler:
-  --   return
-  -- end
-  -- log('key', key, mods, isRepeat)
+  log('key', key, mods)
+  if (key == 114 and mods['ctrl']) then
+    -- Spring.SendCommands("disablewidget cons")
+    -- Spring.SendCommands("enablewidget cons")
+    Spring.SendCommands("disablewidget reload widgets")
+    Spring.SendCommands("enablewidget reload widgets")
+    return false
+  end
+  if key == 113 and mods['ctrl'] then
+    local cmds = Spring.GetUnitCommands(17574, 5)
+    log('cmds', table.echo(cmds))
+  end
 end
 
 -- function getReclaimableFeature(x , z, radius)

@@ -23,8 +23,6 @@ function widget:GetInfo()
   }
 end
 
-local metalMakersControled = true --change to false if you don't use any metal makers controling widget/ai
-
 local commandsPanelHeight = 0
 local width = 245
 local height = 55
@@ -331,12 +329,12 @@ function drawResourceChange(name, type, consumption, time, releasedExpenditures,
 
   local changeWhenBuilding = currentChange - consumption + releasedExpenditures
 
-  if metalMakersControled and type == "metal" then
+  if type == "metal" then
     changeWhenBuilding = changeWhenBuilding - releasedMetal
   end
 
   releasedMetal = 0
-  if metalMakersControled and type == "energy" and possibleMetalMakersUpkeep > 0 then
+  if type == "energy" and possibleMetalMakersUpkeep > 0 then
     local metalMakersUpkeep = getMetalMakersUpkeep()
     if changeWhenBuilding < 0 then
       changeWhenBuilding = changeWhenBuilding + metalMakersUpkeep
@@ -687,12 +685,12 @@ function drawConstructionTooltipResource(name, type, consumption, time, position
   local currentChange, lvl, storage, exp, alreadyInStall = getMyResources(type)
   local changeWhenBuilding = currentChange
 
-  if metalMakersControled and type == "metal" then
+  if type == "metal" then
     changeWhenBuilding = changeWhenBuilding - releasedMetal
   end
 
   releasedMetal = 0
-  if metalMakersControled and type == "energy" and possibleMetalMakersUpkeep > 0 then
+  if type == "energy" and possibleMetalMakersUpkeep > 0 then
     local metalMakersUpkeep = getMetalMakersUpkeep()
     if changeWhenBuilding < 0 then
       changeWhenBuilding = changeWhenBuilding + metalMakersUpkeep
