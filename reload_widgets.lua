@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name    = "reload widgets",
+    name    = "Reload Widgets",
     desc    = "",
     author  = "tetrisface",
     version = "",
@@ -128,18 +128,24 @@ end
 -- end
 
 function widget:KeyPress(key, mods, isRepeat)
-  log('key', key, mods)
+  -- log('key', key, mods)
   if (key == 114 and mods['ctrl']) then
+    Spring.SendCommands("disablewidget Reload Widgets")
+    Spring.SendCommands("enablewidget Reload Widgets")
     -- Spring.SendCommands("disablewidget cons")
     -- Spring.SendCommands("enablewidget cons")
-    Spring.SendCommands("disablewidget reload widgets")
-    Spring.SendCommands("enablewidget reload widgets")
+    -- Spring.SendCommands("disablewidget Shield Builder Helper")
+    -- Spring.SendCommands("enablewidget Shield Builder Helper")
+    -- Spring.SendCommands("disablewidget Snap Mouse")
+    -- Spring.SendCommands("enablewidget Snap Mouse")
+    Spring.SendCommands("disablewidget GUI PVE Wave Info")
+    Spring.SendCommands("enablewidget GUI PVE Wave Info")
     return false
   end
-  if key == 113 and mods['ctrl'] then
-    local cmds = Spring.GetUnitCommands(17574, 5)
-    log('cmds', table.echo(cmds))
-  end
+  -- if key == 113 and mods['ctrl'] then
+  --   local cmds = Spring.GetUnitCommands(17574, 5)
+  --   log('cmds', table.echo(cmds))
+  -- end
 end
 
 -- function getReclaimableFeature(x , z, radius)

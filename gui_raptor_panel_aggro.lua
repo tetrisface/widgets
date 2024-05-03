@@ -123,7 +123,6 @@ local panelMarginY               = 40
 local panelSpacingY              = 5
 local waveSpacingY               = 7
 local moving
-local capture
 local waveSpeed                  = 0.1
 local waveCount                  = 0
 local waveTime
@@ -148,7 +147,6 @@ local hasRaptorEvent             = false
 local modOptions                 = Spring.GetModOptions()
 
 local rules                      = {
-	"lagging",
 	"raptorDifficulty",
 	"raptorGracePeriod",
 	"raptorQueenAnger",
@@ -600,14 +598,12 @@ function widget:MousePress(x, y, button)
 	if x > x1 and x < x1 + (w * widgetScale) and
 		y > y1 and y < y1 + (h * widgetScale)
 	then
-		capture = true
 		moving = true
 	end
-	return capture
+	return moving
 end
 
 function widget:MouseRelease(x, y, button)
-	capture = nil
 	moving = nil
 end
 

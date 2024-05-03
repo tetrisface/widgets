@@ -96,7 +96,7 @@ local function DrawCreateLines()
     return
   end
   -- gl.DepthTest(GL.LEQUAL)
-  gl.Color(lineColors.magenta[1] / 256, lineColors.magenta[2] / 256, lineColors.magenta[3] / 256, 0.7)
+  gl.Color(lineColors.magenta[1] / 255, lineColors.magenta[2] / 255, lineColors.magenta[3] / 255, 0.7)
   gl.PushMatrix()
 
   for i = 1, #rects do

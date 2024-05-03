@@ -14,14 +14,14 @@ end
 VFS.Include('luaui/Widgets/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
-local mapLineColor             = { 181 / 256, 137 / 256, 0 / 256 } -- yellow
+local mapLineColor             = { 181 / 255, 137 / 255, 0 / 255 } -- yellow
 local lineColors               = {
-  blue    = { 38 / 256, 139 / 256, 210 / 256 },
-  magenta = { 211 / 256, 54 / 256, 130 / 256 },
-  violet  = { 108 / 256, 113 / 256, 196 / 256 },
-  cyan    = { 42 / 256, 161 / 256, 152 / 256 },
-  red     = { 220 / 256, 50 / 256, 47 / 256 },
-  orange  = { 203 / 256, 75 / 256, 22 / 256 },
+  blue    = { 38 / 255, 139 / 255, 210 / 255 },
+  magenta = { 211 / 255, 54 / 255, 130 / 255 },
+  violet  = { 108 / 255, 113 / 255, 196 / 255 },
+  cyan    = { 42 / 255, 161 / 255, 152 / 255 },
+  red     = { 220 / 255, 50 / 255, 47 / 255 },
+  orange  = { 203 / 255, 75 / 255, 22 / 255 },
   -- green   = { 133, 153, 0 }
 }
 local directionColors          = {

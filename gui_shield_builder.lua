@@ -3,7 +3,7 @@ function widget:GetInfo()
     desc    = "",
     author  = "tetrisface",
     version = "",
-    date    = "apr, 2016",
+    date    = "apr, 2024",
     name    = "Shield Builder Helper",
     license = "",
     layer   = -99990,
@@ -13,55 +13,62 @@ end
 
 VFS.Include('luaui/Widgets/helpers.lua')
 
+local GetUnitCommands    = Spring.GetUnitCommands
+local GetSelectedUnits   = Spring.GetSelectedUnits
 local GetMyTeamID        = Spring.GetMyTeamID
 local GetTeamUnitsByDefs = Spring.GetTeamUnitsByDefs
 local GetTimer           = Spring.GetTimer
+local DiffTimers         = Spring.DiffTimers
 local UnitDefs           = UnitDefs
 
 local glColorMask        = gl.ColorMask
 local glStencilFunc      = gl.StencilFunc
 local glStencilOp        = gl.StencilOp
 local glStencilTest      = gl.StencilTest
-local glStencilMask      = gl.StencilMask
 local GL_ALWAYS          = GL.ALWAYS
 local GL_NOTEQUAL        = GL.NOTEQUAL
 local GL_KEEP            = 0x1E00 --GL.KEEP
 local GL_REPLACE         = GL.REPLACE
 local GL_TRIANGLE_FAN    = GL.TRIANGLE_FAN
 
+local t0                 = GetTimer()
+local previousTimer      = GetTimer()
+local defIdRadius        = {}
+local defIds             = {}
+local nDefIds            = 0
+local shields            = {}
+local nShields           = 0
+local active             = false
+local activeBuildRadius  = 550
+local glList             = nil
 
-local previousTimer              = GetTimer()
-local shieldBuildingsDefIdRadius = {}
-local shieldBuildingsDefIds      = {}
-local shieldUnitIds              = {}
-local shieldUnitPositions        = {}
-local nShieldUnitPositions       = 0
-local nShieldBuildingsDefIds     = 0
-local active                     = false
-local activeBuildRadius          = 550
-local alpha                      = 0.6
-local circleParts                = 100
-local shieldsList
+local gameFrame          = 0
 
-local twicePi                    = math.pi * 2
+local alpha              = 0.6
+local circleParts        = 100
+local twicePi            = math.pi * 2
+local yellow             = { 181 / 255, 137 / 255, 0 / 255 }
+local red                = { 220 / 255, 50 / 255, 47 / 255 }
+local magenta            = { 211 / 255, 54 / 255, 130 / 255 }
+local cyan               = { 42 / 255, 161 / 255, 152 / 255 }
+local blue               = { 38 / 255, 139 / 255, 210 / 255 }
+local orange             = { 203 / 255, 75 / 255, 22 / 255 }
 
-local yellow                     = { 181 / 256, 137 / 256, 0 / 256 }
-local red                        = { 220 / 256, 50 / 256, 47 / 256 }
-local magenta                    = { 211 / 256, 54 / 256, 130 / 256 }
-local cyan                       = { 42 / 256, 161 / 256, 152 / 256 }
-local blue                       = { 38 / 256, 139 / 256, 210 / 256 }
+local function Interpolate(value, inMin, inMax, outMin, outMax)
+  return outMin + ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) * (outMax - outMin)
+end
 
 function widget:Initialize()
-  previousTimer              = Spring.GetTimer()
-  shieldBuildingsDefIdRadius = {}
-  shieldBuildingsDefIds      = {}
-  shieldUnitIds              = {}
-  shieldUnitPositions        = {}
-  nShieldUnitPositions       = 0
-  nShieldBuildingsDefIds     = 0
-  active                     = false
-  activeBuildRadius          = 550
-  shieldsList                = nil
+  t0                = GetTimer()
+  previousTimer     = GetTimer()
+  defIdRadius       = {}
+  defIds            = {}
+  nDefIds           = 0
+  shields           = {}
+  nShields          = 0
+  active            = false
+  activeBuildRadius = 550
+  glList            = nil
   for unitDefId, unitDef in pairs(UnitDefs) do
     if unitDef.isBuilding and unitDef.hasShield then
       -- for _, weaponDef in pairs(unitDef.weapons) do
@@ -70,9 +77,9 @@ function widget:Initialize()
       --     shieldBuildingsDefIds[#shieldBuildingsDefIds + 1] = unitDefId
       --   end
       -- end
-      shieldBuildingsDefIdRadius[unitDefId] = 550
-      nShieldBuildingsDefIds = nShieldBuildingsDefIds + 1
-      shieldBuildingsDefIds[nShieldBuildingsDefIds] = unitDefId
+      defIdRadius[unitDefId] = 550
+      nDefIds = nDefIds + 1
+      defIds[nDefIds] = unitDefId
     end
   end
   -- local weapons = UnitDefs[Spring.GetUnitDefID(units[1])].weapons
@@ -102,59 +109,67 @@ local function doCircle(x, y, z, radius, sides)
   end
 end
 
+local function DrawCircles(online, radius)
+  for i = 1, nShields do
+    local shieldUnitPosition = shields[i]
+
+    if online == nil or shieldUnitPosition.online == online then
+      local x = shieldUnitPosition.x
+      local y = shieldUnitPosition.y + 2
+      local z = shieldUnitPosition.z
+
+      gl.BeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, radius, circleParts)
+    end
+  end
+end
+
 local function DrawShieldRanges()
   gl.PushMatrix()
   gl.DepthTest(GL.LEQUAL)
   glStencilTest(true)
-
   glStencilFunc(GL_ALWAYS, 1, 1)
   glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
+  local diffTime = DiffTimers(GetTimer(), t0, true)
+  local pulseAlpha = diffTime % 1000 < 500 and Interpolate(diffTime % 1000, 0, 500, 0.1, 0.35) or Interpolate(diffTime % 1000, 500, 1000, 0.35, 0.1)
+
+  -- mask online shields
+  glColorMask(false, false, false, false) -- disable color drawing
+  DrawCircles(true, 510)
 
 
-  for i = 1, nShieldUnitPositions do
-    local shieldUnitPosition = shieldUnitPositions[i]
-    local x = shieldUnitPosition.x
-    local y = shieldUnitPosition.y + 2
-    local z = shieldUnitPosition.z
-
-    glColorMask(false, false, false, false) -- disable color drawing
-    gl.BeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, 530, circleParts)
-  end
-
+  -- cyan online borders
   glStencilFunc(GL_NOTEQUAL, 1, 1)
+  gl.Color(cyan[1], cyan[2], cyan[3], alpha)
+  glColorMask(true, true, true, true) -- re-enable color drawing
+  DrawCircles(true, 556)
 
-  for i = 1, nShieldUnitPositions do
-    local shieldUnitPosition = shieldUnitPositions[i]
-    local x = shieldUnitPosition.x
-    local y = shieldUnitPosition.y + 2
-    local z = shieldUnitPosition.z
-    gl.Color(cyan[1], cyan[2], cyan[3], alpha)
-    glColorMask(true, true, true, true) -- re-enable color drawing
-    gl.BeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, 556, circleParts)
-  end
+  -- mask offline shields
+  glColorMask(false, false, false, false)
+  DrawCircles(false, 530)
 
+  -- cyan offline borders
+  glStencilFunc(GL_NOTEQUAL, 1, 1)
+  gl.Color(cyan[1], cyan[2], cyan[3], pulseAlpha)
+  glColorMask(true, true, true, true)
+  DrawCircles(false, 556)
+
+  -- mask outer
   glStencilFunc(GL_ALWAYS, 1, 1)
-  for i = 1, nShieldUnitPositions do
-    local shieldUnitPosition = shieldUnitPositions[i]
-    local x = shieldUnitPosition.x
-    local y = shieldUnitPosition.y + 2
-    local z = shieldUnitPosition.z
-
-    glColorMask(false, false, false, false) -- disable color drawing
-    gl.BeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, 556, circleParts)
-  end
+  glColorMask(false, false, false, false)
+  DrawCircles(nil, 556)
 
   glStencilFunc(GL_NOTEQUAL, 1, 1)
 
-  for i = 1, nShieldUnitPositions do
-    local shieldUnitPosition = shieldUnitPositions[i]
-    local x = shieldUnitPosition.x
-    local y = shieldUnitPosition.y + 2
-    local z = shieldUnitPosition.z
-    gl.Color(yellow[1], yellow[2], yellow[3], 0.4)
-    glColorMask(true, true, true, true) -- re-enable color drawing
-    gl.BeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, 920, circleParts)
-  end
+  -- yellow
+  gl.Color(yellow[1], yellow[2], yellow[3], alpha - 0.25)
+  glColorMask(true, true, true, true)
+  DrawCircles(true, 920)
+
+  -- orange
+  gl.Color(orange[1], orange[2], orange[3], pulseAlpha)
+  glColorMask(true, true, true, true)
+  DrawCircles(false, 920)
+
 
   gl.PopMatrix()
   glStencilFunc(GL_ALWAYS, 1, 1) -- reset gl stencilfunc too
@@ -162,47 +177,81 @@ local function DrawShieldRanges()
 end
 
 function widget:Update()
-  if Spring.DiffTimers(GetTimer(), previousTimer) < 0.1 then
+  if DiffTimers(GetTimer(), previousTimer) < 0.1 then
     return
   end
 
   previousTimer = GetTimer()
-  local _, buildingDefId = Spring.GetActiveCommand()
+  local _, cmd = Spring.GetActiveCommand()
 
-  if not buildingDefId or buildingDefId >= 0 then
-    if shieldsList ~= nil then
-      gl.DeleteList(shieldsList)
-      shieldsList = nil
+  if not cmd or cmd >= 0 then
+    if glList ~= nil then
+      gl.DeleteList(glList)
+      glList = nil
     end
     return
   end
 
-  activeBuildRadius = shieldBuildingsDefIdRadius[-buildingDefId]
+  activeBuildRadius = defIdRadius[-cmd]
 
   if activeBuildRadius then
     active = true
-    shieldsList = gl.CreateList(DrawShieldRanges)
+    glList = gl.CreateList(DrawShieldRanges)
   end
 end
 
 function widget:DrawWorld()
-  if shieldsList then
-    gl.CallList(shieldsList)
+  if glList then
+    gl.CallList(glList)
   end
 end
 
-function widget:GameFrame(gameFrame)
+function widget:GameFrame(_gameFrame)
+  gameFrame = _gameFrame
   if not active or gameFrame % 5 ~= 0 then
     return
   end
 
-  shieldUnitPositions = {}
-  shieldUnitIds = GetTeamUnitsByDefs(GetMyTeamID(), shieldBuildingsDefIds)
+  shields = {}
+  nShields = 0
 
-  nShieldUnitPositions = 0
-  for i = 1, #shieldUnitIds do
-    local x, y, z = Spring.GetUnitPosition(shieldUnitIds[i], true)
-    nShieldUnitPositions = nShieldUnitPositions + 1
-    shieldUnitPositions[nShieldUnitPositions] = { x = x, y = y, z = z }
+  local selectedUnitIds = GetSelectedUnits()
+  if selectedUnitIds then
+    local selectedUnitId = selectedUnitIds[1]
+    if selectedUnitId then
+      local cmdQueue = GetUnitCommands(selectedUnitId, 100)
+      if cmdQueue then
+        for i = 1, #cmdQueue do
+          local cmd = cmdQueue[i]
+          if defIdRadius[-cmd.id] then
+            nShields = nShields + 1
+            shields[nShields] = {
+              x = cmd.params[1],
+              y = cmd.params[2],
+              z = cmd.params[3],
+              online = false,
+              queued = true,
+            }
+          end
+        end
+      end
+    end
+  end
+
+  local shieldUnitIds = GetTeamUnitsByDefs(GetMyTeamID(), defIds)
+  local nShieldUnitIds = #shieldUnitIds
+
+  for i = 1, nShieldUnitIds do
+    local id = shieldUnitIds[i]
+    local x, y, z = Spring.GetUnitPosition(id, true)
+    nShields = nShields + 1
+    shields[nShields] = {
+      x = x,
+      y = y,
+      z = z,
+      id = id,
+      online = select(2, Spring.GetUnitShieldState(id)) > 400 and select(5, Spring.GetUnitHealth(id)) == 1,
+      queued = false,
+    }
   end
 end
