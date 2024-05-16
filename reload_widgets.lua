@@ -132,14 +132,14 @@ function widget:KeyPress(key, mods, isRepeat)
   if (key == 114 and mods['ctrl']) then
     Spring.SendCommands("disablewidget Reload Widgets")
     Spring.SendCommands("enablewidget Reload Widgets")
-    -- Spring.SendCommands("disablewidget cons")
-    -- Spring.SendCommands("enablewidget cons")
-    -- Spring.SendCommands("disablewidget Shield Builder Helper")
-    -- Spring.SendCommands("enablewidget Shield Builder Helper")
     -- Spring.SendCommands("disablewidget Snap Mouse")
     -- Spring.SendCommands("enablewidget Snap Mouse")
-    Spring.SendCommands("disablewidget GUI PVE Wave Info")
-    Spring.SendCommands("enablewidget GUI PVE Wave Info")
+    -- Spring.SendCommands("disablewidget GUI PVE Wave Info")
+    -- Spring.SendCommands("enablewidget GUI PVE Wave Info")
+    Spring.SendCommands("disablewidget Shield Builder Helper")
+    Spring.SendCommands("enablewidget Shield Builder Helper")
+    Spring.SendCommands("disablewidget cons")
+    Spring.SendCommands("enablewidget cons")
     return false
   end
   -- if key == 113 and mods['ctrl'] then

@@ -35,7 +35,7 @@ local WallDefNames = {
 --	3000: [adv fusion]
 -- }
 local function EcoValueDef(unitDef)
-	if unitDef.canMove or WallDefNames[unitDef.name] then
+	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or WallDefNames[unitDef.name] then
 		return 0
 	end
 

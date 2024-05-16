@@ -9,7 +9,7 @@ function widget:GetInfo()
     author = "tetrisface",
     date = "May, 2024",
     license = "GNU GPL, v3 or later",
-    layer = -9,
+    layer = -9123,
     enabled = true
   }
 end
@@ -17,8 +17,6 @@ end
 VFS.Include('luaui/Widgets/helpers.lua')
 
 local config               = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua')
-
-local I18N                 = Spring.I18N
 
 local customScale          = 1
 local widgetScale          = customScale
@@ -116,11 +114,13 @@ local function DrawWaveInfo()
         font:SetTextColor(1, 1, 1, 0.7)
       end
       local spawnName = spawn.def.translatedHumanName
-      local spawnTime = FormatSeconds(spawn.spawnAtSeconds - t) .. ' (' .. spawn.minTech .. '%)'
+      local spawnTime = FormatSeconds(spawn.spawnAtSeconds - t)
+      local spawnTech = '(' .. spawn.minTech .. '%)'
       local nameWidth = math.floor(0.5 + font:GetTextWidth(spawnName) * fontSize)
       local timeWidth = math.floor(0.5 + font:GetTextWidth(spawnTime) * fontSize)
+      local timeWidthColon = math.floor(0.5 + font:GetTextWidth(spawnTime:gsub('(.*):.*$', '%1')) * fontSize)
       font:Print(spawnName, nameWidth / 2, -index * fontSize, fontSize, 'co')
-      font:Print(spawnTime, 230 + timeWidth / 2, -index * fontSize, fontSize, 'co')
+      font:Print(spawnTime, 270 + timeWidthColon / 2, -index * fontSize, fontSize, 'co')
     end
   end
   font:End()
@@ -208,8 +208,7 @@ local function UpdateTimes()
     -- local techAnger = (t - (config.gracePeriod / modOptions.raptor_graceperiodmult)) / ((config.queenTime / modOptions.raptor_queentimemult) - (config.gracePeriod / modOptions.raptor_graceperiodmult)) * 100
     -- local origTest = math.max(math.ceil(math.min((Spring.GetGameSeconds() - (config.gracePeriod / Spring.GetModOptions().raptor_graceperiodmult)) / ((queenSeconds) - (config.gracePeriod / Spring.GetModOptions().raptor_graceperiodmult)) * 100), 999), 0)
     -- local testTech = ((Spring.GetGameSeconds() - graceSeconds) / (queenSeconds - graceSeconds)) * 100
-    local invertTechSeconds = ((spawn.minTech - 0.5) / 100) * (queenSeconds - graceSeconds) + graceSeconds - 10
-    spawn.spawnAtSeconds = invertTechSeconds
+    spawn.spawnAtSeconds = math.floor(0.5 + ((spawn.minTech - 0.5) / 100) * (queenSeconds - graceSeconds) + graceSeconds - 10)
     -- if tech < spawn.minTech then
     --   log('test', testTech, 'invertTest', invertTechSeconds, (queenSeconds - graceSeconds))
     -- end
@@ -299,6 +298,7 @@ function widget:Initialize()
     spawnDef.def = UnitDefNames[defName]
     spawnDef.name = defName
     spawnDef.minTech = spawnDef.minQueenAnger
+    spawnDef.minQueenAnger = nil
     nSpawnDefs = nSpawnDefs + 1
     spawnDefs[nSpawnDefs] = spawnDef
   end
