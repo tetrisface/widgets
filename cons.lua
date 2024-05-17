@@ -416,14 +416,15 @@ local function UpdateResources(n)
   -- log('energy status', energyExpenseActual, energyIncome, energyCurrent, (energyExpenseActual - energyIncome) / energyCurrent)
   -- log('any stall m', anyBuildWillMStall, 'e', anyBuildWillEStall)
   if anyBuildWillMStall or anyBuildWillEStall then
-    -- log('power stall', anyBuildWillMStall, anyBuildWillEStall)
+    log('power stall', anyBuildWillMStall, anyBuildWillEStall)
     powerNeed = 0
     -- elseif anyBuildWillMStall or anyBuildWillEStall then
     --   powerNeed = 0.5
   elseif not (anyBuildWillMStall and anyBuildWillEStall) then
-    -- log('power no stall')
+    log('power no stall')
     powerNeed = 1
   elseif positiveMMLevel then
+    log('power no stall')
     powerNeed = math.max(0, math.min(1,
       (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or metalLevel)
       -- * (energyIncome / energyExpenseActual)

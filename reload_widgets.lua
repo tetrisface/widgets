@@ -136,10 +136,14 @@ function widget:KeyPress(key, mods, isRepeat)
     -- Spring.SendCommands("enablewidget Snap Mouse")
     -- Spring.SendCommands("disablewidget GUI PVE Wave Info")
     -- Spring.SendCommands("enablewidget GUI PVE Wave Info")
-    Spring.SendCommands("disablewidget Shield Builder Helper")
-    Spring.SendCommands("enablewidget Shield Builder Helper")
+    -- Spring.SendCommands("disablewidget Shield Builder Helper")
+    -- Spring.SendCommands("enablewidget Shield Builder Helper")
     Spring.SendCommands("disablewidget cons")
     Spring.SendCommands("enablewidget cons")
+    Spring.SendCommands("disablewidget Auto Unit Settings")
+    Spring.SendCommands("enablewidget Auto Unit Settings")
+    Spring.SendCommands("disablewidget Build Shortcuts")
+    Spring.SendCommands("enablewidget Build Shortcuts")
     return false
   end
   -- if key == 113 and mods['ctrl'] then
