@@ -5,7 +5,7 @@ function widget:GetInfo()
     version = "",
     date    = "Apr, 2024",
     name    = "Shield Builder Helper",
-    license = "",
+    license = "GPLv2 or later",
     layer   = -99990,
     enabled = true,
   }
@@ -54,6 +54,9 @@ local shieldsUpdateMs    = 100
 local yellow             = { 181 / 255, 137 / 255, 0 / 255 }
 local cyan               = { 42 / 255, 161 / 255, 152 / 255 }
 local orange             = { 203 / 255, 75 / 255, 22 / 255 }
+local ENUM_ONLINE        = 1
+local ENUM_OFFLINE       = 2
+local DRAW_ALL           = 3
 
 function widget:Initialize()
   t0                 = GetTimer()
@@ -69,32 +72,12 @@ function widget:Initialize()
   glList             = nil
   for unitDefId, unitDef in pairs(UnitDefs) do
     if unitDef.isBuilding and unitDef.hasShield then
-      -- for _, weaponDef in pairs(unitDef.weapons) do
-      --   if weaponDef.type == 'Shield' then
-      --     defIdRadius[unitDefId] = weaponDef.shield.radius
-      --     shieldBuildingsDefIds[#shieldBuildingsDefIds + 1] = unitDefId
-      --   end
-      -- end
+      -- todo get dynamic shield range
       defIdRadius[unitDefId] = 550
       nDefIds = nDefIds + 1
       defIds[nDefIds] = unitDefId
     end
   end
-  -- local weapons = UnitDefs[Spring.GetUnitDefID(units[1])].weapons
-  -- for i = 1, #weapons do
-  --   local weaponDef = WeaponDefs[weapons[i].weaponDef]
-  -- for key, value in pairs(WeaponDefs[UnitDefNames['armgate'].weapons[1].weaponDef]) do
-  --   log(value())
-  -- end
-  -- log('UnitDefNames[].weapons[1].weaponDef', UnitDefNames['armgate'].weapons[1].weaponDef)
-  -- table.echo(WeaponDefs[UnitDefNames['armgate'].weapons[1].weaponDef])
-  -- log(table.tostring(WeaponDefs[UnitDefNames['armgate'].weapons[1].weaponDef]))
-  -- table.echo(UnitDefNames['armgate'])
-  -- log(table.tostring(UnitDefNames['armgate'].weapons[1]))
-  -- defIdRadius[UnitDefNames['armgate'].id] = WeaponDefs[UnitDefNames['armgate'].weapons[1].weaponDef].shield.range
-  -- defIdRadius[UnitDefNames['armfgate'].id] = WeaponDefs[UnitDefNames['armfgate'].weapons[1].weaponDef].shield.range
-  -- defIdRadius[UnitDefNames['corgate'].id] = WeaponDefs[UnitDefNames['corgate'].weapons[1].weaponDef].shield.range
-  -- defIdRadius[UnitDefNames['corfgate'].id] = WeaponDefs[UnitDefNames['corfgate'].weapons[1].weaponDef].shield.range
 end
 
 local function doCircle(x, y, z, radius)
@@ -106,13 +89,13 @@ local function doCircle(x, y, z, radius)
   end
 end
 
-local function DrawCircles(online, radius)
+local function DrawCircles(drawOnOff, radius)
   for i = 1, nShields do
     local shieldUnitPosition = shields[i]
 
-    if online == nil or shieldUnitPosition.online == online then
+    if drawOnOff == DRAW_ALL or shieldUnitPosition.online == drawOnOff then
       local x = shieldUnitPosition.x
-      local y = shieldUnitPosition.y + 2
+      local y = shieldUnitPosition.y + 6
       local z = shieldUnitPosition.z
 
       glBeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, radius)
@@ -131,43 +114,43 @@ local function DrawShieldRanges()
   glStencilTest(true)
   glStencilFunc(GL_ALWAYS, 1, 1)
 
-  local pulseMs = DiffTimers(GetTimer(), t0, true)
-  local pulseAlpha = pulseMs % 1000 < 500 and Interpolate(pulseMs % 1000, 0, 499, 0.1, 0.35) or Interpolate(pulseMs % 1000, 500, 999, 0.35, 0.1)
+  local pulseMs = DiffTimers(GetTimer(), t0, true) % 1000
+  local pulseAlpha = pulseMs < 500 and Interpolate(pulseMs, 0, 499, 0.1, 0.35) or Interpolate(pulseMs, 500, 999, 0.35, 0.1)
 
   -- mask online shields
   glColorMask(false, false, false, false) -- disable color drawing
-  DrawCircles(true, 510)
+  DrawCircles(ENUM_ONLINE, 510)
 
   -- cyan online borders
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   glColor(cyan[1], cyan[2], cyan[3], alpha)
   glColorMask(true, true, true, true) -- re-enable color drawing
-  DrawCircles(true, 556)
+  DrawCircles(ENUM_ONLINE, 556)
 
   -- mask offline shields
   glColorMask(false, false, false, false)
-  DrawCircles(false, 510)
+  DrawCircles(ENUM_OFFLINE, 510)
 
   -- cyan offline borders
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   glColor(cyan[1], cyan[2], cyan[3], pulseAlpha)
   glColorMask(true, true, true, true)
-  DrawCircles(false, 556)
+  DrawCircles(ENUM_OFFLINE, 556)
 
   -- mask yellow/orange
   glStencilFunc(GL_ALWAYS, 1, 1)
   glColorMask(false, false, false, false)
-  DrawCircles(nil, 556)
+  DrawCircles(DRAW_ALL, 556)
 
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   -- yellow
   glColor(yellow[1], yellow[2], yellow[3], alpha - 0.25)
   glColorMask(true, true, true, true)
-  DrawCircles(true, 920)
+  DrawCircles(ENUM_ONLINE, 920)
   -- orange
   glColor(orange[1], orange[2], orange[3], pulseAlpha)
   glColorMask(true, true, true, true)
-  DrawCircles(false, 920)
+  DrawCircles(ENUM_OFFLINE, 920)
 
   gl.PopMatrix()
   glStencilFunc(GL_ALWAYS, 1, 1)
@@ -207,7 +190,7 @@ local function ShieldsUpdate()
               x = command.params[1],
               y = command.params[2],
               z = command.params[3],
-              online = false,
+              online = ENUM_OFFLINE,
             }
           end
         end
@@ -229,7 +212,7 @@ local function ShieldsUpdate()
       x = x,
       y = y,
       z = z,
-      online = select(2, GetUnitShieldState(id)) > 400 and select(5, GetUnitHealth(id)) == 1,
+      online = select(2, GetUnitShieldState(id)) > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
     }
   end
 end

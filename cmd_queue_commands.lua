@@ -12,13 +12,14 @@ end
 
 -- TODO DOESNT WORK QUEUE CMDS ON FLYING
 
+VFS.Include('luaui/Widgets/helpers.lua')
+
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitCommands = Spring.GetUnitCommands
 local GetUnitDefID = Spring.GetUnitDefID
 
 local GiveOrderToUnit = Spring.GiveOrderToUnit
 
-local log = Spring.Echo
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
@@ -40,9 +41,9 @@ function widget:KeyPress(key, mods, isRepeat)
       local unit_id = selected_units[i]
       local cmd_queue = GetUnitCommands(unit_id, 100)
       if cmd_queue and #cmd_queue > 1 then
-        if key == 115 then     -- s
+        if key == 115 then                       -- s
           removeFirstCommand(unit_id)
-        elseif key == 100 then -- d
+        elseif key == 100 then                   -- d
           removeLastCommand(unit_id)
         elseif key == 97 and #cmd_queue > 1 then -- a
           reverseQueue(unit_id)
@@ -181,63 +182,4 @@ function reverseQueue(unit_id)
       Spring.AddBuildOrders(unit_id, udid, count)
     end
   end
-end
-
-function log(s)
-  Spring.Echo(s)
-end
-
-function table.has_value(tab, val)
-  for _, value in ipairs(tab) do
-    if value == val then
-      return true
-    end
-  end
-  return false
-end
-
-function table.full_of(tab, val)
-  for _, value in ipairs(tab) do
-    if value ~= val then
-      return false
-    end
-  end
-  return true
-end
-
--- for printing tables
-function table.val_to_str(v)
-  if "string" == type(v) then
-    v = string.gsub(v, "\n", "\\n")
-    if string.match(string.gsub(v, "[^'\"]", ""), '^"+$') then
-      return "'" .. v .. "'"
-    end
-    return '"' .. string.gsub(v, '"', '\\"') .. '"'
-  else
-    return "table" == type(v) and table.tostring(v) or
-        tostring(v)
-  end
-end
-
-function table.key_to_str(k)
-  if "string" == type(k) and string.match(k, "^[_%a][_%a%d]*$") then
-    return k
-  else
-    return "[" .. table.val_to_str(k) .. "]"
-  end
-end
-
-function table.tostring(tbl)
-  local result, done = {}, {}
-  for k, v in ipairs(tbl) do
-    table.insert(result, table.val_to_str(v))
-    done[k] = true
-  end
-  for k, v in pairs(tbl) do
-    if not done[k] then
-      table.insert(result,
-        table.key_to_str(k) .. "=" .. table.val_to_str(v))
-    end
-  end
-  return "{" .. table.concat(result, ",") .. "}"
 end

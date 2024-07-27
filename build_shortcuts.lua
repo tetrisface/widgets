@@ -13,84 +13,105 @@ end
 
 VFS.Include('luaui/Widgets/helpers.lua')
 
+local myTeamId = Spring.GetMyTeamID()
 local active = false
-local keyFactories = {
+local keysFactoryDefIds = {
   [49] = (UnitDefNames['legavp'] or UnitDefNames['coravp']).id,
   [50] = UnitDefNames['armavp'].id,
   [51] = (UnitDefNames['legaap'] or UnitDefNames['coraap']).id,
   [52] = UnitDefNames['armaap'].id,
 }
-local factoryUnit = {
+local factoryDefIdsConDefIds = {
   [(UnitDefNames['legavp'] or UnitDefNames['coravp']).id] = (UnitDefNames['legacv'] or UnitDefNames['coracv']).id,
   [UnitDefNames['armavp'].id] = UnitDefNames['armacv'].id,
   [(UnitDefNames['legaap'] or UnitDefNames['coraap']).id] = (UnitDefNames['legaca'] or UnitDefNames['coraca']).id,
   [UnitDefNames['armaap'].id] = UnitDefNames['armaca'].id,
 }
-local buildFactory = nil
-local buildCountString = ''
-local myTeamId = Spring.GetMyTeamID()
-
-local function UnitIdDef(unitId)
-  return UnitDefs[Spring.GetUnitDefID(unitId)]
-end
+-- local buildCountString = ''
+-- local factoryDefId = nil
+local waitingForConDefId = nil
+local selectedUnits = {}
 
 function widget:Initialize()
+  myTeamId = Spring.GetMyTeamID()
   active = false
-  keyFactories = {
+  keysFactoryDefIds = {
     [49] = (UnitDefNames['legavp'] or UnitDefNames['coravp']).id,
     [50] = UnitDefNames['armavp'].id,
     [51] = (UnitDefNames['legaap'] or UnitDefNames['coraap']).id,
     [52] = UnitDefNames['armaap'].id,
   }
-  buildFactory = nil
-  buildCountString = ''
-  myTeamId = Spring.GetMyTeamID()
+  factoryDefIdsConDefIds = {
+    [(UnitDefNames['legavp'] or UnitDefNames['coravp']).id] = (UnitDefNames['legacv'] or UnitDefNames['coracv']).id,
+    [UnitDefNames['armavp'].id] = UnitDefNames['armacv'].id,
+    [(UnitDefNames['legaap'] or UnitDefNames['coraap']).id] = (UnitDefNames['legaca'] or UnitDefNames['coraca']).id,
+    [UnitDefNames['armaap'].id] = UnitDefNames['armaca'].id,
+  }
+  --  buildCountString = ''
+  -- factoryDefId = nil
+  waitingForConDefId = nil
+  selectedUnits = {}
 
   if Spring.GetSpectatingState() or Spring.IsReplay() then
     widgetHandler:RemoveWidget()
   end
-
-  -- for unitDefID, unitDef in pairs(UnitDefs) do
-  --   if unitDef.isFactory then
-  --     isFactoryDefId[unitDefID] = true
-  --   end
-  -- end
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
-  if unitTeam ~= myTeamId then
-    return
-  end
-end
-
-function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
-end
-
-function widget:UnitTaken(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
-end
-
-local function exec()
-  log('exec', buildFactory, buildCountString)
-  if not buildFactory then
+  if unitTeam ~= myTeamId or not active or not waitingForConDefId or unitDefID ~= waitingForConDefId then
     return
   end
 
-  local factoryId = Spring.GetTeamUnitsByDefs(myTeamId, { buildFactory })[1]
+  local units = Spring.GetSelectedUnits() or {}
+
+  table.insert(units, unitID)
+
+  Spring.SelectUnitArray(units)
+end
+
+local function addSelected(other)
+  if other then
+    selectedUnits[other] = true
+  end
+  local currentSelectedUnits = Spring.GetSelectedUnits() or {}
+  for i = 1, #currentSelectedUnits do
+    selectedUnits[currentSelectedUnits[i]] = true
+  end
+end
+
+local function resetSelected()
+  selectedUnits = {}
+end
+local function exec(factoryDefId, conDefId)
+  log('exec', factoryDefId)
+  -- local selectedUnits = Spring.GetSelectedUnits() or {}
+  -- log('selectedUnits', selectedUnits, '#selectedUnits', #selectedUnits)
+
+  -- if not factoryDefId then
+  --   return
+  -- end
+
+  local factoryId = Spring.GetTeamUnitsByDefs(myTeamId, { factoryDefId })[1]
 
   if not factoryId then
-    buildFactory = nil
-    buildCountString = ''
+    -- factoryDefId = nil
+    -- buildCountString = ''
     return
   end
 
-  local buildCount = tonumber(buildCountString)
+  local inProgressId = Spring.GetUnitIsBuilding(factoryId)
+
+  if inProgressId and Spring.GetUnitDefID(inProgressId) == conDefId then
+    addSelected(inProgressId)
+  end
+
+  local buildCount = 1
 
   if buildCount then
     for i = 1, buildCount do
-      Spring.GiveOrderToUnit(factoryId, -factoryUnit[buildFactory], {}, {})
+      Spring.GiveOrderToUnit(factoryId, -conDefId, {}, {})
     end
+
 
     local mouseX, mouseY = Spring.GetMouseState()
     local desc, args = Spring.TraceScreenRay(mouseX, mouseY, true)
@@ -100,18 +121,26 @@ local function exec()
       local z = args[3]
       Spring.GiveOrderToUnit(factoryId, CMD.MOVE, args, {})
     end
+    -- Spring.SelectUnitArray(selectedUnits)
   else
     local cx, cy, cz = Spring.GetUnitPosition(factoryId)
     Spring.SetCameraTarget(cx, cy, cz, 0)
   end
 
-  buildFactory = nil
-  buildCountString = ''
+  -- factoryDefId = nil
+  -- buildCountString = ''
 end
 
+
 function widget:KeyPress(key, mods, isRepeat)
-  -- log('key', key)
+  addSelected()
+  -- log('key', key, '#selectedUnits', #Spring.GetSelectedUnits())
+
   if key == 294 then
+    if isRepeat then
+      return false
+    end
+    waitingForConDefId = nil
     active = true
     return true
   end
@@ -120,31 +149,34 @@ function widget:KeyPress(key, mods, isRepeat)
     return
   end
 
-  if (key < 48 or key > 52) and not buildFactory then
+  -- if (key < 48 or key > 52) and not factoryDefId then
+  if (key < 48 or key > 52) then
     return
   end
 
-  if isRepeat then
-    return
-  end
 
-  if not buildFactory and keyFactories[key] then
-    buildFactory = keyFactories[key]
-    return true
-  end
+  -- if not factoryDefId and keysFactoryDefIds[key] then
+  -- factoryDefId = keysFactoryDefIds[key]
+  waitingForConDefId = factoryDefIdsConDefIds[keysFactoryDefIds[key]]
+  exec(keysFactoryDefIds[key], waitingForConDefId)
 
-  if key < 47 or key > 57 or not buildFactory then
-    return
-  end
+  Spring.SelectUnitMap(selectedUnits)
 
-  buildCountString = buildCountString .. tostring(key - 48)
+  return true
+  -- end
+
+  -- if key < 47 or key > 57 or not buildFactory then
+  --   return
+  -- end
+
+  -- buildCountString = buildCountString .. tostring(key - 48)
 end
 
 function widget:KeyRelease(key, mods, isRepeat)
   -- log('key release', key, 'mods', mods, 'isRepeat', isRepeat)
   if key == 294 then
+    resetSelected()
     active = false
-    exec()
     return true
   end
 end

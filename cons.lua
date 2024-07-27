@@ -43,7 +43,7 @@ local builderUnitIds
 local metalMakers
 local reclaimTargets
 local reclaimTargetsPrev
-local ecoBuildDefs
+local ecoBuildDefIds
 
 local myTeamId                           = Spring.GetMyTeamID()
 local possibleMetalMakersMetalProduction = 0
@@ -88,7 +88,7 @@ local function UnitIdDef(unitId)
 end
 
 local function MetalMakingEfficiencyDef(unitDef)
-  return unitDef.customParams.energyconv_efficiency and tonumber(unitDef.customParams.energyconv_efficiency) or 0
+  return unitDef and unitDef.customParams and unitDef.customParams.energyconv_efficiency and tonumber(unitDef.customParams.energyconv_efficiency) or 0
 end
 
 local function BuilderById(id)
@@ -111,11 +111,15 @@ local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
 end
 
 local function EnergyMakeDef(_unitDef)
+  if not _unitDef then
+    return 0
+  end
+
   local totalEOut = _unitDef.energyMake or 0
 
-  totalEOut = totalEOut + -1 * _unitDef.energyUpkeep
+  totalEOut = totalEOut + -1 * (_unitDef and _unitDef.energyUpkeep or 0)
 
-  if _unitDef.tidalGenerator > 0 and tidalStrength > 0 then
+  if _unitDef.tidalGenerator and _unitDef.tidalGenerator > 0 and tidalStrength > 0 then
     local mult = 1 -- DEFAULT
     if _unitDef.customParams then
       mult = _unitDef.customParams.energymultiplier or mult
@@ -123,7 +127,7 @@ local function EnergyMakeDef(_unitDef)
     totalEOut = totalEOut + (tidalStrength * mult)
   end
 
-  if _unitDef.windGenerator > 0 then
+  if _unitDef.windGenerator and _unitDef.windGenerator > 0 then
     local mult = 1 -- DEFAULT
     if _unitDef.customParams then
       mult = _unitDef.customParams.energymultiplier or mult
@@ -144,7 +148,7 @@ function widget:Initialize()
   forwardedFromTargetIds               = NewSetList()
   builders                             = {}
   builderUnitIds                       = NewSetList()
-  ecoBuildDefs                         = NewSetList()
+  ecoBuildDefIds                       = {}
   metalMakers                          = {}
   reclaimTargets                       = NewSetList()
   reclaimTargetsPrev                   = NewSetList()
@@ -161,13 +165,13 @@ function widget:Initialize()
   for unitDefID, unitDef in pairs(UnitDefs) do
     if not unitDef.isFactory
         and (unitDef.isBuilder
-          or unitDef.buildSpeed > 0
-          or unitDef.extractsMetal > 0
+          or (unitDef.buildSpeed and unitDef.buildSpeed > 0)
+          or (unitDef.extractsMetal and unitDef.extractsMetal > 0)
           or MetalMakingEfficiencyDef(unitDef) > 0
-          or unitDef.metalMake > 0
-          or EnergyMakeDef(unitDef) > 0
+          or (unitDef.metalMake and unitDef.metalMake > 0)
+          or (EnergyMakeDef(unitDef) > 0)
         ) then
-      ecoBuildDefs:Add(unitDefID)
+      ecoBuildDefIds[unitDefID] = true
     end
   end
 end
@@ -415,22 +419,23 @@ local function UpdateResources(n)
 
   -- log('energy status', energyExpenseActual, energyIncome, energyCurrent, (energyExpenseActual - energyIncome) / energyCurrent)
   -- log('any stall m', anyBuildWillMStall, 'e', anyBuildWillEStall)
-  if anyBuildWillMStall or anyBuildWillEStall then
+  if anyBuildWillMStall or anyBuildWillEStall or isMetalStalling or isEnergyStalling then
     log('power stall', anyBuildWillMStall, anyBuildWillEStall)
     powerNeed = 0
     -- elseif anyBuildWillMStall or anyBuildWillEStall then
     --   powerNeed = 0.5
   elseif not (anyBuildWillMStall and anyBuildWillEStall) then
     log('power no stall')
-    powerNeed = 1
+    powerNeed = Interpolate(metalCurrent, 0, 840, 0, 0.5) + Interpolate(energyCurrent, 0, 12800, 0, 0.5)
   elseif positiveMMLevel then
-    log('power no stall')
+    log('power some stall pos mm')
     powerNeed = math.max(0, math.min(1,
       (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or metalLevel)
       -- * (energyIncome / energyExpenseActual)
       * (regularizedNegativeEnergy and Interpolate((energyExpenseActual - energyIncome) / energyCurrent, 0, 10, 1, 0) or (not needMM and metalLevel or energyLevel))
     ))
   else
+    log('power some stall neg mm')
     powerNeed = math.max(0, math.min(1,
       (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or metalLevel)
       -- * (energyIncome / energyExpenseActual)
@@ -654,7 +659,27 @@ local function SortMAndMM(a, b)
       or (MetalMakingEfficiencyDef(a.def) > MetalMakingEfficiencyDef(b.def))
 end
 
-local function FastForward(builder, targetId, cmdQueueTag, cmdQueueTagg)
+local function BuildQueueSkipPriority(builderId)
+  local commands = Spring.GetCommandQueue(builderId, 500)
+
+  if not commands or #commands == 0 then
+    return
+  end
+
+  local ecoBuildings = {}
+  local previousCommand = nil
+  for i = 1, #commands do
+    local command = commands[i]
+
+    if ecoBuildDefIds[-command.id] then
+      return
+    end
+    if previousCommand then
+      table.insert(ecoBuildings, command)
+    end
+  end
+end
+local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, cmdQueueTagg)
   local targetDef = UnitDefs[GetUnitDefID(targetId)]
   local totalBuildSpeed = assignedTargetBuildSpeed[targetId]
   local secondsLeft = getBuildTimeLeft(targetId, targetDef)
@@ -803,8 +828,8 @@ local function DamagedUnfinishedFeatures(builder, targetId, cmdQueue, nCmdQueue,
 
   local isBuildingEco       = nCmdQueue == 0
       or (cmdQueue[1] and (
-        ((cmdQueue[1].id == CMD.REPAIR) and (ecoBuildDefs.hash[GetUnitDefID(cmdQueue[1].params[1])] ~= nil))
-        or ((ecoBuildDefs.hash[-cmdQueue[1].id] ~= nil) and GetUnitIsBuilding(builderId) ~= nil)
+        ((cmdQueue[1].id == CMD.REPAIR) and (ecoBuildDefIds[GetUnitDefID(cmdQueue[1].params[1])]))
+        or ((ecoBuildDefIds[-cmdQueue[1].id]) and GetUnitIsBuilding(builderId) ~= nil)
       ))
 
   local notHasBuildingQueue = not (cmdQueue and ((cmdQueue[1] and cmdQueue[1].id < 0) or (cmdQueue[2] and cmdQueue[2].id < 0)))
@@ -1033,7 +1058,8 @@ local function Builders(gameFrame, buildersRandomModulo)
             -- if builder.def.name == 'armck' then
             --   log('ff?', nCmdQueue, cmdQueue and cmdQueue[1] and cmdQueue[1].id, cmdQueue and cmdQueue[2] and cmdQueue[2].id, cmdQueue and cmdQueue[3] and cmdQueue[3].id)
             -- end
-            FastForward(builder, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
+            BuildQueueSkipAssisted(builder, targetId, cmdQueue[1].tag, cmdQueue[2].tag)
+            -- BuildQueueSkipPriority(builder)
           end
 
           -- 90 == reclaim cmd
