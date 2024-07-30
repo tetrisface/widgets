@@ -1,10 +1,10 @@
 function widget:GetInfo()
   return {
-    desc    = "Draws ground circles around shields, unfinished shields and queued shields with different visuals",
+    desc    = "Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.",
     author  = "tetrisface",
     version = "",
     date    = "Apr, 2024",
-    name    = "Shield Builder Helper",
+    name    = "Shield Ground Rings",
     license = "GPLv2 or later",
     layer   = -99990,
     enabled = true,
@@ -33,6 +33,18 @@ local GL_KEEP            = 0x1E00 --GL.KEEP
 local GL_REPLACE         = GL.REPLACE
 local GL_TRIANGLE_FAN    = GL.TRIANGLE_FAN
 
+local alpha              = 0.6
+local nCircleVertices    = 101
+local vertexAngle        = math.pi * 2 / (nCircleVertices - 1)
+local drawCheckMs        = 1
+local shieldsUpdateMs    = 100
+local yellow             = { 181 / 255, 137 / 255, 0 / 255 }
+local cyan               = { 42 / 255, 161 / 255, 152 / 255 }
+local orange             = { 203 / 255, 75 / 255, 22 / 255 }
+local ENUM_ONLINE        = 1
+local ENUM_OFFLINE       = 2
+local ENUM_ALL           = 3
+
 local t0                 = GetTimer()
 local drawCheckTimer     = GetTimer()
 local shieldsUpdateTimer = GetTimer()
@@ -45,18 +57,6 @@ local shieldBuilders     = {}
 local active             = false
 local activeShieldRadius = 550
 local glList             = nil
-
-local alpha              = 0.6
-local nCircleVertices    = 101
-local vertexAngle        = math.pi * 2 / (nCircleVertices - 1)
-local drawCheckMs        = 1
-local shieldsUpdateMs    = 100
-local yellow             = { 181 / 255, 137 / 255, 0 / 255 }
-local cyan               = { 42 / 255, 161 / 255, 152 / 255 }
-local orange             = { 203 / 255, 75 / 255, 22 / 255 }
-local ENUM_ONLINE        = 1
-local ENUM_OFFLINE       = 2
-local DRAW_ALL           = 3
 
 function widget:Initialize()
   t0                 = GetTimer()
@@ -72,8 +72,7 @@ function widget:Initialize()
   glList             = nil
   for unitDefId, unitDef in pairs(UnitDefs) do
     if unitDef.isBuilding and unitDef.hasShield then
-      -- todo get dynamic shield range
-      defIdRadius[unitDefId] = 550
+      defIdRadius[unitDefId] = unitDef.customParams and unitDef.customParams.shield_radius or 550
       nDefIds = nDefIds + 1
       defIds[nDefIds] = unitDefId
     end
@@ -93,7 +92,7 @@ local function DrawCircles(drawOnOff, radius)
   for i = 1, nShields do
     local shieldUnitPosition = shields[i]
 
-    if drawOnOff == DRAW_ALL or shieldUnitPosition.online == drawOnOff then
+    if drawOnOff == ENUM_ALL or shieldUnitPosition.online == drawOnOff then
       local x = shieldUnitPosition.x
       local y = shieldUnitPosition.y + 6
       local z = shieldUnitPosition.z
@@ -140,7 +139,7 @@ local function DrawShieldRanges()
   -- mask yellow/orange
   glStencilFunc(GL_ALWAYS, 1, 1)
   glColorMask(false, false, false, false)
-  DrawCircles(DRAW_ALL, 556)
+  DrawCircles(ENUM_ALL, 556)
 
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   -- yellow
