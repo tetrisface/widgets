@@ -11,7 +11,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
 
 local myTeamId = Spring.GetMyTeamID()
 local active = false

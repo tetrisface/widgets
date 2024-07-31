@@ -12,7 +12,8 @@ function widget:GetInfo()
 end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Headers/keysym.h.lua')
 
 
 -- dont wait if has queued stuff and leaking
@@ -21,30 +22,41 @@ VFS.Include('luaui/Widgets/helpers.lua')
 --   GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
 -- end
 local reloadWaitUnits = {}
+local hardcoded = {
 
+}
 function widget:KeyPress(key, mods, isRepeat)
-  if key == 113 and mods['alt'] then -- q
+  if key == KEYSYMS.Q and mods['alt'] and not mods['shift'] and not mods['ctrl'] then -- q
     local units = Spring.GetSelectedUnits()
     local nUnits = #units
-    if nUnits == 0 then
+    if nUnits < 1 then
       return
     end
-
-    local weapons = UnitDefs[Spring.GetUnitDefID(units[1])].weapons
-    local isStockpiling = Spring.GetUnitStockpile(units[1]) ~= nil
+    local unitDefId = Spring.GetUnitDefID(units[1])
+    local isStockpiling
     local maxReloadTime = 0
     local maxReloadWeaponNumber = -1
-    for i = 1, #weapons do
-      local weaponDef = WeaponDefs[weapons[i].weaponDef]
-      local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
-      if weaponReloadTime > maxReloadTime then
-        maxReloadTime = weaponReloadTime
-        maxReloadWeaponNumber = i
+    if hardcoded[unitDefId] then
+      maxReloadTime = hardcoded[unitDefId]
+      isStockpiling = true
+    else
+    local weapons = UnitDefs[unitDefId].weapons
+    isStockpiling = Spring.GetUnitStockpile(units[1]) ~= nil
+      for i = 1, #weapons do
+        local weaponDef = WeaponDefs[weapons[i].weaponDef]
+        -- local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
+        local weaponReloadTime = isStockpiling and weaponDef.stockpileTime/30 or weaponDef.reloadTime
+        log('unit', UnitDefs[Spring.GetUnitDefID(units[1])].name,'weaponReloadTime', weaponReloadTime)
+        if weaponReloadTime > maxReloadTime then
+          maxReloadTime = weaponReloadTime
+          maxReloadWeaponNumber = i
+        end
+        log('weaponReloadTime', weaponReloadTime)
       end
     end
 
     local interval = maxReloadTime / nUnits
-
+    log('maxReloadTime', maxReloadTime, 'nUnits', nUnits, 'interval', interval)
     local newReloadWaitUnits = {}
     local nNewReloadWaitUnits = 0
     for i = 1, nUnits do
@@ -70,12 +82,12 @@ function widget:KeyPress(key, mods, isRepeat)
 
     local reloadWaitUnit
     local maxWait = 0
-    local gameFrame = Spring.GetGameFrame()
+    local gameFrameSecond = Spring.GetGameFrame()/30
     for i = 1, #newReloadWaitUnits do
       reloadWaitUnit = newReloadWaitUnits[i]
-      reloadWaitUnit.attackAtTime = interval * (i - 1) + gameFrame
-      maxWait = math.max(maxWait, gameFrame + reloadWaitUnit.reloadTimeLeft - reloadWaitUnit.attackAtTime)
-      log('maxWait', maxWait)
+      reloadWaitUnit.attackAtTime = interval * (i - 1) + gameFrameSecond
+      maxWait = math.max(maxWait, gameFrameSecond + reloadWaitUnit.reloadTimeLeft - reloadWaitUnit.attackAtTime)
+      log('maxWait', maxWait, 'rel left', reloadWaitUnit.reloadTimeLeft, 'attack at', reloadWaitUnit.attackAtTime, 'gf', gameFrameSecond, 'interval', interval)
     end
 
     local nReloadWaitUnits = #reloadWaitUnits
@@ -126,9 +138,10 @@ function widget:GameFrame(n)
     return
   end
   local removeUntil = 0
+  local gameFrameSecond = n / 30
   for i = 1, nReloadWaitUnits do
     local reloadWaitUnit = reloadWaitUnits[i]
-    if reloadWaitUnit.attackAtTime <= Spring.GetGameFrame() then
+    if reloadWaitUnit.attackAtTime <= gameFrameSecond then
       Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.ATTACK, reloadWaitUnit.attackAtPos, 0)
       Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, 0)
       removeUntil = i

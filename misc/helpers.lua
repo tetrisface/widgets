@@ -5,6 +5,10 @@ function table.echo(tbl)
   debugUtilities.TableEcho(tbl)
 end
 
+function table.tostring2(tbl)
+  Spring.Debug.TableEcho(tbl)
+end
+
 local logGameFrame = false
 if logGameFrame then
   log = function(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v) Spring.Echo(Spring.GetGameFrame(), a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v) end

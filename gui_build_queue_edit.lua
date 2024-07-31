@@ -1,3 +1,5 @@
+return {}
+
 function widget:GetInfo()
   return {
     desc    = "Adds ability to move, rotate, copy, reverse, sync build queues",
@@ -11,7 +13,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local lineColors  = {

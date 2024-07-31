@@ -1,3 +1,4 @@
+return {}
 -- local UnitDefs = UnitDefs or {}
 -- local function a(b, c) for d, e in pairs(c) do if type(e) == "table" and type(b[d]) == "table" then a(b[d], e) else b[d] = e end end end; function deepCopy(c, f)
 --     f = f or {}

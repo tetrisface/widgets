@@ -12,7 +12,7 @@ function widget:GetInfo()
 end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
 
 local GetFeatureHealth                   = Spring.GetFeatureHealth
 local GetFeatureResources                = Spring.GetFeatureResources
@@ -190,6 +190,10 @@ local function UnregisterMetalMaker(unitID, unitDef)
     unitDef = UnitDefs[GetUnitDefID(unitID)]
   end
   metalMakers[unitID] = nil
+
+  if not unitDef then
+    return
+  end
   possibleMetalMakersUpkeep = possibleMetalMakersUpkeep - unitDef.energyUpkeep
   possibleMetalMakersMetalProduction = possibleMetalMakersMetalProduction - unitDef.makesMetal
 end
@@ -813,14 +817,14 @@ end
 
 
 local function GetPurgedUnitCommands(builderId, queueSize)
-  local cmdQueue = GetUnitCommands(builderId, queueSize)
-  if cmdQueue == nil then
+  local commandQueue = GetUnitCommands(builderId, queueSize)
+  if commandQueue == nil then
     widget:UnitDestroyed(builderId, nil, myTeamId)
     return nil, 0
   end
 
-  cmdQueue = purgeRepairs(builderId, cmdQueue, queueSize)
-  return cmdQueue, #cmdQueue
+  commandQueue = purgeRepairs(builderId, commandQueue, queueSize)
+  return commandQueue, #commandQueue
 end
 
 local function DamagedUnfinishedFeatures(builder, targetId, cmdQueue, nCmdQueue, gameFrame, isBuildingFetchCandidatesOnly)
@@ -1184,6 +1188,32 @@ function widget:GameFrame(gameFrame)
         end
       else
         forwardedFromTargetIds:Remove(nil)
+      end
+    end
+  end
+
+  if gameFrame % 300 == 0 then
+
+    local myUnits = GetTeamUnits(myTeamId)
+    for _, unitID in ipairs(myUnits) do
+
+      if not builders[builderUnitIds.hash[unitID]] then
+        local unitDefID = GetUnitDefID(unitID)
+        local candidateBuilderDef = UnitDefs[unitDefID]
+
+        if candidateBuilderDef.isBuilder and candidateBuilderDef.canAssist and not candidateBuilderDef.isFactory then
+          builderUnitIds:Add(unitID)
+          builders[builderUnitIds.count] = {
+            id               = unitID,
+            def              = candidateBuilderDef,
+            defID            = unitDefID,
+            targetId         = nil,
+            guards           = {},
+            previousBuilding = nil,
+            lastOrder        = 0,
+          }
+        end
+
       end
     end
   end

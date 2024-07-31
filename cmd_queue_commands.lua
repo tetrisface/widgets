@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    name = "queue commands",
+    name = "CMD Queue Commands",
     desc = "some commands for editing constructor build queue, and automatic geo toggling",
     author = "-",
     date = "dec, 2016",
@@ -12,7 +12,8 @@ end
 
 -- TODO DOESNT WORK QUEUE CMDS ON FLYING
 
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Headers/keysym.h.lua')
 
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitCommands = Spring.GetUnitCommands
@@ -33,8 +34,7 @@ function widget:KeyPress(key, mods, isRepeat)
   --   widgetHandler:
   --   return
   -- end
-
-  if (key == 100 or key == 115 or key == 97) and mods['alt'] then -- 'd' shift from queue
+  if (key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] then -- 'd' shift from queue
     local selected_units = GetSelectedUnits()
     -- for i, unit_id in ipairs(selected_units) do
     for i = 1, #selected_units do

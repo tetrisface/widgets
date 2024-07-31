@@ -11,7 +11,8 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Headers/keysym.h.lua')
 local Set                   = VFS.Include('common/SetList.lua').NewSetListNoTable
 local testSet               = Set()
 
@@ -129,7 +130,7 @@ end
 
 function widget:KeyPress(key, mods, isRepeat)
   -- log('key', key, mods)
-  if (key == 114 and mods['ctrl']) then
+  if (key == KEYSYMS.R and mods['ctrl']) then
     Spring.SendCommands("disablewidget Reload Widgets")
     Spring.SendCommands("enablewidget Reload Widgets")
     -- Spring.SendCommands("disablewidget Snap Mouse")
@@ -140,12 +141,16 @@ function widget:KeyPress(key, mods, isRepeat)
     -- Spring.SendCommands("enablewidget Shield Builder Helper")
     -- Spring.SendCommands("disablewidget Build Shortcuts")
     -- Spring.SendCommands("enablewidget Build Shortcuts")
-    Spring.SendCommands("disablewidget Auto Unit Settings")
-    Spring.SendCommands("enablewidget Auto Unit Settings")
-    Spring.SendCommands("disablewidget cons")
-    Spring.SendCommands("enablewidget cons")
+    -- Spring.SendCommands("disablewidget Auto Unit Settings")
+    -- Spring.SendCommands("enablewidget Auto Unit Settings")
+    -- Spring.SendCommands("disablewidget cons")
+    -- Spring.SendCommands("enablewidget cons")
+    -- Spring.SendCommands("disablewidget CMD Build Spacing")
+    -- Spring.SendCommands("enablewidget CMD Build Spacing")
     -- Spring.SendCommands("disablewidget History")
     -- Spring.SendCommands("enablewidget History")
+    Spring.SendCommands("disablewidget CMD target time spread")
+    Spring.SendCommands("enablewidget CMD target time spread")
     return false
   end
   -- if key == 113 and mods['ctrl'] then

@@ -1,3 +1,5 @@
+return {}
+
 function widget:GetInfo()
   return {
     name    = "(wip) navigator",

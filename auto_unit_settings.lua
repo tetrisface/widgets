@@ -11,7 +11,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/helpers.lua')
+VFS.Include('luaui/Widgets/misc/helpers.lua')
 
 local isCommanderRepeatChecked = false
 local myTeamId = Spring.GetMyTeamID()
@@ -20,6 +20,11 @@ local canResurrectDefIds = {}
 local resurrectorDefIds = {}
 local areaReclaimParams = {}
 local waitReclaimUnits = {}
+local vehicleCons = {
+  [UnitDefNames['legacv'].id] = true,
+  [UnitDefNames['armcv'].id] = true,
+  [UnitDefNames['coracv'].id] = true,
+}
 
 function widget:Initialize()
   isCommanderRepeatChecked = false
@@ -71,6 +76,8 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
   elseif canResurrectDefIds[unitDefID] and #areaReclaimParams > 0 then
     Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
     waitReclaimUnits[unitID] = true
+  -- elseif vehicleCons[unitDefID] then
+  --   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
   end
 end
 
