@@ -13,24 +13,29 @@ end
 
 VFS.Include('luaui/Widgets/misc/helpers.lua')
 
-local isCommanderRepeatChecked = false
+-- local isCommanderRepeatChecked = true
 local myTeamId = Spring.GetMyTeamID()
 local isFactoryDefIds = {}
-local canResurrectDefIds = {}
+local reclaimerDefIds = {}
 local resurrectorDefIds = {}
 local areaReclaimParams = {}
 local waitReclaimUnits = {}
-local vehicleCons = {
-  [UnitDefNames['legacv'].id] = true,
-  [UnitDefNames['armcv'].id] = true,
-  [UnitDefNames['coracv'].id] = true,
-}
+
+local function isReclaimerUnit(def)
+  return def.canResurrect and not (
+    def.name:match '^armcom.*'
+    or def.name:match '^corcom.*'
+    or def.name:match '^legcom.*'
+    or def.name == 'armthor'
+    or (def.customParams and def.customParams.iscommander)
+  )
+end
 
 function widget:Initialize()
-  isCommanderRepeatChecked = false
+  -- isCommanderRepeatChecked = true
   myTeamId = Spring.GetMyTeamID()
   isFactoryDefIds = {}
-  canResurrectDefIds = {}
+  reclaimerDefIds = {}
   resurrectorDefIds = {}
   areaReclaimParams = {}
   waitReclaimUnits = {}
@@ -40,24 +45,37 @@ function widget:Initialize()
   end
 
   for unitDefID, unitDef in pairs(UnitDefs) do
-    if unitDef.isFactory then
+    if unitDef.isFactory and not (unitDef.name:match '^armcom.*' or unitDef.name:match '^corcom.*' or unitDef.name:match '^legcom.*') then
       isFactoryDefIds[unitDefID] = true
+      -- log('add factory: ', unitDef.translatedHumanName)
     end
 
-    if unitDef.canResurrect and not (unitDef.customParams and unitDef.customParams.iscommander) then
-      canResurrectDefIds[unitDefID] = true
+
+    if isReclaimerUnit(unitDef) then
+      reclaimerDefIds[unitDefID] = true
       table.insert(resurrectorDefIds, unitDefID)
+      -- log('add ressurector: ', unitDef.translatedHumanName)
     end
   end
 end
 
-local function UnitIdDef(unitId)
+local function UnitIdUnitDef(unitId)
   return UnitDefs[Spring.GetUnitDefID(unitId)]
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
   if unitTeam ~= myTeamId then
     return
+  end
+
+  -- log('created', UnitIdUnitDef(unitID).translatedHumanName, unitID)
+
+
+  local def = UnitIdUnitDef(unitID)
+
+  -- evocom + thor fix
+  if def.name == 'armthor' or def.name:find '^armcom.*' or def.name:find '^corcom.*' or def.name:find '^legcom.*' then
+    Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 0 }, 0)
   end
 
 
@@ -67,15 +85,19 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
       { CMD.REPEAT,     { 0 }, {} },
     }
 
-    local def = UnitIdDef(unitID)
     if def.translatedHumanName:lower():find('aircraft', 1, true) then
       table.insert(cmdTable, { CMD.FIRE_STATE, { 0 }, {} })
+      -- log('adding aircraft factory: ', def.translatedHumanName)
     end
-
+    -- log('Repeating 1', def.translatedHumanName)
     Spring.GiveOrderArrayToUnitArray({ unitID }, cmdTable)
-  elseif canResurrectDefIds[unitDefID] and #areaReclaimParams > 0 then
+  elseif reclaimerDefIds[unitDefID]
+    and #areaReclaimParams > 0
+    and isReclaimerUnit(def) then
+    -- log('setting repeat', def.translatedHumanName)
+    -- log('Repeating 2', def.translatedHumanName)
     Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
-    waitReclaimUnits[unitID] = true
+    waitReclaimUnits[unitID] = 1
   -- elseif vehicleCons[unitDefID] then
   --   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
   end
@@ -90,25 +112,31 @@ function widget:UnitTaken(unitID, unitDefID, unitTeam, oldTeam)
 end
 
 function widget:GameFrame(gameFrame)
-  if gameFrame >= 100 and not isCommanderRepeatChecked then
+  -- if gameFrame >= 100 and not isCommanderRepeatChecked then
     -- set commander repeat on
-    local units = Spring.GetTeamUnits(myTeamId)
-    for i = 1, #units do
-      local unitID = units[i]
-      if unitID and UnitIdDef(unitID).customParams and UnitIdDef(unitID).customParams.iscommander then
+    -- local units = Spring.GetTeamUnits(myTeamId)
+    -- for i = 1, #units do
+      -- local unitID = units[i]
+      -- if unitID and UnitIdDef(unitID).customParams and UnitIdDef(unitID).customParams.iscommander then
         -- Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
-      end
-    end
-    isCommanderRepeatChecked = true
-  end
+      -- end
+    -- end
+    -- isCommanderRepeatChecked = true
+  -- end
 
   if gameFrame % 30 == 0 then
     if #areaReclaimParams > 1 then
       for unitId, _ in pairs(waitReclaimUnits) do
-        if select(5, Spring.GetUnitHealth(unitId)) == 1 then
-          Spring.GiveOrderToUnit(unitId, CMD.STOP, {}, 0)
-          Spring.GiveOrderToUnit(unitId, CMD.RECLAIM, areaReclaimParams, {})
-          waitReclaimUnits[unitId] = nil
+        if waitReclaimUnits[unitId] ~= 1 then
+          waitReclaimUnits[unitId] = 2
+          -- log('waiting', unitId)
+        else
+          if select(5, Spring.GetUnitHealth(unitId)) == 1 then
+            Spring.GiveOrderToUnit(unitId, CMD.STOP, {}, 0)
+            Spring.GiveOrderToUnit(unitId, CMD.RECLAIM, areaReclaimParams, {}, 0)
+            waitReclaimUnits[unitId] = nil
+            -- log('Repeating 3', UnitIdUnitDef(unitId).translatedHumanName)
+          end
         end
       end
 
@@ -116,9 +144,11 @@ function widget:GameFrame(gameFrame)
       for i = 1, #idleResurrectors do
         local unitId = idleResurrectors[i]
         local commands = Spring.GetUnitCommands(unitId, 2)
-        if #commands == 0 or (#commands == 1 and commands[1].id == CMD.MOVE and select(4, Spring.GetUnitVelocity(unitId)) < 0.1) then
+        if isReclaimerUnit(UnitIdUnitDef(unitId)) and (#commands == 0 or (#commands == 1 and commands[1].id == CMD.MOVE and select(4, Spring.GetUnitVelocity(unitId)) < 0.02)) then
+          -- log('Repeating 4', UnitIdUnitDef(unitId).translatedHumanName)
           Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
           Spring.GiveOrderToUnit(unitId, CMD.RECLAIM, areaReclaimParams, {})
+          -- log('ordering reclaim idle', unitId, areaReclaimParams[1], areaReclaimParams[2], areaReclaimParams[3], areaReclaimParams[4])
         end
       end
     end

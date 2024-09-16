@@ -21,11 +21,34 @@ local GetUnitDefID = Spring.GetUnitDefID
 
 local GiveOrderToUnit = Spring.GiveOrderToUnit
 
+local selectSplitKeys = {
+  [KEYSYMS.Q] = 2,
+  [KEYSYMS.W] = 3,
+  [KEYSYMS.E] = 4,
+}
+local partitionIds = {}
+local subsetPartition = 1
+
 
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
     widgetHandler:RemoveWidget()
   end
+end
+
+local function SelectSubset(selected_units, nPartitions)
+
+  if not nPartitions or not selected_units or #selected_units == 0 then
+    return
+  end
+
+  selected_units = sort(selected_units)
+
+  local nUnits = #selected_units
+  local nUnitsPerPartition = math.ceil(nUnits / nPartitions)
+
+
+
 end
 
 function widget:KeyPress(key, mods, isRepeat)
@@ -34,7 +57,7 @@ function widget:KeyPress(key, mods, isRepeat)
   --   widgetHandler:
   --   return
   -- end
-  if (key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] then -- 'd' shift from queue
+  if (key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] and not mods['ctrl'] then -- 'd' shift from queue
     local selected_units = GetSelectedUnits()
     -- for i, unit_id in ipairs(selected_units) do
     for i = 1, #selected_units do
@@ -54,6 +77,18 @@ function widget:KeyPress(key, mods, isRepeat)
         end
       end
     end
+  elseif selectSplitKeys[key] and mods['alt'] and not mods['shift'] and mods['ctrl'] then
+    local selected_units = GetSelectedUnits()
+
+    if #selected_units ~= #partitionIds then
+      partitionIds = {}
+    end
+
+    for i = 1, #selected_units do
+      partitionIds[selected_units[i]] = true
+    end
+
+    SelectSubset(selected_units, selectSplitKeys[key])
   end
 end
 

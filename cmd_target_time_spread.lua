@@ -1,4 +1,7 @@
-function widget:GetInfo()
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    return {}
+  end
+  function widget:GetInfo()
   return {
     name    = "CMD target time spread",
     desc    = "",
@@ -22,9 +25,15 @@ VFS.Include('luaui/Headers/keysym.h.lua')
 --   GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
 -- end
 local reloadWaitUnits = {}
-local hardcoded = {
+local hardcoded = {}
 
+local antis = {
+  [UnitDefNames['armamd'].id] = true,
+  [UnitDefNames['armscab'].id] = true,
+  [UnitDefNames['corfmd'].id] = true,
+  [UnitDefNames['cormabm'].id] = true,
 }
+
 function widget:KeyPress(key, mods, isRepeat)
   if key == KEYSYMS.Q and mods['alt'] and not mods['shift'] and not mods['ctrl'] then -- q
     local units = Spring.GetSelectedUnits()
@@ -45,18 +54,16 @@ function widget:KeyPress(key, mods, isRepeat)
       for i = 1, #weapons do
         local weaponDef = WeaponDefs[weapons[i].weaponDef]
         -- local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
-        local weaponReloadTime = isStockpiling and weaponDef.stockpileTime/30 or weaponDef.reloadTime
-        log('unit', UnitDefs[Spring.GetUnitDefID(units[1])].name,'weaponReloadTime', weaponReloadTime)
+        local weaponReloadTime = isStockpiling and (weaponDef.stockpileTime + (weaponDef.weaponTimer or 0))/30 or weaponDef.reloadTime
         if weaponReloadTime > maxReloadTime then
           maxReloadTime = weaponReloadTime
           maxReloadWeaponNumber = i
         end
-        log('weaponReloadTime', weaponReloadTime)
       end
     end
 
     local interval = maxReloadTime / nUnits
-    log('maxReloadTime', maxReloadTime, 'nUnits', nUnits, 'interval', interval)
+    -- log('maxReloadTime', maxReloadTime, 'nUnits', nUnits, 'interval', interval)
     local newReloadWaitUnits = {}
     local nNewReloadWaitUnits = 0
     for i = 1, nUnits do
@@ -87,7 +94,7 @@ function widget:KeyPress(key, mods, isRepeat)
       reloadWaitUnit = newReloadWaitUnits[i]
       reloadWaitUnit.attackAtTime = interval * (i - 1) + gameFrameSecond
       maxWait = math.max(maxWait, gameFrameSecond + reloadWaitUnit.reloadTimeLeft - reloadWaitUnit.attackAtTime)
-      log('maxWait', maxWait, 'rel left', reloadWaitUnit.reloadTimeLeft, 'attack at', reloadWaitUnit.attackAtTime, 'gf', gameFrameSecond, 'interval', interval)
+      -- log('maxWait', maxWait, 'rel left', reloadWaitUnit.reloadTimeLeft, 'attack at', reloadWaitUnit.attackAtTime, 'gf', gameFrameSecond, 'interval', interval)
     end
 
     local nReloadWaitUnits = #reloadWaitUnits
@@ -111,16 +118,22 @@ function widget:KeyPress(key, mods, isRepeat)
 end
 
 local myTeamId = Spring.GetMyTeamID()
-local armjuno = UnitDefNames['armjuno'].id
-local corjuno = UnitDefNames['corjuno'].id
+
 local function RegisterUnit(unitId, unitDefId, unitTeam)
   if unitTeam ~= myTeamId then
     return
   end
-  if unitDefId == armjuno or unitDefId == corjuno then
+
+  local def = UnitDefs[unitDefId]
+
+  if def.canStockpile then
     Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
+    if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefId] then
+      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'shift'})
+      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
+    end
   end
 end
 
