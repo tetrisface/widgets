@@ -11,12 +11,14 @@ function widget:GetInfo()
   }
 end
 
+-- todo make idle builders repair adjacent buildings (testing)
+-- todo make idle builders guard adjacent active builders (limit distance to building)
 -- todo make (eco?) builders rearrange queue for max build power assistance
 -- todo make builders push back unnecessary eco types
--- todo make idle builders guard adjacent active builders
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Widgets/misc/helpers.lua')
+
 
 local GetFeatureHealth                   = Spring.GetFeatureHealth
 local GetFeatureResources                = Spring.GetFeatureResources
@@ -86,6 +88,19 @@ local busyCommands                       = {
 local anyBuildWillMStall                 = false
 local anyBuildWillEStall                 = false
 local assignedTargetBuildSpeed           = {}
+local is_select_log_active = false
+
+local function isUnitSelectedLog(unitId)
+  if is_select_log_active then
+    local selectedUnits = Spring.GetSelectedUnits()
+    for index = 1, #selectedUnits do
+      if selectedUnits[index] == unitId then
+        return true
+      end
+    end
+  end
+  return false
+end
 
 local function UnitIdDef(unitId)
   return UnitDefs[GetUnitDefID(unitId)]
@@ -706,25 +721,29 @@ local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, cmdQueueTa
   -- )
   -- target has previously been abandoned
   -- local gf = Spring.GetGameFrame()
-  -- log('ff',
-  --   forwardedFromTargetIds.hash[targetId] == nil,
-  --   IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed),
-  --   not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft),
-  --   gf
-  -- )
+  if isUnitSelectedLog(builder.id) then
+    log(builder.id, 'ff from '
+      ..(forwardedFromTargetIds.hash[targetId] == nil and '1' or '0')
+      ..' time '
+      ..(IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed) and '1' or '0')
+      ..' eco '
+      ..(not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) and '1' or '0')
+    )
+  end
   if forwardedFromTargetIds.hash[targetId] == nil
       and IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed)
       and not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) then
-    -- moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
-    -- log('moving on',
-    --   forwardedFromTargetIds.hash[targetId] == nil,
-    --   IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed),
-    --   not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft),
-    --   gf
-    -- )
+      if isUnitSelectedLog(builder.id) then
+        log(builder.id, 'moving on',
+          forwardedFromTargetIds.hash[targetId] == nil,
+          IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed),
+          not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft)
+        )
+      end
 
-    GiveOrderToUnit(builder.id, CMD.REMOVE, { cmdQueueTag }, { 'ctrl' }) -- was 0 instead of 'ctrl' for a while
-    builder.previousBuilding = targetId
+      -- moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
+      GiveOrderToUnit(builder.id, CMD.REMOVE, { cmdQueueTag }, { 'ctrl' }) -- was 0 instead of 'ctrl' for a while
+      builder.previousBuilding = targetId
     if targetId then
       forwardedFromTargetIds:Add(targetId)
     end
@@ -1053,10 +1072,12 @@ local function Builders(gameFrame, buildersRandomModulo)
 
   UpdateResources(gameFrame)
 
-  local selectedUnitsList = Spring.GetSelectedUnits()
   local selectedUnits = {}
-  for i = 1, #selectedUnitsList do
-    selectedUnits[selectedUnitsList[i]] = true
+  if not is_select_log_active then
+    local selectedUnitsList = Spring.GetSelectedUnits()
+    for i = 1, #selectedUnitsList do
+      selectedUnits[selectedUnitsList[i]] = true
+    end
   end
 
   for i = 1, builderUnitIds.count do
@@ -1103,7 +1124,7 @@ local function Builders(gameFrame, buildersRandomModulo)
               candidatesUnfinished, nCandidatesUnfinished, features, nFeaturesAll = IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFrame, isBuildingFetchCandidatesOnly)
             end
 
-            -- queue fast forward
+            -- queue fast forward / skip ahead
             -- if builder.def.name == 'armck' then
             --   log('isMultiBuilding', isMultiBuilding, 'targetId', targetId)
             -- end
@@ -1272,6 +1293,13 @@ function widget:GameFrame(gameFrame)
   end
 end
 
+function widget:KeyPress(key, mods, isRepeat)
+  if key == KEYSYMS.L and mods['ctrl'] then
+    is_select_log_active = not is_select_log_active
+    log('is_select_log_active ' .. tostring(is_select_log_active))
+    return true
+  end
+end
 -- function widget:KeyPress(key, mods, isRepeat)
 --   if (key == 114 and mods['ctrl']) then
 --     Spring.SendCommands("disablewidget cons")

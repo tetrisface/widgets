@@ -85,7 +85,9 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
       { CMD.REPEAT,     { 0 }, {} },
     }
 
-    if def.translatedHumanName:lower():find('aircraft', 1, true) then
+    if def.translatedHumanName:lower():find('aircraft', 1, true)
+    or def.translatedHumanName:lower():find('gantry', 1, true)
+    or def.translatedHumanName:lower():find('experimental', 1, true) then
       table.insert(cmdTable, { CMD.FIRE_STATE, { 0 }, {} })
       -- log('adding aircraft factory: ', def.translatedHumanName)
     end
