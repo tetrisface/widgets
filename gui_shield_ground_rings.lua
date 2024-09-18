@@ -12,6 +12,7 @@ function widget:GetInfo()
 end
 
 local DiffTimers         = Spring.DiffTimers
+local GetTeamUnitsByDefs = Spring.GetTeamUnitsByDefs
 local GetTimer           = Spring.GetTimer
 local GetUnitCommands    = Spring.GetUnitCommands
 local GetUnitHealth      = Spring.GetUnitHealth
@@ -20,6 +21,7 @@ local GetUnitShieldState = Spring.GetUnitShieldState
 local UnitDefs           = UnitDefs
 local mathCos            = math.cos
 local mathSin            = math.sin
+local max                = math.max
 
 local glColorMask        = gl.ColorMask
 local glStencilFunc      = gl.StencilFunc
@@ -177,6 +179,9 @@ local function ShieldsUpdate()
   for n = 1, nShieldBuilderCheckUnitIds do
     local shieldBuilderCheckUnitId = shieldBuilderCheckUnitIds[n]
     if shieldBuilderCheckUnitId then
+
+      shieldBuilders[shieldBuilderCheckUnitId] = nil
+
       local commandQueue = GetUnitCommands(shieldBuilderCheckUnitId, 1000)
       if commandQueue then
         local isShieldBuilder = false
@@ -193,27 +198,34 @@ local function ShieldsUpdate()
             }
           end
         end
+
         shieldBuilders[shieldBuilderCheckUnitId] = isShieldBuilder and true or nil
-      else
-        shieldBuilders[shieldBuilderCheckUnitId] = nil
       end
     end
   end
 
-  local shieldUnitIds = Spring.GetTeamUnitsByDefs(Spring.GetMyTeamID(), defIds)
-  local nShieldUnitIds = #shieldUnitIds
+  local nTotalShieldUnitIds = 0
+  local teamIds = Spring.GetTeamList()
+  for j = 1, #teamIds do
+    local shieldUnitIds = GetTeamUnitsByDefs(teamIds[j], defIds)
+    local nShieldUnitIds = #shieldUnitIds
+    nTotalShieldUnitIds = nTotalShieldUnitIds + nShieldUnitIds
 
-  for i = 1, nShieldUnitIds do
-    local id = shieldUnitIds[i]
-    local x, y, z = GetUnitPosition(id, true)
-    nShields = nShields + 1
-    shields[nShields] = {
-      x = x,
-      y = y,
-      z = z,
-      online = select(2, GetUnitShieldState(id)) > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
-    }
+    for i = 1, nShieldUnitIds do
+      local id = shieldUnitIds[i]
+      local x, y, z = GetUnitPosition(id, true)
+      nShields = nShields + 1
+      shields[nShields] = {
+        x = x,
+        y = y,
+        z = z,
+        online = select(2, GetUnitShieldState(id)) > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
+      }
+    end
   end
+
+  drawCheckMs = max(1, nTotalShieldUnitIds/10)
+  shieldsUpdateMs = max(100, 100 + nTotalShieldUnitIds*2)
 end
 
 local function DrawCheck()
