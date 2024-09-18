@@ -10,8 +10,6 @@ function widget:GetInfo()
   }
 end
 
--- todo add builder shortcuts
-
 VFS.Include('luaui/Widgets/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
@@ -22,9 +20,33 @@ local selectSplitKeys = {
   [KEYSYMS.W] = 3,
   [KEYSYMS.E] = 4,
 }
+local immobileBuilderDefIds = {
+  UnitDefNames['armnanotc'].id,
+  UnitDefNames['armnanotc2plat'].id,
+  UnitDefNames['armnanotcplat'].id,
+  UnitDefNames['armnanotct2'].id,
+  UnitDefNames['armrespawn'].id,
+  UnitDefNames['cornanotc'].id,
+  UnitDefNames['cornanotc2plat'].id,
+  UnitDefNames['cornanotcplat'].id,
+  UnitDefNames['cornanotct2'].id,
+  UnitDefNames['correspawn'].id,
+  UnitDefNames['legnanotc'] and UnitDefNames['legnanotc'].id or nil,
+  UnitDefNames['legnanotcbase'] and UnitDefNames['legnanotcbase'].id or nil,
+  UnitDefNames['legnanotcplat'] and UnitDefNames['legnanotcplat'].id or nil,
+  UnitDefNames['legnanotct2'] and UnitDefNames['legnanotct2'].id or nil,
+  UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil,
+}
+
+local immobileBuilderDefs = {}
+for _, immobileBuilderDefId in ipairs(immobileBuilderDefIds) do
+  immobileBuilderDefs[immobileBuilderDefId] = UnitDefs[immobileBuilderDefId].buildDistance + 96
+end
+
+
 local partitionIds = {}
-local subsetPartition = 1
 local selectedPos = {}
+
 
 
 function widget:Initialize()
@@ -76,6 +98,13 @@ local function median(temp)
   end
 end
 
+local function Distance(x1, y1, x2, y2)
+  if x1 == nil or y1 == nil or x2 == nil or y2 == nil then
+    return 1000000000
+  end
+  return math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
+end
+
 local function SortBuildPowerDistance(a, b)
   -- Handle nil values more gracefully
   if a == nil then
@@ -84,6 +113,9 @@ local function SortBuildPowerDistance(a, b)
     return true
   end
 
+  log('selectedPos ' .. (selectedPos[1] or 0) .. ' ' .. (selectedPos[3] or 0))
+  log('a ' .. (a[2][1] or 0) .. ' ' .. (a[2][3] or 0))
+  log('b ' .. (b[2][1] or 0) .. ' ' .. (b[2][3] or 0))
   -- Calculate squared distances to avoid unnecessary sqrt computation
   local aDistanceToSelected = (a[2][1] - selectedPos[1]) * (a[2][1] - selectedPos[1])
                             + (a[2][3] - selectedPos[2]) * (a[2][3] - selectedPos[2])
@@ -162,31 +194,47 @@ function widget:KeyPress(key, mods, isRepeat)
     end
     selectedPos = {median(xPositions), median(zPositions)}
 
+    local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds)
+
+    for i = 1, #allImmobileBuilders do
+      local x, _, z = Spring.GetUnitPosition(allImmobileBuilders[i])
+      if x and z then
+        allImmobileBuilders[i] = {allImmobileBuilders[i], x, z, immobileBuilderDefs[Spring.GetUnitDefID(allImmobileBuilders[i])]}
+      end
+    end
+
+
+
     local commands = {}
     local nCommands = 0
     for i = 1, #command_queue do
       local command = command_queue[i]
-      if command.id ~= 0 then
+      if command.id < 0 then
         -- log('adding', table.tostring(command_queue[i]), command_queue[i])
         nCommands = nCommands + 1
-        commands[nCommands] = {command.id, {command.params[1], command.params[2], command.params[3]}, command.options, buildPower=0}
         commands[nCommands] = {command.id, command.params, command.options, buildPower=0}
-        if command.params[1] then
-          local adjacentBuilders = Spring.GetUnitsInCylinder(command.params[1], command.params[3], 1000, myTeamId)
-          for j = 1, #adjacentBuilders do
-            local unitId = adjacentBuilders[j]
-            if not selectedUnitsMap[unitId] then
-              commands[nCommands].buildPower = commands[nCommands].buildPower + UnitDefs[Spring.GetUnitDefID(unitId)].buildSpeed
+        if command.params[1] and command.params[3] then
+          -- local adjacentBuilders = Spring.GetUnitsInCylinder(command.params[1], command.params[3], 1000, myTeamId)
+          -- for j = 1, #adjacentBuilders do
+          --   local unitId = adjacentBuilders[j]
+          --   if not selectedUnitsMap[unitId] then
+          --     commands[nCommands].buildPower = commands[nCommands].buildPower + UnitDefs[Spring.GetUnitDefID(unitId)].buildSpeed
+          --   end
+          -- end
+
+          for j = 1, #allImmobileBuilders do
+            if Distance(allImmobileBuilders[j][2], allImmobileBuilders[j][3], command.params[1], command.params[3]) < allImmobileBuilders[j][4] then
+              commands[nCommands].buildPower = commands[nCommands].buildPower + UnitDefs[Spring.GetUnitDefID(allImmobileBuilders[j][1])].buildSpeed
             end
           end
         end
       end
     end
-    for _, value in ipairs(commands) do
+    -- for _, value in ipairs(commands) do
       -- value.buildPower = nil
       -- log(table.tostring(value))
       -- value[3] = {'shift'}
-    end
+    -- end
     -- log(table.tostring(newCommands))
     if mods['shift'] then
       if nCommands > 0 then

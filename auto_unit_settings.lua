@@ -63,6 +63,10 @@ local function UnitIdUnitDef(unitId)
   return UnitDefs[Spring.GetUnitDefID(unitId)]
 end
 
+
+function widget:UnitFromFactory(unitID, unitDefID, unitTeam)
+end
+
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
   if unitTeam ~= myTeamId then
     return
@@ -76,6 +80,9 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
   -- evocom + thor fix
   if def.name == 'armthor' or def.name:find '^armcom.*' or def.name:find '^corcom.*' or def.name:find '^legcom.*' then
     Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 0 }, 0)
+    if def.name == 'armthor' then
+      Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { 2 }, 0)
+    end
   end
 
 
@@ -85,9 +92,11 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
       { CMD.REPEAT,     { 0 }, {} },
     }
 
-    if def.translatedHumanName:lower():find('aircraft', 1, true)
-    or def.translatedHumanName:lower():find('gantry', 1, true)
-    or def.translatedHumanName:lower():find('experimental', 1, true) then
+    if (def.translatedHumanName:lower():find('aircraft', 1, true)
+      or def.translatedHumanName:lower():find('gantry', 1, true)
+      or def.translatedHumanName:lower():find('experimental', 1, true)
+    )
+    and not def.name == 'corapt3' then
       table.insert(cmdTable, { CMD.FIRE_STATE, { 0 }, {} })
       -- log('adding aircraft factory: ', def.translatedHumanName)
     end

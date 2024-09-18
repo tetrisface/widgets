@@ -80,6 +80,7 @@ local MMNeed                             = 0.5
 local windMax                            = Game.windMax
 local windMin                            = Game.windMin
 local gameFrameModulo
+local buildersJitterModulo
 local busyCommands                       = {
   [CMD.GUARD]   = true,
   [CMD.MOVE]    = true,
@@ -88,10 +89,10 @@ local busyCommands                       = {
 local anyBuildWillMStall                 = false
 local anyBuildWillEStall                 = false
 local assignedTargetBuildSpeed           = {}
-local is_select_log_active = false
+local isUnitLogActive = false
 
-local function isUnitSelectedLog(unitId)
-  if is_select_log_active then
+local function IsUnitSelectedLog(unitId)
+  if isUnitLogActive then
     local selectedUnits = Spring.GetSelectedUnits()
     for index = 1, #selectedUnits do
       if selectedUnits[index] == unitId then
@@ -649,8 +650,13 @@ end
 local function IsTimeToMoveOn(secondsLeft, builderId, builderDef, totalBuildSpeed)
   local plannerBuildSpeed = BuilderById(builderId).def.buildSpeed
   local plannerBuildShare = plannerBuildSpeed / totalBuildSpeed
-  local slowness = 45 / builderDef.speed
-  if ((plannerBuildShare < 0.75 and secondsLeft < 1.2 * slowness) or (plannerBuildShare < 0.5 and secondsLeft < 3.4 * slowness) or (plannerBuildShare < 0.15 and secondsLeft < 8 * slowness) or (plannerBuildShare < 0.05 and secondsLeft < 12 * slowness)) then
+  local slowness = (45 / builderDef.speed)
+  local moduloBonus = ((gameFrameModulo * buildersJitterModulo) / 30) / 2
+  if ((plannerBuildShare < 0.75 and secondsLeft < (1.2 * slowness + moduloBonus))
+    or (plannerBuildShare < 0.5 and secondsLeft < (3.4 * slowness + moduloBonus))
+    or (plannerBuildShare < 0.15 and secondsLeft < (8 * slowness + moduloBonus))
+    or (plannerBuildShare < 0.05 and secondsLeft < (12 * slowness + moduloBonus))
+  ) then
     totalSavedTime = totalSavedTime + secondsLeft
     return true
   else
@@ -721,19 +727,20 @@ local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, cmdQueueTa
   -- )
   -- target has previously been abandoned
   -- local gf = Spring.GetGameFrame()
-  if isUnitSelectedLog(builder.id) then
+  if IsUnitSelectedLog(builder.id) then
     log(builder.id, 'ff from '
       ..(forwardedFromTargetIds.hash[targetId] == nil and '1' or '0')
       ..' time '
       ..(IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed) and '1' or '0')
       ..' eco '
       ..(not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) and '1' or '0')
+      .. ' ' .. tostring(Spring.GetGameFrame())
     )
   end
   if forwardedFromTargetIds.hash[targetId] == nil
       and IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed)
       and not TargetWillStall(targetId, targetDef, totalBuildSpeed, secondsLeft) then
-      if isUnitSelectedLog(builder.id) then
+      if IsUnitSelectedLog(builder.id) then
         log(builder.id, 'moving on',
           forwardedFromTargetIds.hash[targetId] == nil,
           IsTimeToMoveOn(secondsLeft, builder.id, builder.def, totalBuildSpeed),
@@ -1043,7 +1050,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
   return candidatesUnfinished, nCandidatesUnfinished, features, nFeaturesAll
 end
 
-local function Builders(gameFrame, buildersRandomModulo)
+local function Builders(gameFrame)
   anyBuildWillMStall = false
   anyBuildWillEStall = false
   assignedTargetBuildSpeed = {}
@@ -1073,7 +1080,7 @@ local function Builders(gameFrame, buildersRandomModulo)
   UpdateResources(gameFrame)
 
   local selectedUnits = {}
-  if not is_select_log_active then
+  if not isUnitLogActive then
     local selectedUnitsList = Spring.GetSelectedUnits()
     for i = 1, #selectedUnitsList do
       selectedUnits[selectedUnitsList[i]] = true
@@ -1081,7 +1088,7 @@ local function Builders(gameFrame, buildersRandomModulo)
   end
 
   for i = 1, builderUnitIds.count do
-    if i % buildersRandomModulo == 0 then
+    if i % buildersJitterModulo == 0 then
 
       if not selectedUnits[builderUnitIds.list[i]] then
 
@@ -1127,6 +1134,9 @@ local function Builders(gameFrame, buildersRandomModulo)
             -- queue fast forward / skip ahead
             -- if builder.def.name == 'armck' then
             --   log('isMultiBuilding', isMultiBuilding, 'targetId', targetId)
+            -- end
+            -- if IsUnitSelectedLog(builderId) then
+            --   log('ff targetId', targetId, 'isBuildingFetchCandidatesOnly', isBuildingFetchCandidatesOnly)
             -- end
             if targetId and isBuildingFetchCandidatesOnly then
               -- if builder.def.name == 'armck' then
@@ -1236,7 +1246,7 @@ function widget:GameFrame(gameFrame)
   gameFrameModulo = GameFrameModulo()
 
   if gameFrame % gameFrameModulo == 0 then
-    local buildersJitterModulo = BuildersJitterModulo()
+    buildersJitterModulo = BuildersJitterModulo()
 
     -- log(
     --   string.format('gameframe mod %s (%.1fs) builders mod %s (%s/%s) - - - p %.0f e %.0f m %.0f',
@@ -1249,7 +1259,7 @@ function widget:GameFrame(gameFrame)
     --   )
     -- )
 
-    Builders(gameFrame, buildersJitterModulo)
+    Builders(gameFrame)
   end
 
   if gameFrame % 100 == 0 then
@@ -1295,8 +1305,8 @@ end
 
 function widget:KeyPress(key, mods, isRepeat)
   if key == KEYSYMS.L and mods['ctrl'] then
-    is_select_log_active = not is_select_log_active
-    log('is_select_log_active ' .. tostring(is_select_log_active))
+    isUnitLogActive = not isUnitLogActive
+    log('isUnitLogActive ' .. tostring(isUnitLogActive))
     return true
   end
 end
