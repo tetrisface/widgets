@@ -90,6 +90,7 @@ local anyBuildWillMStall                 = false
 local anyBuildWillEStall                 = false
 local assignedTargetBuildSpeed           = {}
 local isUnitLogActive = false
+local mapPosUnitCache = LRUCacheTable:new(100)
 
 local function IsUnitSelectedLog(unitId)
   if isUnitLogActive then
@@ -347,14 +348,19 @@ local function purgeRepairs(builderId, cmdQueue, queueSize)
     return {}
   end
   local cmd
+  local removeCommands = {}
   for i = 1, #cmdQueue do
     cmd = cmdQueue[i]
     local targetId = cmd.params[1]
+    -- if IsUnitSelectedLog(builderId) then
+      -- log(cmd.id, table.tostring(cmd.params), Spring.GetUnitDefID(cmd.params[1]), table.tostring(UnitDefs[cmd.params[1]]))
+    -- end
+
     if cmd.id == CMD.REPAIR then -- 40
       local health, maxHealth, _, _, targetBuild = GetUnitHealth(targetId)
       if (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) or isBeingReclaimed(targetId) then
-        local _, _, cmdTag2 = GetUnitCurrentCommand(builderId, i + 1)
-        GiveOrderToUnit(builderId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
+        -- local _, _, cmdTag2 = GetUnitCurrentCommand(builderId, i + 1)
+        table.insert(removeCommands, {CMD.REMOVE, { cmd.tag }, { "ctrl" }})
         -- GiveOrderToUnit(builderId, CMD.REMOVE, { cmdTag2, cmd.tag }, { "ctrl" })
         if not targetBuild then
           reclaimTargets:Remove(targetId)
@@ -363,7 +369,29 @@ local function purgeRepairs(builderId, cmdQueue, queueSize)
       end
     elseif cmd.id == CMD.RECLAIM then -- 90
       reclaimTargets:Add(targetId)
+    elseif cmd.id < 0 or cmd.id == CMD.FIGHT then
+      local buildQueueUnits = GetUnitsInCylinder(cmd.params[1], cmd.params[3], 2, myTeamId)
+      if buildQueueUnits and #buildQueueUnits > 0 then
+        local buildingUnitId = buildQueueUnits[1]
+        local health, maxHealth, _, _, targetBuild = GetUnitHealth(buildingUnitId)
+        if (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) or isBeingReclaimed(buildingUnitId) then
+          -- local _, _, cmdTag2 = GetUnitCurrentCommand(builderId, i + 1)
+          table.insert(removeCommands, {CMD.REMOVE, { cmd.tag }, { "ctrl" }})
+          -- GiveOrderToUnit(builderId, CMD.REMOVE, { cmdTag2, cmd.tag }, { "ctrl" })
+          if not targetBuild then
+            reclaimTargets:Remove(buildingUnitId)
+            reclaimTargetsPrev:Remove(buildingUnitId)
+          end
+        end
+      end
     end
+  end
+
+  if #removeCommands > 0 then
+    if IsUnitSelectedLog(builderId) then
+      log('purging', #removeCommands)
+    end
+    Spring.GiveOrderArrayToUnit(builderId, removeCommands)
   end
   return GetUnitCommands(builderId, queueSize)
 end
@@ -851,6 +879,9 @@ end
 
 
 local function GetPurgedUnitCommands(builderId, queueSize)
+  if queueSize == nil then
+    queueSize = 100
+  end
   local commandQueue = GetUnitCommands(builderId, queueSize)
   if commandQueue == nil then
     widget:UnitDestroyed(builderId, nil, myTeamId)
@@ -918,7 +949,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
             candidatesDamaged[nCandidatesDamaged] = candidate
             -- log('neighboursDamaged', candidateId, candidateHealth, candidateMaxHealth, candidateBuild, candidate.healthRatio, candidate.def.translatedHumanName, nNeighboursDamaged)
           else
-            local candidateQueue = GetPurgedUnitCommands(candidateId, 3)
+            local candidateQueue = GetPurgedUnitCommands(candidateId)
             if candidateQueue and #candidateQueue > 0 and candidateQueue[1].id < 0 then
               table.insert(candidatesGuardBuilders, candidateId)
             end
@@ -994,7 +1025,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
       ) then
     local _needMetal = metalLevel < 0.9
     local _needEnergy = needEnergy or energyLevel < 0.9
-    cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId, 3)
+    cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId)
     if not isMetalLeaking and not isEnergyLeaking and builderDef and
         (#builderDef.buildOptions == 0 or nCmdQueue == 0 or not isBuildingEco) then
       features, nFeaturesAll = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
@@ -1024,7 +1055,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
       if MRandom() < 0.1 then
         features, nFeaturesAll = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
         if nFeaturesAll > 0 then
-          log('randomly reclaiming', builderDef.translatedHumanName)
+          -- log('randomly reclaiming', builderDef.translatedHumanName)
           local featuresAll = FeatureSortByHealth(features.all)
           local feature
           for i = 1, nFeaturesAll do
@@ -1087,6 +1118,16 @@ local function Builders(gameFrame)
     end
   end
 
+  --[[
+    todo batch order
+    if eco is decisive and alternative exists
+    get builders not selected and not order throttled and is building the wrong thing and in range of best alternative
+    adjust how many should be switched depending on eco decisiveness
+    send batch order
+    update builder throttles
+  --]]
+  -- log()
+
   for i = 1, builderUnitIds.count do
     if i % buildersJitterModulo == 0 then
 
@@ -1099,12 +1140,12 @@ local function Builders(gameFrame)
           -- end
           local builderId = builder.id
           local builderDef = builder.def
-          local cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId, 3)
+          local cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId)
 
           -- dont wait if has queued stuff and leaking
           if cmdQueue and nCmdQueue > 0 and (isMetalLeaking or isEnergyLeaking) and cmdQueue[1].id == CMD.WAIT then
             GiveOrderToUnit(builderId, CMD.REMOVE, { nil }, { "ctrl" })
-            cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId, 3)
+            cmdQueue, nCmdQueue = GetPurgedUnitCommands(builderId)
           end
 
           local features = nil

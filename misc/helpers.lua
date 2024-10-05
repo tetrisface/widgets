@@ -131,3 +131,133 @@ function table.tostring(tbl)
   end
   return "{" .. table.concat(result, ",") .. "}"
 end
+
+
+-- SECTION OOP
+-- SECTION LRU Cache class
+LRUCache = {}
+LRUCache.__index = LRUCache
+
+-- Constructor
+function LRUCache:new(max_size)
+    local cache = {
+        max_size = max_size or 10, -- Default max size to 10 if not specified
+        cache = {},                -- Key-Value store (uID -> value = radius)
+        order = {}                 -- To track the order of use (most recent at the end)
+    }
+    setmetatable(cache, LRUCache)
+    return cache
+end
+
+-- Get a value by uID
+function LRUCache:get(uID)
+    local value = self.cache[uID]
+    if value then
+        -- Move the accessed uID to the end to mark it as most recently used
+        self:moveToEnd(uID)
+        return value
+    else
+        return nil -- uID not found
+    end
+end
+
+-- Put a uID and value into the cache
+function LRUCache:put(uID, value)
+    if self.cache[uID] then
+        -- If uID already exists, just update and mark it as recently used (should never be the case)
+        self.cache[uID] = value
+        self:moveToEnd(uID)
+    else
+        -- Add new uID-value pair
+        if #self.order >= self.max_size then
+            -- Cache is full, remove the least recently used item
+            local lru = table.remove(self.order, 1)
+            self.cache[lru] = nil
+        end
+        table.insert(self.order, uID)
+        self.cache[uID] = value
+    end
+end
+
+-- Helper function to move uID to the end of the order list
+function LRUCache:moveToEnd(uID)
+    for i, id in ipairs(self.order) do
+        if id == uID then
+            table.remove(self.order, i)
+            break
+        end
+    end
+    table.insert(self.order, uID)
+end
+-- !SECTION LRU Cache
+-- !SECTION OOP
+
+
+
+-- SECTION OOP
+-- SECTION LRU Cache class
+LRUCacheTable = {}
+LRUCacheTable.__index = LRUCacheTable
+
+-- Helper function to serialize a key (table with 3 elements) into a string
+local function serializeKey(key)
+    -- Assuming the key is a table with exactly 3 items
+    return table.concat(key, "-")
+end
+
+-- Constructor
+function LRUCacheTable:new(max_size)
+    local cache = {
+        max_size = max_size or 10, -- Default max size to 10 if not specified
+        cache = {},                -- Key-Value store (serialized key -> value)
+        order = {}                 -- To track the order of use (most recent at the end)
+    }
+    setmetatable(cache, LRUCacheTable)
+    return cache
+end
+
+-- Get a value by key (which is a table with 3 elements)
+function LRUCacheTable:get(key)
+    local serializedKey = serializeKey(key)
+    local value = self.cache[serializedKey]
+    if value then
+        -- Move the accessed key to the end to mark it as most recently used
+        self:moveToEnd(serializedKey)
+        return value
+    else
+        return nil -- Key not found
+    end
+end
+
+-- Put a key (table with 3 elements) and value into the cache
+function LRUCacheTable:put(key, value)
+    local serializedKey = serializeKey(key)
+
+    if self.cache[serializedKey] then
+        -- If key already exists, just update and mark it as recently used
+        self.cache[serializedKey] = value
+        self:moveToEnd(serializedKey)
+    else
+        -- Add new key-value pair
+        if #self.order >= self.max_size then
+            -- Cache is full, remove the least recently used item
+            local lru = table.remove(self.order, 1)
+            self.cache[lru] = nil
+        end
+        table.insert(self.order, serializedKey)
+        self.cache[serializedKey] = value
+    end
+end
+
+-- Helper function to move the serialized key to the end of the order list
+function LRUCacheTable:moveToEnd(serializedKey)
+    for i, id in ipairs(self.order) do
+        if id == serializedKey then
+            table.remove(self.order, i)
+            break
+        end
+    end
+    table.insert(self.order, serializedKey)
+end
+-- !SECTION LRU Cache
+-- !SECTION OOP

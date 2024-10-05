@@ -131,7 +131,7 @@ local function RegisterUnit(unitId, unitDefId, unitTeam)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
     if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefId] then
-      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'shift'})
+      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, CMD.OPT_SHIFT)
       Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
     end
   end

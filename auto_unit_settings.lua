@@ -12,6 +12,7 @@ function widget:GetInfo()
 end
 
 VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Headers/keysym.h.lua')
 
 -- local isCommanderRepeatChecked = true
 local myTeamId = Spring.GetMyTeamID()
@@ -167,7 +168,7 @@ function widget:GameFrame(gameFrame)
 end
 
 function widget:KeyPress(key, mods, isRepeat)
-  if key == 101 and mods['alt'] then
+  if key == KEYSYMS.E and mods['alt'] and not mods['shift'] and not mods['ctrl'] then
     local selectedUnitIds = Spring.GetSelectedUnits()
     if not selectedUnitIds or #selectedUnitIds == 0 then
       areaReclaimParams = {}

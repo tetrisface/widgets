@@ -9,5 +9,9 @@
   "Lua.runtime.version": "LuaJIT",
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "yinfei.luahelper"
+  "editor.defaultFormatter": "yinfei.luahelper",
+  "editor.tabSize": 2,
+  "Lua.type.checkTableShape": true,
+  "luahelper.format.extra_sep_at_table_end": true,
+  "luahelper.format.tab_width": 2
 }

@@ -83,7 +83,7 @@ local function resetSelected()
   selectedUnits = {}
 end
 local function exec(factoryDefId, conDefId)
-  log('exec', factoryDefId)
+  -- log('exec', factoryDefId)
   -- local selectedUnits = Spring.GetSelectedUnits() or {}
   -- log('selectedUnits', selectedUnits, '#selectedUnits', #selectedUnits)
 
