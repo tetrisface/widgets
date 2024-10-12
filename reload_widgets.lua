@@ -1,43 +1,42 @@
 function widget:GetInfo()
   return {
-    name    = "Reload Widgets",
-    desc    = "",
-    author  = "tetrisface",
-    version = "",
-    date    = "jan, 2024",
-    license = "",
-    layer   = -99990,
-    enabled = false,
+    name = 'Reload Widgets',
+    desc = '',
+    author = 'tetrisface',
+    version = '',
+    date = 'jan, 2024',
+    license = '',
+    layer = -99990,
+    enabled = false
   }
 end
 
 VFS.Include('luaui/Widgets/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
-local Set                   = VFS.Include('common/SetList.lua').NewSetListNoTable
-local testSet               = Set()
+local Set = VFS.Include('common/SetList.lua').NewSetListNoTable
+local testSet = Set()
 
-local GetCameraPosition     = Spring.GetCameraPosition
-local GetSelectedUnits      = Spring.GetSelectedUnits
-local GetUnitsInRectangle   = Spring.GetUnitsInRectangle
-local GetUnitViewPosition   = Spring.GetUnitViewPosition
-local GetVisibleUnits       = Spring.GetVisibleUnits
+local GetCameraPosition = Spring.GetCameraPosition
+local GetSelectedUnits = Spring.GetSelectedUnits
+local GetUnitsInRectangle = Spring.GetUnitsInRectangle
+local GetUnitViewPosition = Spring.GetUnitViewPosition
+local GetVisibleUnits = Spring.GetVisibleUnits
 local GetFeaturesInCylinder = Spring.GetFeaturesInCylinder
-local GetFeatureResources   = Spring.GetFeatureResources
-local GetMouseState         = Spring.GetMouseState
-local TraceScreenRay        = Spring.TraceScreenRay
-local GiveOrderToUnit       = Spring.GiveOrderToUnit
-local log                   = Spring.Echo
-local myTeamId              = Spring.GetMyTeamID()
-local SetCameraTarget       = Spring.SetCameraTarget
-local GetSelectedUnits      = Spring.GetSelectedUnits
-local GetUnitCommands       = Spring.GetUnitCommands
-local GetUnitStates         = Spring.GetUnitStates
-local GetUnitDefID          = Spring.GetUnitDefID
-local UnitDefs              = UnitDefs
-local GetTeamList           = Spring.GetTeamList
-local GetMyAllyTeamID       = Spring.GetMyAllyTeamID
-local GetTeamStatsHistory   = Spring.GetTeamStatsHistory
-
+local GetFeatureResources = Spring.GetFeatureResources
+local GetMouseState = Spring.GetMouseState
+local TraceScreenRay = Spring.TraceScreenRay
+local GiveOrderToUnit = Spring.GiveOrderToUnit
+local log = Spring.Echo
+local myTeamId = Spring.GetMyTeamID()
+local SetCameraTarget = Spring.SetCameraTarget
+local GetSelectedUnits = Spring.GetSelectedUnits
+local GetUnitCommands = Spring.GetUnitCommands
+local GetUnitStates = Spring.GetUnitStates
+local GetUnitDefID = Spring.GetUnitDefID
+local UnitDefs = UnitDefs
+local GetTeamList = Spring.GetTeamList
+local GetMyAllyTeamID = Spring.GetMyAllyTeamID
+local GetTeamStatsHistory = Spring.GetTeamStatsHistory
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
   -- Ensure the value is within the specified range
@@ -121,7 +120,6 @@ end
 -- end
 -- log('move ' .. x .. ' ' .. y)
 
-
 -- if math.abs(x-keyPressMouseX) > 50 or math.abs(y-keyPressMouseY) > 50 then
 --   log('moved ' .. x-keyPressMouseX ' and ' .. y-keyPressMouseY)
 -- end
@@ -131,8 +129,8 @@ end
 function widget:KeyPress(key, mods, isRepeat)
   -- log('key', key, mods)
   if (key == KEYSYMS.R and mods['ctrl']) then
-    Spring.SendCommands("disablewidget Reload Widgets")
-    Spring.SendCommands("enablewidget Reload Widgets")
+    Spring.SendCommands('disablewidget Reload Widgets')
+    Spring.SendCommands('enablewidget Reload Widgets')
     -- Spring.SendCommands("disablewidget Snap Mouse")
     -- Spring.SendCommands("enablewidget Snap Mouse")
     -- Spring.SendCommands("disablewidget GUI PVE Wave Info")
@@ -143,10 +141,10 @@ function widget:KeyPress(key, mods, isRepeat)
     -- Spring.SendCommands("enablewidget Build Shortcuts")
     -- Spring.SendCommands("disablewidget Auto Unit Settings")
     -- Spring.SendCommands("enablewidget Auto Unit Settings")
-    -- Spring.SendCommands("disablewidget cons")
-    -- Spring.SendCommands("enablewidget cons")
-    Spring.SendCommands("disablewidget Commands")
-    Spring.SendCommands("enablewidget Commands")
+    Spring.SendCommands('disablewidget cons')
+    Spring.SendCommands('enablewidget cons')
+    -- Spring.SendCommands('disablewidget Commands')
+    -- Spring.SendCommands('enablewidget Commands')
     -- Spring.SendCommands("disablewidget Dont Stand in Fire")
     -- Spring.SendCommands("enablewidget Dont Stand in Fire")
     -- Spring.SendCommands("disablewidget CMD Build Spacing")
@@ -186,7 +184,6 @@ end
 --   -- log('feature metal ' .. metal, ' energy ' .. energy)
 --   return featureId
 -- end
-
 
 -- function widget:KeyPress(key, mods, isRepeat)
 --   log(key .. " "..table.tostring(mods))
@@ -239,9 +236,7 @@ end
 
 --   -- boundaries =
 
-
 -- end
-
 
 -- function getPositionBoundaries(points)
 --   local xMin = math.huge

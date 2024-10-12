@@ -1,18 +1,17 @@
 function widget:GetInfo()
 	return {
-		-- name = "Top Bar test",
 		name = "Top Bar",
 		desc = "Shows Resources, wind speed, commander counter, and various options.",
 		author = "Floris",
 		date = "Feb, 2017",
 		license = "GNU GPL, v2 or later",
 		layer = -999999,
-		enabled = true, --enabled by default
+		enabled = true,
 		handler = true, --can use widgetHandler:x()
 	}
 end
 
-local allowSavegame = true --Spring.Utilities.ShowDevUI()
+local allowSavegame = true--Spring.Utilities.ShowDevUI()
 
 local ui_scale = tonumber(Spring.GetConfigFloat("ui_scale", 1) or 1)
 
@@ -34,6 +33,7 @@ local bladeSpeedMultiplier = 0.2
 
 local wholeTeamWastingMetalCount = 0
 
+
 local noiseBackgroundTexture = ":g:LuaUI/Images/rgbnoise.png"
 local showButtons = true
 local autoHideButtons = false
@@ -48,7 +48,7 @@ local bladesTexture = ":n:LuaUI/Images/wind-blades.png"
 local wavesTexture = ":n:LuaUI/Images/tidal-waves.png"
 local comTexture = ":n:Icons/corcom.png"
 if UnitDefs[Spring.GetTeamRulesParam(Spring.GetMyTeamID(), 'startUnit')] then
-	comTexture = ':n:Icons/' .. UnitDefs[Spring.GetTeamRulesParam(Spring.GetMyTeamID(), 'startUnit')].name .. '.png'
+	comTexture = ':n:Icons/'..UnitDefs[Spring.GetTeamRulesParam(Spring.GetMyTeamID(), 'startUnit')].name..'.png'
 end
 
 local math_floor = math.floor
@@ -101,7 +101,7 @@ local numTeamsInAllyTeam = #myAllyTeamList
 
 local supressOverflowNotifs = false
 for _, teamID in ipairs(myAllyTeamList) do
-	if select(4, Spring.GetTeamInfo(teamID, false)) then -- is AI?
+	if select(4,Spring.GetTeamInfo(teamID,false)) then	-- is AI?
 		local luaAI = Spring.GetTeamLuaAI(teamID)
 		if luaAI and luaAI ~= "" then
 			if string.find(luaAI, 'Scavengers') or string.find(luaAI, 'Raptors') then
@@ -117,58 +117,24 @@ local sformat = string.format
 local minWind = Game.windMin
 local maxWind = Game.windMax
 -- precomputed average wind values, from wind random monte carlo simulation, given minWind and maxWind
-local avgWind = {
-	[0] = { [1] = "0.8", [2] = "1.5", [3] = "2.2", [4] = "3.0", [5] = "3.7", [6] = "4.5", [7] = "5.2", [8] = "6.0", [9] = "6.7", [10] = "7.5", [11] = "8.2", [12] = "9.0", [13] = "9.7", [14] = "10.4", [15] = "11.2", [16] = "11.9", [17] = "12.7", [18] = "13.4", [19] = "14.2", [20] = "14.9", [21] = "15.7", [22] = "16.4", [23] = "17.2", [24] = "17.9", [25] = "18.6", [26] = "19.2", [27] = "19.6", [28] = "20.0", [29] = "20.4", [30] = "20.7", },
-	[1] = { [2] = "1.6", [3] = "2.3", [4] = "3.0", [5] = "3.8", [6] = "4.5", [7] = "5.2", [8] = "6.0", [9] = "6.7", [10] = "7.5", [11] = "8.2", [12] = "9.0", [13] = "9.7", [14] = "10.4", [15] = "11.2", [16] = "11.9", [17] = "12.7", [18] = "13.4", [19] = "14.2", [20] = "14.9", [21] = "15.7", [22] = "16.4", [23] = "17.2", [24] = "17.9", [25] = "18.6", [26] = "19.2", [27] = "19.6", [28] = "20.0", [29] = "20.4", [30] = "20.7", },
-	[2] = { [3] = "2.6", [4] = "3.2", [5] = "3.9", [6] = "4.6", [7] = "5.3", [8] = "6.0", [9] = "6.8", [10] = "7.5", [11] = "8.2", [12] = "9.0", [13] = "9.7", [14] = "10.5", [15] = "11.2", [16] = "12.0", [17] = "12.7", [18] = "13.4", [19] = "14.2", [20] = "14.9", [21] = "15.7", [22] = "16.4", [23] = "17.2", [24] = "17.9", [25] = "18.6", [26] = "19.2", [27] = "19.6", [28] = "20.0", [29] = "20.4", [30] = "20.7", },
-	[3] = { [4] = "3.6", [5] = "4.2", [6] = "4.8", [7] = "5.5", [8] = "6.2", [9] = "6.9", [10] = "7.6", [11] = "8.3", [12] = "9.0", [13] = "9.8", [14] = "10.5", [15] = "11.2", [16] = "12.0", [17] = "12.7", [18] = "13.5", [19] = "14.2", [20] = "15.0", [21] = "15.7", [22] = "16.4", [23] = "17.2", [24] = "17.9", [25] = "18.7", [26] = "19.2", [27] = "19.7", [28] = "20.0", [29] = "20.4", [30] = "20.7", },
-	[4] = { [5] = "4.6", [6] = "5.2", [7] = "5.8", [8] = "6.4", [9] = "7.1", [10] = "7.8", [11] = "8.5", [12] = "9.2", [13] = "9.9", [14] = "10.6", [15] = "11.3", [16] = "12.1", [17] = "12.8", [18] = "13.5", [19] = "14.3", [20] = "15.0", [21] = "15.7", [22] = "16.5", [23] = "17.2", [24] = "18.0", [25] = "18.7", [26] = "19.2", [27] = "19.7", [28] = "20.1", [29] = "20.4", [30] = "20.7", },
-	[5] = { [6] = "5.5", [7] = "6.1", [8] = "6.8", [9] = "7.4", [10] = "8.0", [11] = "8.7", [12] = "9.4", [13] = "10.1", [14] = "10.8", [15] = "11.5", [16] = "12.2", [17] = "12.9", [18] = "13.6", [19] = "14.4", [20] = "15.1", [21] = "15.8", [22] = "16.5", [23] = "17.3", [24] = "18.0", [25] = "18.8", [26] = "19.3", [27] = "19.7", [28] = "20.1", [29] = "20.4", [30] = "20.7", },
-	[6] = { [7] = "6.5", [8] = "7.1", [9] = "7.7", [10] = "8.4", [11] = "9.0", [12] = "9.7", [13] = "10.3", [14] = "11.0", [15] = "11.7", [16] = "12.4", [17] = "13.1", [18] = "13.8", [19] = "14.5", [20] = "15.2", [21] = "15.9", [22] = "16.7", [23] = "17.4", [24] = "18.1", [25] = "18.8", [26] = "19.4", [27] = "19.8", [28] = "20.2", [29] = "20.5", [30] = "20.8", },
-	[7] = { [8] = "7.5", [9] = "8.1", [10] = "8.7", [11] = "9.3", [12] = "10.0", [13] = "10.6", [14] = "11.3", [15] = "11.9", [16] = "12.6", [17] = "13.3", [18] = "14.0", [19] = "14.7", [20] = "15.4", [21] = "16.1", [22] = "16.8", [23] = "17.5", [24] = "18.2", [25] = "19.0", [26] = "19.5", [27] = "19.9", [28] = "20.3", [29] = "20.6", [30] = "20.9", },
-	[8] = { [9] = "8.5", [10] = "9.1", [11] = "9.7", [12] = "10.3", [13] = "11.0", [14] = "11.6", [15] = "12.2", [16] = "12.9", [17] = "13.6", [18] = "14.2", [19] = "14.9", [20] = "15.6", [21] = "16.3", [22] = "17.0", [23] = "17.7", [24] = "18.4", [25] = "19.1", [26] = "19.6", [27] = "20.0", [28] = "20.4", [29] = "20.7", [30] = "21.0", },
-	[9] = { [10] = "9.5", [11] = "10.1", [12] = "10.7", [13] = "11.3", [14] = "11.9", [15] = "12.6", [16] = "13.2", [17] = "13.8", [18] = "14.5", [19] = "15.2", [20] = "15.8", [21] = "16.5", [22] = "17.2", [23] = "17.9", [24] = "18.6", [25] = "19.3", [26] = "19.8", [27] = "20.2", [28] = "20.5", [29] = "20.8", [30] = "21.1", },
-	[10] = { [11] = "10.5", [12] = "11.1", [13] = "11.7", [14] = "12.3", [15] = "12.9", [16] = "13.5", [17] = "14.2", [18] = "14.8", [19] = "15.4", [20] = "16.1", [21] = "16.8", [22] = "17.4", [23] = "18.1", [24] = "18.8", [25] = "19.5", [26] = "20.0", [27] = "20.4", [28] = "20.7", [29] = "21.0", [30] = "21.2", },
-	[11] = { [12] = "11.5", [13] = "12.1", [14] = "12.7", [15] = "13.3", [16] = "13.9", [17] = "14.5", [18] = "15.1", [19] = "15.8", [20] = "16.4", [21] = "17.1", [22] = "17.7", [23] = "18.4", [24] = "19.1", [25] = "19.7", [26] = "20.2", [27] = "20.6", [28] = "20.9", [29] = "21.2", [30] = "21.4", },
-	[12] = { [13] = "12.5", [14] = "13.1", [15] = "13.6", [16] = "14.2", [17] = "14.9", [18] = "15.5", [19] = "16.1", [20] = "16.7", [21] = "17.4", [22] = "18.0", [23] = "18.7", [24] = "19.3", [25] = "20.0", [26] = "20.4", [27] = "20.8", [28] = "21.1", [29] = "21.4", [30] = "21.6", },
-	[13] = { [14] = "13.5", [15] = "14.1", [16] = "14.6", [17] = "15.2", [18] = "15.8", [19] = "16.5", [20] = "17.1", [21] = "17.7", [22] = "18.4", [23] = "19.0", [24] = "19.6", [25] = "20.3", [26] = "20.7", [27] = "21.1", [28] = "21.4", [29] = "21.6", [30] = "21.8", },
-	[14] = { [15] = "14.5", [16] = "15.0", [17] = "15.6", [18] = "16.2", [19] = "16.8", [20] = "17.4", [21] = "18.1", [22] = "18.7", [23] = "19.3", [24] = "20.0", [25] = "20.6", [26] = "21.0", [27] = "21.3", [28] = "21.6", [29] = "21.8", [30] = "22.0", },
-	[15] = { [16] = "15.5", [17] = "16.0", [18] = "16.6", [19] = "17.2", [20] = "17.8", [21] = "18.4", [22] = "19.0", [23] = "19.6", [24] = "20.3", [25] = "20.9", [26] = "21.3", [27] = "21.6", [28] = "21.9", [29] = "22.1", [30] = "22.3", },
-	[16] = { [17] = "16.5", [18] = "17.0", [19] = "17.6", [20] = "18.2", [21] = "18.8", [22] = "19.4", [23] = "20.0", [24] = "20.6", [25] = "21.3", [26] = "21.7", [27] = "21.9", [28] = "22.2", [29] = "22.4", [30] = "22.5", },
-	[17] = { [18] = "17.5", [19] = "18.0", [20] = "18.6", [21] = "19.2", [22] = "19.8", [23] = "20.4", [24] = "21.0", [25] = "21.6", [26] = "22.0", [27] = "22.3", [28] = "22.5", [29] = "22.7", [30] = "22.8", },
-	[18] = { [19] = "18.5", [20] = "19.0", [21] = "19.6", [22] = "20.2", [23] = "20.8", [24] = "21.4", [25] = "22.0", [26] = "22.4", [27] = "22.6", [28] = "22.8", [29] = "23.0", [30] = "23.1", },
-	[19] = { [20] = "19.5", [21] = "20.0", [22] = "20.6", [23] = "21.2", [24] = "21.8", [25] = "22.4", [26] = "22.7", [27] = "22.9", [28] = "23.1", [29] = "23.2", [30] = "23.4", },
-	[20] = { [21] = "20.4", [22] = "21.0", [23] = "21.6", [24] = "22.2", [25] = "22.8", [26] = "23.1", [27] = "23.3", [28] = "23.4", [29] = "23.6", [30] = "23.7", },
-	[21] = { [22] = "21.4", [23] = "22.0", [24] = "22.6", [25] = "23.2", [26] = "23.5", [27] = "23.6", [28] = "23.8", [29] = "23.9", [30] = "24.0", },
-	[22] = { [23] = "22.4", [24] = "23.0", [25] = "23.6", [26] = "23.8", [27] = "24.0", [28] = "24.1", [29] = "24.2", [30] = "24.2", },
-	[23] = { [24] = "23.4", [25] = "24.0", [26] = "24.2", [27] = "24.4", [28] = "24.4", [29] = "24.5", [30] = "24.5", },
-	[24] = { [25] = "24.4", [26] = "24.6", [27] = "24.7", [28] = "24.7", [29] = "24.8", [30] = "24.8", },
-}
+local avgWind = {[0]={[1]="0.8",[2]="1.5",[3]="2.2",[4]="3.0",[5]="3.7",[6]="4.5",[7]="5.2",[8]="6.0",[9]="6.7",[10]="7.5",[11]="8.2",[12]="9.0",[13]="9.7",[14]="10.4",[15]="11.2",[16]="11.9",[17]="12.7",[18]="13.4",[19]="14.2",[20]="14.9",[21]="15.7",[22]="16.4",[23]="17.2",[24]="17.9",[25]="18.6",[26]="19.2",[27]="19.6",[28]="20.0",[29]="20.4",[30]="20.7",},[1]={[2]="1.6",[3]="2.3",[4]="3.0",[5]="3.8",[6]="4.5",[7]="5.2",[8]="6.0",[9]="6.7",[10]="7.5",[11]="8.2",[12]="9.0",[13]="9.7",[14]="10.4",[15]="11.2",[16]="11.9",[17]="12.7",[18]="13.4",[19]="14.2",[20]="14.9",[21]="15.7",[22]="16.4",[23]="17.2",[24]="17.9",[25]="18.6",[26]="19.2",[27]="19.6",[28]="20.0",[29]="20.4",[30]="20.7",},[2]={[3]="2.6",[4]="3.2",[5]="3.9",[6]="4.6",[7]="5.3",[8]="6.0",[9]="6.8",[10]="7.5",[11]="8.2",[12]="9.0",[13]="9.7",[14]="10.5",[15]="11.2",[16]="12.0",[17]="12.7",[18]="13.4",[19]="14.2",[20]="14.9",[21]="15.7",[22]="16.4",[23]="17.2",[24]="17.9",[25]="18.6",[26]="19.2",[27]="19.6",[28]="20.0",[29]="20.4",[30]="20.7",},[3]={[4]="3.6",[5]="4.2",[6]="4.8",[7]="5.5",[8]="6.2",[9]="6.9",[10]="7.6",[11]="8.3",[12]="9.0",[13]="9.8",[14]="10.5",[15]="11.2",[16]="12.0",[17]="12.7",[18]="13.5",[19]="14.2",[20]="15.0",[21]="15.7",[22]="16.4",[23]="17.2",[24]="17.9",[25]="18.7",[26]="19.2",[27]="19.7",[28]="20.0",[29]="20.4",[30]="20.7",},[4]={[5]="4.6",[6]="5.2",[7]="5.8",[8]="6.4",[9]="7.1",[10]="7.8",[11]="8.5",[12]="9.2",[13]="9.9",[14]="10.6",[15]="11.3",[16]="12.1",[17]="12.8",[18]="13.5",[19]="14.3",[20]="15.0",[21]="15.7",[22]="16.5",[23]="17.2",[24]="18.0",[25]="18.7",[26]="19.2",[27]="19.7",[28]="20.1",[29]="20.4",[30]="20.7",},[5]={[6]="5.5",[7]="6.1",[8]="6.8",[9]="7.4",[10]="8.0",[11]="8.7",[12]="9.4",[13]="10.1",[14]="10.8",[15]="11.5",[16]="12.2",[17]="12.9",[18]="13.6",[19]="14.4",[20]="15.1",[21]="15.8",[22]="16.5",[23]="17.3",[24]="18.0",[25]="18.8",[26]="19.3",[27]="19.7",[28]="20.1",[29]="20.4",[30]="20.7",},[6]={[7]="6.5",[8]="7.1",[9]="7.7",[10]="8.4",[11]="9.0",[12]="9.7",[13]="10.3",[14]="11.0",[15]="11.7",[16]="12.4",[17]="13.1",[18]="13.8",[19]="14.5",[20]="15.2",[21]="15.9",[22]="16.7",[23]="17.4",[24]="18.1",[25]="18.8",[26]="19.4",[27]="19.8",[28]="20.2",[29]="20.5",[30]="20.8",},[7]={[8]="7.5",[9]="8.1",[10]="8.7",[11]="9.3",[12]="10.0",[13]="10.6",[14]="11.3",[15]="11.9",[16]="12.6",[17]="13.3",[18]="14.0",[19]="14.7",[20]="15.4",[21]="16.1",[22]="16.8",[23]="17.5",[24]="18.2",[25]="19.0",[26]="19.5",[27]="19.9",[28]="20.3",[29]="20.6",[30]="20.9",},[8]={[9]="8.5",[10]="9.1",[11]="9.7",[12]="10.3",[13]="11.0",[14]="11.6",[15]="12.2",[16]="12.9",[17]="13.6",[18]="14.2",[19]="14.9",[20]="15.6",[21]="16.3",[22]="17.0",[23]="17.7",[24]="18.4",[25]="19.1",[26]="19.6",[27]="20.0",[28]="20.4",[29]="20.7",[30]="21.0",},[9]={[10]="9.5",[11]="10.1",[12]="10.7",[13]="11.3",[14]="11.9",[15]="12.6",[16]="13.2",[17]="13.8",[18]="14.5",[19]="15.2",[20]="15.8",[21]="16.5",[22]="17.2",[23]="17.9",[24]="18.6",[25]="19.3",[26]="19.8",[27]="20.2",[28]="20.5",[29]="20.8",[30]="21.1",},[10]={[11]="10.5",[12]="11.1",[13]="11.7",[14]="12.3",[15]="12.9",[16]="13.5",[17]="14.2",[18]="14.8",[19]="15.4",[20]="16.1",[21]="16.8",[22]="17.4",[23]="18.1",[24]="18.8",[25]="19.5",[26]="20.0",[27]="20.4",[28]="20.7",[29]="21.0",[30]="21.2",},[11]={[12]="11.5",[13]="12.1",[14]="12.7",[15]="13.3",[16]="13.9",[17]="14.5",[18]="15.1",[19]="15.8",[20]="16.4",[21]="17.1",[22]="17.7",[23]="18.4",[24]="19.1",[25]="19.7",[26]="20.2",[27]="20.6",[28]="20.9",[29]="21.2",[30]="21.4",},[12]={[13]="12.5",[14]="13.1",[15]="13.6",[16]="14.2",[17]="14.9",[18]="15.5",[19]="16.1",[20]="16.7",[21]="17.4",[22]="18.0",[23]="18.7",[24]="19.3",[25]="20.0",[26]="20.4",[27]="20.8",[28]="21.1",[29]="21.4",[30]="21.6",},[13]={[14]="13.5",[15]="14.1",[16]="14.6",[17]="15.2",[18]="15.8",[19]="16.5",[20]="17.1",[21]="17.7",[22]="18.4",[23]="19.0",[24]="19.6",[25]="20.3",[26]="20.7",[27]="21.1",[28]="21.4",[29]="21.6",[30]="21.8",},[14]={[15]="14.5",[16]="15.0",[17]="15.6",[18]="16.2",[19]="16.8",[20]="17.4",[21]="18.1",[22]="18.7",[23]="19.3",[24]="20.0",[25]="20.6",[26]="21.0",[27]="21.3",[28]="21.6",[29]="21.8",[30]="22.0",},[15]={[16]="15.5",[17]="16.0",[18]="16.6",[19]="17.2",[20]="17.8",[21]="18.4",[22]="19.0",[23]="19.6",[24]="20.3",[25]="20.9",[26]="21.3",[27]="21.6",[28]="21.9",[29]="22.1",[30]="22.3",},[16]={[17]="16.5",[18]="17.0",[19]="17.6",[20]="18.2",[21]="18.8",[22]="19.4",[23]="20.0",[24]="20.6",[25]="21.3",[26]="21.7",[27]="21.9",[28]="22.2",[29]="22.4",[30]="22.5",},[17]={[18]="17.5",[19]="18.0",[20]="18.6",[21]="19.2",[22]="19.8",[23]="20.4",[24]="21.0",[25]="21.6",[26]="22.0",[27]="22.3",[28]="22.5",[29]="22.7",[30]="22.8",},[18]={[19]="18.5",[20]="19.0",[21]="19.6",[22]="20.2",[23]="20.8",[24]="21.4",[25]="22.0",[26]="22.4",[27]="22.6",[28]="22.8",[29]="23.0",[30]="23.1",},[19]={[20]="19.5",[21]="20.0",[22]="20.6",[23]="21.2",[24]="21.8",[25]="22.4",[26]="22.7",[27]="22.9",[28]="23.1",[29]="23.2",[30]="23.4",},[20]={[21]="20.4",[22]="21.0",[23]="21.6",[24]="22.2",[25]="22.8",[26]="23.1",[27]="23.3",[28]="23.4",[29]="23.6",[30]="23.7",},[21]={[22]="21.4",[23]="22.0",[24]="22.6",[25]="23.2",[26]="23.5",[27]="23.6",[28]="23.8",[29]="23.9",[30]="24.0",},[22]={[23]="22.4",[24]="23.0",[25]="23.6",[26]="23.8",[27]="24.0",[28]="24.1",[29]="24.2",[30]="24.2",},[23]={[24]="23.4",[25]="24.0",[26]="24.2",[27]="24.4",[28]="24.4",[29]="24.5",[30]="24.5",},[24]={[25]="24.4",[26]="24.6",[27]="24.7",[28]="24.7",[29]="24.8",[30]="24.8",},}
 -- precomputed percentage of time wind is less than 6, from wind random monte carlo simulation, given minWind and maxWind
-local riskWind = {
-	[0] = { [1] = "100", [2] = "100", [3] = "100", [4] = "100", [5] = "100", [6] = "100", [7] = "56", [8] = "42", [9] = "33", [10] = "27", [11] = "22", [12] = "18.5", [13] = "15.8", [14] = "13.6", [15] = "11.8", [16] = "10.4", [17] = "9.2", [18] = "8.2", [19] = "7.4", [20] = "6.7", [21] = "6.0", [22] = "5.5", [23] = "5.0", [24] = "4.6", [25] = "4.3", [26] = "4.0", [27] = "3.7", [28] = "3.4", [29] = "3.2", [30] = "3.0", },
-	[1] = { [2] = "100", [3] = "100", [4] = "100", [5] = "100", [6] = "100", [7] = "56", [8] = "42", [9] = "33", [10] = "27", [11] = "22", [12] = "18.5", [13] = "15.7", [14] = "13.6", [15] = "11.8", [16] = "10.4", [17] = "9.2", [18] = "8.2", [19] = "7.4", [20] = "6.7", [21] = "6.0", [22] = "5.5", [23] = "5.0", [24] = "4.6", [25] = "4.3", [26] = "4.0", [27] = "3.7", [28] = "3.4", [29] = "3.2", [30] = "3.0", },
-	[2] = { [3] = "100", [4] = "100", [5] = "100", [6] = "100", [7] = "55", [8] = "42", [9] = "33", [10] = "27", [11] = "22", [12] = "18.4", [13] = "15.6", [14] = "13.5", [15] = "11.8", [16] = "10.4", [17] = "9.2", [18] = "8.2", [19] = "7.4", [20] = "6.6", [21] = "6.0", [22] = "5.5", [23] = "5.0", [24] = "4.6", [25] = "4.3", [26] = "3.9", [27] = "3.6", [28] = "3.4", [29] = "3.1", [30] = "2.9", },
-	[3] = { [4] = "100", [5] = "100", [6] = "100", [7] = "53", [8] = "40", [9] = "32", [10] = "25", [11] = "21", [12] = "17.8", [13] = "15.2", [14] = "13.2", [15] = "11.5", [16] = "10.2", [17] = "9.1", [18] = "8.1", [19] = "7.3", [20] = "6.6", [21] = "6.0", [22] = "5.4", [23] = "5.0", [24] = "4.6", [25] = "4.2", [26] = "3.9", [27] = "3.6", [28] = "3.4", [29] = "3.1", [30] = "2.9", },
-	[4] = { [5] = "100", [6] = "100", [7] = "49", [8] = "36", [9] = "29", [10] = "23", [11] = "19.4", [12] = "16.4", [13] = "14.0", [14] = "12.2", [15] = "10.8", [16] = "9.6", [17] = "8.6", [18] = "7.7", [19] = "7.0", [20] = "6.3", [21] = "5.8", [22] = "5.3", [23] = "4.8", [24] = "4.4", [25] = "4.1", [26] = "3.8", [27] = "3.5", [28] = "3.3", [29] = "3.0", [30] = "2.8", },
-	[5] = { [6] = "100", [7] = "41", [8] = "30", [9] = "24", [10] = "19.5", [11] = "16.2", [12] = "13.9", [13] = "11.9", [14] = "10.4", [15] = "9.3", [16] = "8.3", [17] = "7.5", [18] = "6.8", [19] = "6.2", [20] = "5.7", [21] = "5.2", [22] = "4.8", [23] = "4.4", [24] = "4.1", [25] = "3.8", [26] = "3.5", [27] = "3.2", [28] = "3.0", [29] = "2.8", [30] = "2.6", },
-	[6] = { [7] = "16.0", [8] = "12.4", [9] = "10.5", [10] = "9.0", [11] = "8.0", [12] = "7.3", [13] = "6.6", [14] = "6.0", [15] = "5.5", [16] = "5.1", [17] = "4.7", [18] = "4.4", [19] = "4.2", [20] = "3.9", [21] = "3.6", [22] = "3.4", [23] = "3.2", [24] = "3.0", [25] = "2.8", [26] = "2.7", [27] = "2.5", [28] = "2.4", [29] = "2.2", [30] = "2.1", },
-}
+local riskWind = {[0]={[1]="100",[2]="100",[3]="100",[4]="100",[5]="100",[6]="100",[7]="56",[8]="42",[9]="33",[10]="27",[11]="22",[12]="18.5",[13]="15.8",[14]="13.6",[15]="11.8",[16]="10.4",[17]="9.2",[18]="8.2",[19]="7.4",[20]="6.7",[21]="6.0",[22]="5.5",[23]="5.0",[24]="4.6",[25]="4.3",[26]="4.0",[27]="3.7",[28]="3.4",[29]="3.2",[30]="3.0",},[1]={[2]="100",[3]="100",[4]="100",[5]="100",[6]="100",[7]="56",[8]="42",[9]="33",[10]="27",[11]="22",[12]="18.5",[13]="15.7",[14]="13.6",[15]="11.8",[16]="10.4",[17]="9.2",[18]="8.2",[19]="7.4",[20]="6.7",[21]="6.0",[22]="5.5",[23]="5.0",[24]="4.6",[25]="4.3",[26]="4.0",[27]="3.7",[28]="3.4",[29]="3.2",[30]="3.0",},[2]={[3]="100",[4]="100",[5]="100",[6]="100",[7]="55",[8]="42",[9]="33",[10]="27",[11]="22",[12]="18.4",[13]="15.6",[14]="13.5",[15]="11.8",[16]="10.4",[17]="9.2",[18]="8.2",[19]="7.4",[20]="6.6",[21]="6.0",[22]="5.5",[23]="5.0",[24]="4.6",[25]="4.3",[26]="3.9",[27]="3.6",[28]="3.4",[29]="3.1",[30]="2.9",},[3]={[4]="100",[5]="100",[6]="100",[7]="53",[8]="40",[9]="32",[10]="25",[11]="21",[12]="17.8",[13]="15.2",[14]="13.2",[15]="11.5",[16]="10.2",[17]="9.1",[18]="8.1",[19]="7.3",[20]="6.6",[21]="6.0",[22]="5.4",[23]="5.0",[24]="4.6",[25]="4.2",[26]="3.9",[27]="3.6",[28]="3.4",[29]="3.1",[30]="2.9",},[4]={[5]="100",[6]="100",[7]="49",[8]="36",[9]="29",[10]="23",[11]="19.4",[12]="16.4",[13]="14.0",[14]="12.2",[15]="10.8",[16]="9.6",[17]="8.6",[18]="7.7",[19]="7.0",[20]="6.3",[21]="5.8",[22]="5.3",[23]="4.8",[24]="4.4",[25]="4.1",[26]="3.8",[27]="3.5",[28]="3.3",[29]="3.0",[30]="2.8",},[5]={[6]="100",[7]="41",[8]="30",[9]="24",[10]="19.5",[11]="16.2",[12]="13.9",[13]="11.9",[14]="10.4",[15]="9.3",[16]="8.3",[17]="7.5",[18]="6.8",[19]="6.2",[20]="5.7",[21]="5.2",[22]="4.8",[23]="4.4",[24]="4.1",[25]="3.8",[26]="3.5",[27]="3.2",[28]="3.0",[29]="2.8",[30]="2.6",},[6]={[7]="16.0",[8]="12.4",[9]="10.5",[10]="9.0",[11]="8.0",[12]="7.3",[13]="6.6",[14]="6.0",[15]="5.5",[16]="5.1",[17]="4.7",[18]="4.4",[19]="4.2",[20]="3.9",[21]="3.6",[22]="3.4",[23]="3.2",[24]="3.0",[25]="2.8",[26]="2.7",[27]="2.5",[28]="2.4",[29]="2.2",[30]="2.1",},}
 -- pull average wind from precomputed table, if it exists
 local avgWindValue = avgWind[minWind]
 if avgWindValue ~= nil then
-	avgWindValue = avgWindValue[maxWind]
+	avgWindValue=avgWindValue[maxWind]
 end
 if avgWindValue == nil then
-	avgWindValue = "~" .. tostring(math.max(minWind, maxWind * .75)) --fallback approximation
+	avgWindValue="~" .. tostring(math.max(minWind,maxWind*.75)) --fallback approximation
 end
 -- pull wind risk from precomputed table, if it exists
 local riskWindValue = riskWind[minWind]
 if riskWindValue ~= nil then
-	riskWindValue = riskWindValue[maxWind]
+	riskWindValue=riskWindValue[maxWind]
 end
 if riskWindValue == nil then
-	if minWind + maxWind >= 0.5 then
+	if minWind+maxWind >= 0.5 then
 		riskWindValue = "0"
 	else
 		riskWindValue = "100"
@@ -199,7 +165,7 @@ local r = { metal = { spGetTeamResources(myTeamID, 'metal') }, energy = { spGetT
 local showOverflowTooltip = {}
 
 local allyComs = 0
-local enemyComs = 0     -- if we are counting ourselves because we are a spec
+local enemyComs = 0 -- if we are counting ourselves because we are a spec
 local enemyComCount = 0 -- if we are receiving a count from the gadget part (needs modoption on)
 local prevEnemyComCount = 0
 
@@ -239,7 +205,7 @@ local overflowingEnergy = false
 
 local isCommander = {}
 for unitDefID, unitDef in pairs(UnitDefs) do
-	if unitDef.customParams.iscommander then
+	if unitDef.customParams.iscommander or unitDef.customParams.isscavcommander then
 		isCommander[unitDefID] = true
 	end
 end
@@ -314,23 +280,25 @@ local function short(n, f)
 end
 
 local function updateButtons()
+
 	local fontsize = (height * widgetScale) / 3
 
 	if dlistButtons1 ~= nil then
 		glDeleteList(dlistButtons1)
 	end
 	dlistButtons1 = glCreateList(function()
+
 		-- if buttonsArea['buttons'] == nil then -- With this condition it doesn't actually update buttons if they were already added
 		buttonsArea['buttons'] = {}
 
 		local margin = bgpadding
-		local textPadding = math_floor(fontsize * 0.8)
+		local textPadding = math_floor(fontsize*0.8)
 		local sidePadding = textPadding
 		local offset = sidePadding
 		local lastbutton
 		local function addButton(name, text)
 			local width = math_floor((font2:GetTextWidth(text) * fontsize) + textPadding)
-			buttonsArea['buttons'][name] = { buttonsArea[3] - offset - width, buttonsArea[2] + margin, buttonsArea[3] - offset, buttonsArea[4], text, buttonsArea[3] - offset - (width / 2) }
+			buttonsArea['buttons'][name] = { buttonsArea[3] - offset - width, buttonsArea[2] + margin, buttonsArea[3] - offset, buttonsArea[4], text, buttonsArea[3] - offset - (width/2) }
 			if not lastbutton then
 				buttonsArea['buttons'][name][3] = buttonsArea[3]
 			end
@@ -371,8 +339,9 @@ local function updateButtons()
 		buttonsArea['buttons'][lastbutton][1] = buttonsArea['buttons'][lastbutton][1] - sidePadding
 		offset = offset + sidePadding
 
-		buttonsArea[1] = buttonsArea[3] - offset - margin
+		buttonsArea[1] = buttonsArea[3]-offset-margin
 		UiElement(buttonsArea[1], buttonsArea[2], buttonsArea[3], buttonsArea[4], 0, 0, 0, 1)
+
 	end)
 
 	-- add background blur
@@ -384,7 +353,7 @@ local function updateButtons()
 	end
 	if showButtons then
 		dlistButtonsGuishader = glCreateList(function()
-			RectRound(buttonsArea[1], buttonsArea[2], buttonsArea[3], buttonsArea[4], 5.5 * widgetScale, 0, 0, 1, 1)
+			RectRound(buttonsArea[1], buttonsArea[2], buttonsArea[3], buttonsArea[4], 5.5 * widgetScale, 0,0,1,1)
 		end)
 		if WG['guishader'] then
 			WG['guishader'].InsertDlist(dlistButtonsGuishader, 'topbar_buttons')
@@ -416,13 +385,14 @@ local function updateComs(forceText)
 		glDeleteList(dlistComsGuishader)
 	end
 	dlistComsGuishader = glCreateList(function()
-		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 
 	if dlistComs1 ~= nil then
 		glDeleteList(dlistComs1)
 	end
 	dlistComs1 = glCreateList(function()
+
 		UiElement(area[1], area[2], area[3], area[4], 0, 0, 1, 1)
 
 		if WG['guishader'] then
@@ -438,7 +408,7 @@ local function updateComs(forceText)
 		local sizeHalf = (height / 2.44) * widgetScale
 		local yOffset = ((area[3] - area[1]) * 0.025)
 		glTexture(comTexture)
-		glTexRect(area[1] + ((area[3] - area[1]) / 2) - sizeHalf, area[2] + ((area[4] - area[2]) / 2) - sizeHalf + yOffset, area[1] + ((area[3] - area[1]) / 2) + sizeHalf, area[2] + ((area[4] - area[2]) / 2) + sizeHalf + yOffset)
+		glTexRect(area[1] + ((area[3] - area[1]) / 2) - sizeHalf, area[2] + ((area[4] - area[2]) / 2) - sizeHalf +yOffset, area[1] + ((area[3] - area[1]) / 2) + sizeHalf, area[2] + ((area[4] - area[2]) / 2) + sizeHalf+yOffset)
 		glTexture(false)
 
 		-- Text
@@ -462,7 +432,7 @@ end
 local function updateWind()
 	local area = windArea
 
-	local bladesSize = height * 0.53 * widgetScale
+	local bladesSize = height*0.53 * widgetScale
 
 	-- add background blur
 	if dlistWindGuishader ~= nil then
@@ -472,13 +442,14 @@ local function updateWind()
 		glDeleteList(dlistWindGuishader)
 	end
 	dlistWindGuishader = glCreateList(function()
-		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 
 	if dlistWind1 ~= nil then
 		glDeleteList(dlistWind1)
 	end
 	dlistWind1 = glCreateList(function()
+
 		UiElement(area[1], area[2], area[3], area[4], 0, 0, 1, 1)
 
 		if WG['guishader'] then
@@ -487,7 +458,7 @@ local function updateWind()
 
 		-- blades icon
 		glPushMatrix()
-		glTranslate(area[1] + ((area[3] - area[1]) / 2), area[2] + (bgpadding / 2) + ((area[4] - area[2]) / 2), 0)
+		glTranslate(area[1] + ((area[3] - area[1]) / 2), area[2] + (bgpadding/2) + ((area[4] - area[2]) / 2), 0)
 		glColor(1, 1, 1, 0.2)
 		glTexture(bladesTexture)
 		-- glRotate is done after displaying this dl, and before dl2
@@ -503,7 +474,7 @@ local function updateWind()
 
 		-- min and max wind
 		local fontsize = (height / 3.7) * widgetScale
-		if minWind + maxWind >= 0.5 then
+		if minWind+maxWind >= 0.5 then
 			font2:Begin()
 			font2:Print("\255\210\210\210" .. minWind, area[3] - (2.8 * widgetScale), area[4] - (4.5 * widgetScale) - (fontsize / 2), fontsize, 'or')
 			font2:Print("\255\210\210\210" .. maxWind, area[3] - (2.8 * widgetScale), area[2] + (4.5 * widgetScale), fontsize, 'or')
@@ -513,8 +484,8 @@ local function updateWind()
 		else
 			font2:Begin()
 			--font2:Print("\255\200\200\200no wind", windArea[1] + ((windArea[3] - windArea[1]) / 2), windArea[2] + ((windArea[4] - windArea[2]) / 2.05) - (fontsize / 5), fontsize, 'oc') -- Wind speed text
-			font2:Print("\255\200\200\200" .. Spring.I18N('ui.topbar.wind.nowind1'), windArea[1] + ((windArea[3] - windArea[1]) / 2), windArea[2] + ((windArea[4] - windArea[2]) / 1.5) - (fontsize / 5), fontsize * 1.06, 'oc') -- Wind speed text
-			font2:Print("\255\200\200\200" .. Spring.I18N('ui.topbar.wind.nowind2'), windArea[1] + ((windArea[3] - windArea[1]) / 2), windArea[2] + ((windArea[4] - windArea[2]) / 2.8) - (fontsize / 5), fontsize * 1.06, 'oc') -- Wind speed text
+			font2:Print("\255\200\200\200" .. Spring.I18N('ui.topbar.wind.nowind1'), windArea[1] + ((windArea[3] - windArea[1]) / 2), windArea[2] + ((windArea[4] - windArea[2]) / 1.5) - (fontsize / 5), fontsize*1.06, 'oc') -- Wind speed text
+			font2:Print("\255\200\200\200" .. Spring.I18N('ui.topbar.wind.nowind2'), windArea[1] + ((windArea[3] - windArea[1]) / 2), windArea[2] + ((windArea[4] - windArea[2]) / 2.8) - (fontsize / 5), fontsize*1.06, 'oc') -- Wind speed text
 			font2:End()
 		end
 	end)
@@ -528,18 +499,18 @@ end
 local function checkTidalRelevant()
 	local mapMinHeight = 0
 	-- account for invertmap to the best of our abiltiy
-	if string.find(Spring.GetModOptions().debugcommands, "invertmap") then
-		if string.find(Spring.GetModOptions().debugcommands, "wet") then
+	if string.find(Spring.GetModOptions().debugcommands,"invertmap") then
+		if string.find(Spring.GetModOptions().debugcommands,"wet") then
 			-- assume that they want water if keyword "wet" is involved, too violitile between initilization and subsequent post terraform checks
 			return true
-			--else
-			--	mapMinHeight = 0
+		--else
+		--	mapMinHeight = 0
 		end
 	else
-		mapMinHeight = select(3, Spring.GetGroundExtremes())
+		mapMinHeight = select(3,Spring.GetGroundExtremes())
 	end
 	mapMinHeight = mapMinHeight - (Spring.GetModOptions().map_waterlevel or 0)
-	return mapMinHeight <= -20 -- armtide/cortide can be built from 20 waterdepth (hardcoded here cause am too lazy to auto cycle trhough unitdefs and read it from there)
+	return mapMinHeight <= -20	-- armtide/cortide can be built from 20 waterdepth (hardcoded here cause am too lazy to auto cycle trhough unitdefs and read it from there)
 end
 
 local function updateTidal()
@@ -553,7 +524,7 @@ local function updateTidal()
 		glDeleteList(dlistTidalGuishader)
 	end
 	dlistTidalGuishader = glCreateList(function()
-		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 
 	if tidaldlist1 ~= nil then
@@ -562,8 +533,8 @@ local function updateTidal()
 	if tidaldlist2 ~= nil then
 		glDeleteList(tidaldlist2)
 	end
-	local wavesSize = height * 0.53 * widgetScale
-	tidalWaveAnimationHeight = height * 0.1 * widgetScale
+	local wavesSize = height*0.53 * widgetScale
+	tidalWaveAnimationHeight = height*0.1 * widgetScale
 	tidaldlist1 = glCreateList(function()
 		UiElement(area[1], area[2], area[3], area[4], 0, 0, 1, 1)
 		if WG['guishader'] then
@@ -571,7 +542,7 @@ local function updateTidal()
 		end
 		-- waves icon
 		glPushMatrix()
-		-- translate will be done between this and tidaldlist2
+                -- translate will be done between this and tidaldlist2
 	end)
 	tidaldlist2 = glCreateList(function()
 		glColor(1, 1, 1, 0.2)
@@ -593,18 +564,19 @@ end
 
 
 local function updateResbarText(res)
+
 	if dlistResbar[res][4] ~= nil then
 		glDeleteList(dlistResbar[res][4])
 	end
 	dlistResbar[res][4] = glCreateList(function()
-		RectRound(resbarArea[res][1] + bgpadding, resbarArea[res][2] + bgpadding, resbarArea[res][3] - bgpadding, resbarArea[res][4], bgpadding * 1.25, 0, 0, 1, 1)
-		RectRound(resbarArea[res][1], resbarArea[res][2], resbarArea[res][3], resbarArea[res][4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(resbarArea[res][1] + bgpadding, resbarArea[res][2] + bgpadding, resbarArea[res][3] - bgpadding, resbarArea[res][4], bgpadding * 1.25, 0,0,1,1)
+		RectRound(resbarArea[res][1], resbarArea[res][2], resbarArea[res][3], resbarArea[res][4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 	if dlistResbar[res][5] ~= nil then
 		glDeleteList(dlistResbar[res][5])
 	end
 	dlistResbar[res][5] = glCreateList(function()
-		RectRound(resbarArea[res][1], resbarArea[res][2], resbarArea[res][3], resbarArea[res][4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(resbarArea[res][1], resbarArea[res][2], resbarArea[res][3], resbarArea[res][4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 
 	-- storage changed!
@@ -651,6 +623,7 @@ local function updateResbarText(res)
 		font2:End()
 
 		if not spec and gameFrame > 90 then
+
 			-- display overflow notification
 			if (res == 'metal' and (allyteamOverflowingMetal or overflowingMetal)) or (res == 'energy' and (allyteamOverflowingEnergy or overflowingEnergy)) then
 				if showOverflowTooltip[res] == nil then
@@ -661,7 +634,7 @@ local function updateResbarText(res)
 					local text = ''
 					if res == 'metal' then
 						text = (allyteamOverflowingMetal and '   ' .. Spring.I18N('ui.topbar.resources.wastingMetal') .. '   ' or '   ' .. Spring.I18N('ui.topbar.resources.overflowing') .. '   ')
-						if not supressOverflowNotifs and WG['notifications'] and not isMetalmap and (not WG.sharedMetalFrame or WG.sharedMetalFrame + 60 < gameFrame) then
+						if not supressOverflowNotifs and  WG['notifications'] and not isMetalmap and (not WG.sharedMetalFrame or WG.sharedMetalFrame+60 < gameFrame) then
 							if allyteamOverflowingMetal then
 								if numTeamsInAllyTeam > 1 then
 									if wholeTeamWastingMetalCount < 5 then
@@ -671,20 +644,20 @@ local function updateResbarText(res)
 								else
 									--WG['notifications'].addEvent('YouAreWastingMetal')
 								end
-							elseif r[res][6] > 0.75 then -- supress if you are deliberately overflowing by adjustingthe share slider down
+							elseif r[res][6] > 0.75 then	-- supress if you are deliberately overflowing by adjustingthe share slider down
 								WG['notifications'].addEvent('YouAreOverflowingMetal')
 							end
 						end
 					else
-						text = (allyteamOverflowingEnergy and '   ' .. Spring.I18N('ui.topbar.resources.wastingEnergy') .. '   ' or '   ' .. Spring.I18N('ui.topbar.resources.overflowing') .. '   ')
-						if not supressOverflowNotifs and WG['notifications'] and (not WG.sharedEnergyFrame or WG.sharedEnergyFrame + 60 < gameFrame) then
+						text = (allyteamOverflowingEnergy and '   ' .. Spring.I18N('ui.topbar.resources.wastingEnergy') .. '   '  or '   ' .. Spring.I18N('ui.topbar.resources.overflowing') .. '   ')
+						if not supressOverflowNotifs and WG['notifications'] and (not WG.sharedEnergyFrame or WG.sharedEnergyFrame+60 < gameFrame) then
 							if allyteamOverflowingEnergy then
 								if numTeamsInAllyTeam > 3 then
 									--WG['notifications'].addEvent('WholeTeamWastingEnergy')
 								else
 									--WG['notifications'].addEvent('YouAreWastingEnergy')
 								end
-							elseif r[res][6] > 0.75 then -- supress if you are deliberately overflowing by adjustingthe share slider down
+							elseif r[res][6] > 0.75 then	-- supress if you are deliberately overflowing by adjustingthe share slider down
 								--WG['notifications'].addEvent('YouAreOverflowingEnergy')	-- this annoys the fuck out of em and makes them build energystoages too much
 							end
 						end
@@ -795,7 +768,7 @@ local function updateResbar(res)
 		glDeleteList(dlistResbar[res][0])
 	end
 	dlistResbar[res][0] = glCreateList(function()
-		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0, 0, 1, 1)
+		RectRound(area[1], area[2], area[3], area[4], 5.5 * widgetScale, 0,0,1,1)
 	end)
 
 	dlistResbar[res][1] = glCreateList(function()
@@ -823,13 +796,12 @@ local function updateResbar(res)
 		local addedSize = math_floor(((barArea[4] - barArea[2]) * 0.15) + 0.5)
 		--RectRound(barArea[1] - edgeWidth, barArea[2] - edgeWidth, barArea[3] + edgeWidth, barArea[4] + edgeWidth, barHeight * 0.33, 1, 1, 1, 1, { 1,1,1, 0.03 }, { 1,1,1, 0.03 })
 		local borderSize = 1
-		RectRound(barArea[1] - edgeWidth + borderSize, barArea[2] - edgeWidth + borderSize, barArea[3] + edgeWidth - borderSize, barArea[4] + edgeWidth - borderSize, barHeight * 0.2, 1, 1, 1, 1, { 0, 0, 0, 0.12 }, { 0, 0, 0, 0.15 })
+		RectRound(barArea[1] - edgeWidth + borderSize, barArea[2] - edgeWidth + borderSize, barArea[3] + edgeWidth - borderSize, barArea[4] + edgeWidth - borderSize, barHeight * 0.2, 1, 1, 1, 1, { 0,0,0, 0.12 }, { 0,0,0, 0.15 })
 
 		gl.Texture(noiseBackgroundTexture)
-		gl.Color(1, 1, 1, 0.16)
-		TexturedRectRound(barArea[1] - edgeWidth, barArea[2] - edgeWidth, barArea[3] + edgeWidth, barArea[4] + edgeWidth, barHeight * 0.33, 1, 1, 1, 1, barWidth * 0.33, 0)
+		gl.Color(1,1,1, 0.16)
+		TexturedRectRound(barArea[1] - edgeWidth, barArea[2] - edgeWidth, barArea[3] + edgeWidth, barArea[4] + edgeWidth, barHeight * 0.33, 1, 1, 1, 1, barWidth*0.33, 0)
 		gl.Texture(false)
-
 		glBlending(GL_SRC_ALPHA, GL_ONE)
 		RectRound(barArea[1] - addedSize - edgeWidth, barArea[2] - addedSize - edgeWidth, barArea[3] + addedSize + edgeWidth, barArea[4] + addedSize + edgeWidth, barHeight * 0.33, 1, 1, 1, 1, { 0, 0, 0, 0.1 }, { 0, 0, 0, 0.1 })
 		RectRound(barArea[1] - addedSize, barArea[2] - addedSize, barArea[3] + addedSize, barArea[4] + addedSize, barHeight * 0.33, 1, 1, 1, 1, { 0.15, 0.15, 0.15, 0.2 }, { 0.8, 0.8, 0.8, 0.16 })
@@ -857,7 +829,8 @@ local function updateResbar(res)
 			else
 				cornerSize = 1.33 * widgetScale
 			end
-			UiSliderKnob(math_floor(conversionIndicatorArea[1] + ((conversionIndicatorArea[3] - conversionIndicatorArea[1]) / 2)), math_floor(conversionIndicatorArea[2] + ((conversionIndicatorArea[4] - conversionIndicatorArea[2]) / 2)), math_floor((conversionIndicatorArea[3] - conversionIndicatorArea[1]) / 2), { 0.95, 0.95, 0.7, 1 })
+			UiSliderKnob(math_floor(conversionIndicatorArea[1]+((conversionIndicatorArea[3]-conversionIndicatorArea[1])/2)), math_floor(conversionIndicatorArea[2]+((conversionIndicatorArea[4]-conversionIndicatorArea[2])/2)), math_floor((conversionIndicatorArea[3]-conversionIndicatorArea[1])/2), { 0.95, 0.95, 0.7, 1 })
+
 		end
 
 		-- Share slider
@@ -880,13 +853,13 @@ local function updateResbar(res)
 			else
 				cornerSize = 1.33 * widgetScale
 			end
-			UiSliderKnob(math_floor(shareIndicatorArea[res][1] + ((shareIndicatorArea[res][3] - shareIndicatorArea[res][1]) / 2)), math_floor(shareIndicatorArea[res][2] + ((shareIndicatorArea[res][4] - shareIndicatorArea[res][2]) / 2)), math_floor((shareIndicatorArea[res][3] - shareIndicatorArea[res][1]) / 2), { 0.85, 0, 0, 1 })
+			UiSliderKnob(math_floor(shareIndicatorArea[res][1]+((shareIndicatorArea[res][3]-shareIndicatorArea[res][1])/2)), math_floor(shareIndicatorArea[res][2]+((shareIndicatorArea[res][4]-shareIndicatorArea[res][2])/2)), math_floor((shareIndicatorArea[res][3]-shareIndicatorArea[res][1])/2), { 0.85, 0, 0, 1 })
 		end
 	end)
 
 	local resourceTranslations = {
 		metal = Spring.I18N('ui.topbar.resources.metal'),
-		energy = Spring.I18N('ui.topbar.resources.energy')
+		energy =  Spring.I18N('ui.topbar.resources.energy')
 	}
 
 	local resourceName = resourceTranslations[res]
@@ -909,7 +882,8 @@ local function updateResbar(res)
 end
 
 local function drawResbarValues(res, updateText)
-	local cappedCurRes = r[res][1] -- limit so when production dies the value wont be much larger than what you can store
+
+	local cappedCurRes = r[res][1]    -- limit so when production dies the value wont be much larger than what you can store
 	if r[res][1] > r[res][2] * 1.07 then
 		cappedCurRes = r[res][2] * 1.07
 	end
@@ -937,7 +911,7 @@ local function drawResbarValues(res, updateText)
 			RectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 1, 1, 1, 1, color1, color2)
 
 			local borderSize = 1
-			RectRound(resbarDrawinfo[res].barTexRect[1] + borderSize, resbarDrawinfo[res].barTexRect[2] + borderSize, resbarDrawinfo[res].barTexRect[1] + valueWidth - borderSize, resbarDrawinfo[res].barTexRect[4] - borderSize, barHeight * 0.2, 1, 1, 1, 1, { 0, 0, 0, 0.1 }, { 0, 0, 0, 0.17 })
+			RectRound(resbarDrawinfo[res].barTexRect[1]+borderSize, resbarDrawinfo[res].barTexRect[2]+borderSize, resbarDrawinfo[res].barTexRect[1] + valueWidth-borderSize, resbarDrawinfo[res].barTexRect[4]-borderSize, barHeight * 0.2, 1, 1, 1, 1, { 0,0,0, 0.1 }, { 0,0,0, 0.17 })
 
 			-- Bar value glow
 			glBlending(GL_SRC_ALPHA, GL_ONE)
@@ -952,30 +926,31 @@ local function drawResbarValues(res, updateText)
 			if res == 'metal' then
 				-- noise
 				gl.Texture(noiseBackgroundTexture)
-				gl.Color(1, 1, 1, 0.37)
-				TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 1, 1, 1, 1, barWidth * 0.33, 0)
+				gl.Color(1,1,1, 0.37)
+				TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 1, 1, 1, 1, barWidth*0.33, 0)
 				gl.Texture(false)
 			end
 
 			glBlending(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 		end)
+
 	end
 	glCallList(dlistResValuesBar[res][valueWidth])
 
 	if res == 'energy' then
 		-- energy flow effect
-		gl.Color(1, 1, 1, 0.33)
+		gl.Color(1,1,1, 0.33)
 		glBlending(GL_SRC_ALPHA, GL_ONE)
 		glTexture("LuaUI/Images/paralyzed.png")
-		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth / 0.5, -os.clock() / 80)
-		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth / 0.33, os.clock() / 70)
-		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth / 0.45, -os.clock() / 55)
+		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth/0.5, -os.clock()/80)
+		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth/0.33, os.clock()/70)
+		TexturedRectRound(resbarDrawinfo[res].barTexRect[1], resbarDrawinfo[res].barTexRect[2], resbarDrawinfo[res].barTexRect[1] + valueWidth, resbarDrawinfo[res].barTexRect[4], barHeight * 0.2, 0, 0, 1, 1, barWidth/0.45, -os.clock()/55)
 		glTexture(false)
 
 		-- colorize a bit more (with added size)
 		local addedSize = math_floor(((resbarDrawinfo[res].barArea[4] - resbarDrawinfo[res].barArea[2]) * 0.15) + 0.5)
-		gl.Color(1, 1, 0, 0.14)
-		RectRound(resbarDrawinfo[res].barTexRect[1] - addedSize, resbarDrawinfo[res].barTexRect[2] - addedSize, resbarDrawinfo[res].barTexRect[1] + valueWidth + addedSize, resbarDrawinfo[res].barTexRect[4] + addedSize, barHeight * 0.33)
+		gl.Color(1,1,0, 0.14)
+		RectRound(resbarDrawinfo[res].barTexRect[1]-addedSize, resbarDrawinfo[res].barTexRect[2]-addedSize, resbarDrawinfo[res].barTexRect[1] + valueWidth + addedSize, resbarDrawinfo[res].barTexRect[4] + addedSize, barHeight * 0.33)
 		glBlending(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 	end
 
@@ -1002,6 +977,7 @@ local function drawResbarValues(res, updateText)
 end
 
 function init()
+
 	r = { metal = { spGetTeamResources(myTeamID, 'metal') }, energy = { spGetTeamResources(myTeamID, 'energy') } }
 
 	topbarArea = { math_floor(xPos + (borderPadding * widgetScale)), math_floor(vsy - (height * widgetScale)), vsx, vsy }
@@ -1035,7 +1011,7 @@ function init()
 			tidalarea = { topbarArea[1] + filledWidth, topbarArea[2], topbarArea[1] + filledWidth + width, topbarArea[4] }
 			filledWidth = filledWidth + width + widgetSpaceMargin
 			updateTidal()
-		end
+       	end
 	end
 
 	-- coms
@@ -1052,10 +1028,10 @@ function init()
 
 	if WG['topbar'] then
 		WG['topbar'].GetPosition = function()
-			return { topbarArea[1], topbarArea[2], topbarArea[3], topbarArea[4], widgetScale }
+			return { topbarArea[1], topbarArea[2], topbarArea[3], topbarArea[4], widgetScale}
 		end
 		WG['topbar'].GetFreeArea = function()
-			return { topbarArea[1] + filledWidth, topbarArea[2], topbarArea[3] - width - widgetSpaceMargin, topbarArea[4], widgetScale }
+			return { topbarArea[1] + filledWidth, topbarArea[2], topbarArea[3] - width - widgetSpaceMargin, topbarArea[4], widgetScale}
 		end
 	end
 
@@ -1069,7 +1045,7 @@ local function checkSelfStatus()
 	myTeamID = Spring.GetMyTeamID()
 	myPlayerID = Spring.GetMyPlayerID()
 	if myTeamID ~= gaiaTeamID and UnitDefs[Spring.GetTeamRulesParam(myTeamID, 'startUnit')] then
-		comTexture = ':n:Icons/' .. UnitDefs[Spring.GetTeamRulesParam(myTeamID, 'startUnit')].name .. '.png'
+		comTexture = ':n:Icons/'..UnitDefs[Spring.GetTeamRulesParam(myTeamID, 'startUnit')].name..'.png'
 	end
 end
 
@@ -1079,7 +1055,7 @@ local function countComs(forceUpdate)
 	local prevEnemyComs = enemyComs
 	allyComs = 0
 	for _, teamID in ipairs(myAllyTeamList) do
-		for unitDefID, _ in pairs(isCommander) do
+		for unitDefID,_ in pairs(isCommander) do
 			allyComs = allyComs + Spring.GetTeamUnitDefCount(teamID, unitDefID)
 		end
 	end
@@ -1243,6 +1219,7 @@ function widget:Update(dt)
 			updateResbar('metal')
 			updateResbar('energy')
 		else
+
 			-- make sure conversion/overflow sliders are adjusted
 			if mmLevel then
 				if mmLevel ~= Spring.GetTeamRulesParam(myTeamID, 'mmLevel') or eneryOverflowLevel ~= r['energy'][6] then
@@ -1307,7 +1284,7 @@ function widget:drawTidal()
 	if displayTidalSpeed and tidaldlist1 then
 		glPushMatrix()
 		glCallList(tidaldlist1)
-		glTranslate(tidalarea[1] + ((tidalarea[3] - tidalarea[1]) / 2), math.sin(now / math.pi) * tidalWaveAnimationHeight + tidalarea[2] + (bgpadding / 2) + ((tidalarea[4] - tidalarea[2]) / 2), 0)
+		glTranslate(tidalarea[1] + ((tidalarea[3] - tidalarea[1]) / 2), math.sin(now/math.pi) * tidalWaveAnimationHeight + tidalarea[2] + (bgpadding/2) + ((tidalarea[4] - tidalarea[2]) / 2), 0)
 		glCallList(tidaldlist2)
 		glPopMatrix()
 	end
@@ -1383,6 +1360,7 @@ local function drawResBars()
 end
 
 function widget:DrawScreen()
+
 	drawResBars()
 
 	local now = os.clock()
@@ -1400,7 +1378,7 @@ function widget:DrawScreen()
 		glPopMatrix()
 		-- current wind
 		if gameFrame > 0 then
-			if minWind + maxWind >= 0.5 then
+			if minWind+maxWind >= 0.5 then
 				local fontSize = (height / 2.66) * widgetScale
 				if not dlistWindText[currentWind] then
 					dlistWindText[currentWind] = glCreateList(function()
@@ -1414,7 +1392,7 @@ function widget:DrawScreen()
 		end
 	end
 
-	self:drawTidal()
+    self:drawTidal()
 
 	glPushMatrix()
 	if displayComCounter and dlistComs1 then
@@ -1432,7 +1410,7 @@ function widget:DrawScreen()
 			if not showButtons then
 				showButtons = true
 				dlistButtonsGuishader = glCreateList(function()
-					RectRound(buttonsArea[1], buttonsArea[2], buttonsArea[3], buttonsArea[4], 5.5 * widgetScale, 0, 0, 1, 1)
+					RectRound(buttonsArea[1], buttonsArea[2], buttonsArea[3], buttonsArea[4], 5.5 * widgetScale, 0,0,1,1)
 				end)
 				if WG['guishader'] then
 					WG['guishader'].InsertDlist(dlistButtonsGuishader, 'topbar_buttons')
@@ -1456,7 +1434,7 @@ function widget:DrawScreen()
 		if WG['changelog'] and WG['changelog'].haschanges() then
 			local button = 'changelog'
 			local paddingsize = 1
-			RectRound(buttonsArea['buttons'][button][1] + paddingsize, buttonsArea['buttons'][button][2] + paddingsize, buttonsArea['buttons'][button][3] - paddingsize, buttonsArea['buttons'][button][4] - paddingsize, 3.5 * widgetScale, 0, 0, 0, button == firstButton and 1 or 0, { 1, 1, 1, 0.1 * blinkProgress })
+			RectRound(buttonsArea['buttons'][button][1]+paddingsize, buttonsArea['buttons'][button][2]+paddingsize, buttonsArea['buttons'][button][3]-paddingsize, buttonsArea['buttons'][button][4]-paddingsize, 3.5 * widgetScale, 0, 0, 0, button == firstButton and 1 or 0, { 1,1,1, 0.1*blinkProgress })
 		end
 
 		-- hovered?
@@ -1464,7 +1442,7 @@ function widget:DrawScreen()
 			for button, pos in pairs(buttonsArea['buttons']) do
 				if math_isInRect(mx, my, pos[1], pos[2], pos[3], pos[4]) then
 					local paddingsize = 1
-					RectRound(buttonsArea['buttons'][button][1] + paddingsize, buttonsArea['buttons'][button][2] + paddingsize, buttonsArea['buttons'][button][3] - paddingsize, buttonsArea['buttons'][button][4] - paddingsize, 3.5 * widgetScale, 0, 0, 0, button == firstButton and 1 or 0, { 0, 0, 0, 0.06 })
+					RectRound(buttonsArea['buttons'][button][1]+paddingsize, buttonsArea['buttons'][button][2]+paddingsize, buttonsArea['buttons'][button][3]-paddingsize, buttonsArea['buttons'][button][4]-paddingsize, 3.5 * widgetScale, 0, 0, 0, button == firstButton and 1 or 0, { 0,0,0, 0.06 })
 					glBlending(GL_SRC_ALPHA, GL_ONE)
 					RectRound(buttonsArea['buttons'][button][1], buttonsArea['buttons'][button][2], buttonsArea['buttons'][button][3], buttonsArea['buttons'][button][4], 3.5 * widgetScale, 0, 0, 0, button == firstButton and 1 or 0, { 1, 1, 1, mb and 0.13 or 0.03 }, { 0.44, 0.44, 0.44, mb and 0.4 or 0.2 })
 					local mult = 1
@@ -1558,13 +1536,13 @@ function widget:DrawScreen()
 				}
 
 				-- window
-				UiElement(quitscreenArea[1], quitscreenArea[2], quitscreenArea[3], quitscreenArea[4], 1, 1, 1, 1, 1, 1, 1, 1, nil, { 1, 1, 1, 0.6 + (0.34 * fadeProgress) }, { 0.45, 0.45, 0.4, 0.025 + (0.025 * fadeProgress) })
+				UiElement(quitscreenArea[1], quitscreenArea[2], quitscreenArea[3], quitscreenArea[4], 1,1,1,1, 1,1,1,1, nil, {1, 1, 1, 0.6 + (0.34 * fadeProgress)}, {0.45, 0.45, 0.4, 0.025 + (0.025 * fadeProgress)})
 
 				local color1, color2
 
 				font:Begin()
 				font:SetTextColor(0, 0, 0, 1)
-				font:Print(text, quitscreenArea[1] + ((quitscreenArea[3] - quitscreenArea[1]) / 2), quitscreenArea[4] - textTopPadding, fontSize, "cn")
+				font:Print(text, quitscreenArea[1] + ((quitscreenArea[3] - quitscreenArea[1]) / 2), quitscreenArea[4]-textTopPadding, fontSize, "cn")
 				font:End()
 
 				font2:Begin()
@@ -1582,7 +1560,7 @@ function widget:DrawScreen()
 						color1 = { 0, 0.25, 0, 0.35 + (0.5 * fadeProgress) }
 						color2 = { 0, 0.5, 0, 0.35 + (0.5 * fadeProgress) }
 					end
-					UiButton(quitscreenStayArea[1], quitscreenStayArea[2], quitscreenStayArea[3], quitscreenStayArea[4], 1, 1, 1, 1, 1, 1, 1, 1, nil, color1, color2, padding * 0.5)
+					UiButton(quitscreenStayArea[1], quitscreenStayArea[2], quitscreenStayArea[3], quitscreenStayArea[4], 1,1,1,1, 1,1,1,1, nil, color1, color2, padding * 0.5)
 					font2:Print(Spring.I18N('ui.topbar.quit.stay'), quitscreenStayArea[1] + ((quitscreenStayArea[3] - quitscreenStayArea[1]) / 2), quitscreenStayArea[2] + ((quitscreenStayArea[4] - quitscreenStayArea[2]) / 2) - (fontSize / 3), fontSize, "con")
 				end
 
@@ -1595,7 +1573,7 @@ function widget:DrawScreen()
 						color1 = { 0.18, 0.18, 0.18, 0.4 + (0.5 * fadeProgress) }
 						color2 = { 0.33, 0.33, 0.33, 0.4 + (0.5 * fadeProgress) }
 					end
-					UiButton(quitscreenResignArea[1], quitscreenResignArea[2], quitscreenResignArea[3], quitscreenResignArea[4], 1, 1, 1, 1, 1, 1, 1, 1, nil, color1, color2, padding * 0.5)
+					UiButton(quitscreenResignArea[1], quitscreenResignArea[2], quitscreenResignArea[3], quitscreenResignArea[4], 1,1,1,1, 1,1,1,1, nil, color1, color2, padding * 0.5)
 					font2:Print(Spring.I18N('ui.topbar.quit.resign'), quitscreenResignArea[1] + ((quitscreenResignArea[3] - quitscreenResignArea[1]) / 2), quitscreenResignArea[2] + ((quitscreenResignArea[4] - quitscreenResignArea[2]) / 2) - (fontSize / 3), fontSize, "con")
 				end
 
@@ -1608,7 +1586,7 @@ function widget:DrawScreen()
 						color1 = { 0.25, 0, 0, 0.35 + (0.5 * fadeProgress) }
 						color2 = { 0.5, 0, 0, 0.35 + (0.5 * fadeProgress) }
 					end
-					UiButton(quitscreenQuitArea[1], quitscreenQuitArea[2], quitscreenQuitArea[3], quitscreenQuitArea[4], 1, 1, 1, 1, 1, 1, 1, 1, nil, color1, color2, padding * 0.5)
+					UiButton(quitscreenQuitArea[1], quitscreenQuitArea[2], quitscreenQuitArea[3], quitscreenQuitArea[4], 1,1,1,1, 1,1,1,1, nil, color1, color2, padding * 0.5)
 					font2:Print(Spring.I18N('ui.topbar.quit.quit'), quitscreenQuitArea[1] + ((quitscreenQuitArea[3] - quitscreenQuitArea[1]) / 2), quitscreenQuitArea[2] + ((quitscreenQuitArea[4] - quitscreenQuitArea[2]) / 2) - (fontSize / 3), fontSize, "con")
 				end
 
@@ -1707,6 +1685,7 @@ local function hideWindows()
 end
 
 local function applyButtonAction(button)
+
 	if playSounds then
 		Spring.PlaySoundFile(leftclick, 0.8, 'ui')
 	end
@@ -1752,7 +1731,7 @@ local function applyButtonAction(button)
 			--	seconds = '0'..seconds
 			--end
 			local time = os.date("%Y%m%d_%H%M%S")
-			Spring.SendCommands("savegame " .. time)
+			Spring.SendCommands("savegame "..time)
 		end
 	elseif button == 'scavengers' then
 		if WG['scavengerinfo'] ~= nil then
@@ -1826,6 +1805,7 @@ end
 function widget:MousePress(x, y, button)
 	if button == 1 then
 		if showQuitscreen ~= nil and quitscreenArea ~= nil then
+
 			if math_isInRect(x, y, quitscreenArea[1], quitscreenArea[2], quitscreenArea[3], quitscreenArea[4]) then
 				if (gameIsOver or not chobbyLoaded or not spec) and math_isInRect(x, y, quitscreenStayArea[1], quitscreenStayArea[2], quitscreenStayArea[3], quitscreenStayArea[4]) then
 					if playSounds then
@@ -1918,6 +1898,7 @@ function widget:MouseRelease(x, y, button)
 		adjustSliders(x, y)
 		draggingConversionIndicator = nil
 	end
+
 end
 
 function widget:PlayerChanged()
@@ -1963,7 +1944,7 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
 end
 
 function widget:LanguageChanged()
-	updateButtons()
+	widget:ViewResize()
 end
 
 function widget:Initialize()
@@ -1972,7 +1953,7 @@ function widget:Initialize()
 
 	-- determine if we want to show comcounter
 	local allteams = Spring.GetTeamList()
-	local teamN = table.maxn(allteams) - 1 --remove gaia
+	local teamN = table.maxn(allteams) - 1               --remove gaia
 	if teamN > 2 then
 		displayComCounter = true
 	end
@@ -1996,13 +1977,20 @@ function widget:Initialize()
 		return showButtons
 	end
 
+	-- todo check breaks auto mm adjust?
+	WG['topbar'].updateTopBarEnergy = function(value)
+		draggingConversionIndicatorValue = value
+		updateResbar('energy')
+	end
+
 	widget:ViewResize()
 
 	if gameFrame > 0 then
 		widget:GameStart()
 	end
 
-	if WG['resource_spot_finder'] and WG['resource_spot_finder'].metalSpotsList and #WG['resource_spot_finder'].metalSpotsList > 0 and #WG['resource_spot_finder'].metalSpotsList <= 2 then -- probably speedmetal kind of map		isMetalmap = true
+	if WG['resource_spot_finder'] and WG['resource_spot_finder'].metalSpotsList and #WG['resource_spot_finder'].metalSpotsList > 0 and #WG['resource_spot_finder'].metalSpotsList <= 2 then	-- probably speedmetal kind of map
+		isMetalmap = true
 	end
 end
 

@@ -1,10 +1,10 @@
 function widget:GetInfo()
   return {
-    name = "Commands",
-    desc = "some commands for editing constructor build queue, and automatic geo toggling",
-    author = "-",
-    date = "dec, 2016",
-    license = "GNU GPL, v3 or later",
+    name = 'Commands',
+    desc = 'some commands for editing constructor build queue, and automatic geo toggling',
+    author = '-',
+    date = 'dec, 2016',
+    license = 'GNU GPL, v3 or later',
     layer = 99,
     enabled = true
   }
@@ -35,7 +35,7 @@ local immobileBuilderDefIds = {
   UnitDefNames['legnanotcbase'] and UnitDefNames['legnanotcbase'].id or nil,
   UnitDefNames['legnanotcplat'] and UnitDefNames['legnanotcplat'].id or nil,
   UnitDefNames['legnanotct2'] and UnitDefNames['legnanotct2'].id or nil,
-  UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil,
+  UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil
 }
 
 local selectPrios = {'ack', 'aca', 'acv', 'ca', 'ck', 'cv'}
@@ -46,7 +46,6 @@ for _, immobileBuilderDefId in ipairs(immobileBuilderDefIds) do
   immobileBuilderDefs[immobileBuilderDefId] = UnitDefs[immobileBuilderDefId].buildDistance + 96
 end
 
-
 local selectedPos = {}
 local unitIdBuildSpeeds = LRUCache:new(100)
 local isShieldDefId = {}
@@ -55,8 +54,9 @@ local conCycleNumber
 local selectCheckTimer = Spring.GetTimer()
 local splitBuilderWatch = {}
 
-
 function widget:Initialize()
+  Spring.SendCommands('bind Shift+Alt+sc_q buildfacing inc')
+  Spring.SendCommands('bind Shift+Alt+sc_e buildfacing dec')
   if Spring.GetSpectatingState() or Spring.IsReplay() then
     widgetHandler:RemoveWidget()
   end
@@ -66,11 +66,9 @@ function widget:Initialize()
       isShieldDefId[unitDefId] = unitDef.customParams and unitDef.customParams.shield_radius and 1 or 0
     end
   end
-
 end
 
 local function SelectSubset(selected_units, nPartitions)
-
   if not nPartitions or not selected_units or #selected_units == 0 then
     return
   end
@@ -85,9 +83,9 @@ local function removeFirstCommand(unit_id)
   local cmd_queue = Spring.GetUnitCommands(unit_id, 4)
   if cmd_queue[2]['id'] == 70 then
     -- remove real command before empty one
-    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[2].tag }, { nil })
+    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[2].tag}, {nil})
   end
-  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[1].tag }, { nil })
+  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[1].tag}, {nil})
 end
 
 local function removeLastCommand(unit_id)
@@ -97,10 +95,10 @@ local function removeLastCommand(unit_id)
   -- but not by the "space/add to start of cmdqueue" widget
   if remove_cmd['id'] == 70 then
     -- remove real command before empty one
-    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue - 1].tag }, { nil })
+    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue - 1].tag}, {nil})
   end
   -- remove the last command
-  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue].tag }, { nil })
+  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue].tag}, {nil})
 end
 
 -- function updateGeoDefs()
@@ -149,7 +147,6 @@ end
 --   end
 -- end
 
-
 local function unitDef(unitId)
   return UnitDefs[Spring.GetUnitDefID(unitId)]
 end
@@ -167,8 +164,8 @@ local function reverseQueue(unit_id)
   --    Spring.GiveOrderToUnit(unitID, CMD.TRAJECTORY, { states.trajectory and 1 or 0 }, 0)
   --  end
 
-  local queue = Spring.GetCommandQueue(unit_id, 10000);
-  Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { "alt" })
+  local queue = Spring.GetCommandQueue(unit_id, 10000)
+  Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
   --  local build_queue = Spring.GetRealBuildQueue(unit_id)
 
   -- log(table.tostring(queue))
@@ -185,9 +182,15 @@ local function reverseQueue(unit_id)
       local options = v.options
       if not options.internal then
         local new_options = {}
-        if (options.alt) then table.insert(new_options, "alt") end
-        if (options.ctrl) then table.insert(new_options, "ctrl") end
-        if (options.right) then table.insert(new_options, "right") end
+        if (options.alt) then
+          table.insert(new_options, 'alt')
+        end
+        if (options.ctrl) then
+          table.insert(new_options, 'ctrl')
+        end
+        if (options.right) then
+          table.insert(new_options, 'right')
+        end
         table.insert(new_options, CMD.OPT_SHIFT)
         --        Spring.GiveOrderToUnit(unit_id, v.id, v.params, options.coded)
         --         log(v.id)
@@ -214,7 +217,7 @@ local function KeyUnits(key)
 
   for j = 0, #factionPrios do
     for i = 1, #selectPrios do
-      local unitName = (j==0 and key or factionPrios[j]) .. selectPrios[i]
+      local unitName = (j == 0 and key or factionPrios[j]) .. selectPrios[i]
       if UnitDefNames[unitName] then
         -- log('for', myTeamId, table.tostring({UnitDefNames[unitName].id}))
         builders = Spring.GetTeamUnitsByDefs(myTeamId, {UnitDefNames[unitName].id})
@@ -251,229 +254,226 @@ local function Distance(x1, y1, x2, y2)
   return math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
 end
 
-
-local lookahead_steps = 10  -- Number of steps to look ahead for better direction
+local lookahead_steps = 10 -- Number of steps to look ahead for better direction
 
 -- Function to calculate distance between two points
 local function distance(p1, p2)
-    return math.sqrt((p1.x - p2.x) ^ 2 + (p1.z - p2.z) ^ 2)
+  return math.sqrt((p1.x - p2.x) ^ 2 + (p1.z - p2.z) ^ 2)
 end
 
 -- Sort by buildSpeed, shield, and then distance to the selected position (this is the first pass)
 local function SortbuildSpeedDistance(a, b)
-    if a == nil then
-        return false
-    elseif b == nil then
-        return true
-    end
+  if a == nil then
+    return false
+  elseif b == nil then
+    return true
+  end
 
-    -- Sort by shield status
-    if (a.isShield or 0) > (b.isShield or 0) then
-        return true
-    elseif (a.isShield or 0) < (b.isShield or 0) then
-        return false
-    end
+  -- Sort by shield status
+  if (a.isShield or 0) > (b.isShield or 0) then
+    return true
+  elseif (a.isShield or 0) < (b.isShield or 0) then
+    return false
+  end
 
-    -- Sort by build speed
-    if (a.buildSpeed or 0) > (b.buildSpeed or 0) then
-        return true
-    elseif (a.buildSpeed or 0) < (b.buildSpeed or 0) then
-        return false
-    end
+  -- Sort by build speed
+  if (a.buildSpeed or 0) > (b.buildSpeed or 0) then
+    return true
+  elseif (a.buildSpeed or 0) < (b.buildSpeed or 0) then
+    return false
+  end
 
-    -- Sort by proximity to the selected position
-    local aDistanceToSelected = (a.x - selectedPos.x) * (a.x - selectedPos.x)
-                              + (a.z - selectedPos.z) * (a.z - selectedPos.z)
+  -- Sort by proximity to the selected position
+  local aDistanceToSelected =
+    (a.x - selectedPos.x) * (a.x - selectedPos.x) + (a.z - selectedPos.z) * (a.z - selectedPos.z)
 
-    local bDistanceToSelected = (b.x - selectedPos.x) * (b.x - selectedPos.x)
-                              + (b.z - selectedPos.z) * (b.z - selectedPos.z)
-    return aDistanceToSelected < bDistanceToSelected
+  local bDistanceToSelected =
+    (b.x - selectedPos.x) * (b.x - selectedPos.x) + (b.z - selectedPos.z) * (b.z - selectedPos.z)
+  return aDistanceToSelected < bDistanceToSelected
 end
 
 -- Define the direction of movement
-local current_direction = "horizontal"  -- could be "horizontal" or "vertical"
+local current_direction = 'horizontal' -- could be "horizontal" or "vertical"
 
 -- Function to check if a building is aligned within the tolerance
 local function is_in_line(current, next_building, direction)
-    if direction == "horizontal" then
-        return current.z == next_building.z
-    else
-        return current.x == next_building.x
-    end
+  if direction == 'horizontal' then
+    return current.z == next_building.z
+  else
+    return current.x == next_building.x
+  end
 end
 
 -- Helper to evaluate a potential path and its total buildSpeed
 local function evaluate_path(current_building, remaining_commands, direction, steps)
-    local total_buildSpeed = 0
-    local path_commands = {}
-    local future_building = current_building
+  local total_buildSpeed = 0
+  local path_commands = {}
+  local future_building = current_building
 
-    for step = 1, steps do
-        local best_next_building = nil
-        local best_distance = math.huge
+  for step = 1, steps do
+    local best_next_building = nil
+    local best_distance = math.huge
 
-        -- Look for the next best building along the current direction
-        for i, building in ipairs(remaining_commands) do
-            if is_in_line(future_building, building, direction) then
-                local dist = distance(future_building, building)
-                if dist < best_distance then
-                    best_distance = dist
-                    best_next_building = building
-                end
-            end
+    -- Look for the next best building along the current direction
+    for i, building in ipairs(remaining_commands) do
+      if is_in_line(future_building, building, direction) then
+        local dist = distance(future_building, building)
+        if dist < best_distance then
+          best_distance = dist
+          best_next_building = building
         end
-
-        if best_next_building then
-            table.insert(path_commands, best_next_building)
-            total_buildSpeed = total_buildSpeed + best_next_building.buildSpeed
-            future_building = best_next_building
-        else
-            -- No more buildings in this direction
-            break
-        end
+      end
     end
 
-    return total_buildSpeed, path_commands
+    if best_next_building then
+      table.insert(path_commands, best_next_building)
+      total_buildSpeed = total_buildSpeed + best_next_building.buildSpeed
+      future_building = best_next_building
+    else
+      -- No more buildings in this direction
+      break
+    end
+  end
+
+  return total_buildSpeed, path_commands
 end
 
 -- Lookahead snake-like traversal with bias towards highest build power in future
 local function snake_sort_with_lookahead(commands, _lookahead_steps)
-    -- Start with the first building in the list
-    local sorted_commands = {}
-    local current_building = table.remove(commands, 1)
-    table.insert(sorted_commands, current_building)
+  -- Start with the first building in the list
+  local sorted_commands = {}
+  local current_building = table.remove(commands, 1)
+  table.insert(sorted_commands, current_building)
 
-    while #commands > 0 do
-        local best_direction = nil
-        local best_path_buildings = nil
-        local highest_buildSpeed = -math.huge
+  while #commands > 0 do
+    local best_direction = nil
+    local best_path_buildings = nil
+    local highest_buildSpeed = -math.huge
 
-        -- Evaluate both horizontal and vertical paths
-        for _, direction in ipairs({"horizontal", "vertical"}) do
-            local total_buildSpeed, path_commands = evaluate_path(current_building, commands, direction, _lookahead_steps)
+    -- Evaluate both horizontal and vertical paths
+    for _, direction in ipairs({'horizontal', 'vertical'}) do
+      local total_buildSpeed, path_commands = evaluate_path(current_building, commands, direction, _lookahead_steps)
 
-            -- Choose the direction with the highest total buildSpeed in the lookahead window
-            if total_buildSpeed > highest_buildSpeed then
-                highest_buildSpeed = total_buildSpeed
-                best_direction = direction
-                best_path_buildings = path_commands
-            end
-        end
-
-        -- If no valid path found, fallback to just picking the closest in any direction
-        if not best_path_buildings or #best_path_buildings == 0 then
-            -- No good direction, fallback to closest building
-            local closest_distance = math.huge
-            for i, building in ipairs(commands) do
-                local dist = distance(current_building, building)
-                if dist < closest_distance then
-                    closest_distance = dist
-                    best_path_buildings = {building}
-                end
-            end
-        end
-
-        -- Pick the first building from the best path
-        if #best_path_buildings > 0 then
-            local next_building = table.remove(best_path_buildings, 1)
-
-            -- Remove the selected building from the original commands list
-            for i, building in ipairs(commands) do
-                if building == next_building then
-                    table.remove(commands, i)
-                    break
-                end
-            end
-
-            -- Update the current building and add to sorted list
-            current_building = next_building
-            table.insert(sorted_commands, current_building)
-        end
+      -- Choose the direction with the highest total buildSpeed in the lookahead window
+      if total_buildSpeed > highest_buildSpeed then
+        highest_buildSpeed = total_buildSpeed
+        best_direction = direction
+        best_path_buildings = path_commands
+      end
     end
 
-    return sorted_commands
-end
+    -- If no valid path found, fallback to just picking the closest in any direction
+    if not best_path_buildings or #best_path_buildings == 0 then
+      -- No good direction, fallback to closest building
+      local closest_distance = math.huge
+      for i, building in ipairs(commands) do
+        local dist = distance(current_building, building)
+        if dist < closest_distance then
+          closest_distance = dist
+          best_path_buildings = {building}
+        end
+      end
+    end
 
+    -- Pick the first building from the best path
+    if #best_path_buildings > 0 then
+      local next_building = table.remove(best_path_buildings, 1)
+
+      -- Remove the selected building from the original commands list
+      for i, building in ipairs(commands) do
+        if building == next_building then
+          table.remove(commands, i)
+          break
+        end
+      end
+
+      -- Update the current building and add to sorted list
+      current_building = next_building
+      table.insert(sorted_commands, current_building)
+    end
+  end
+
+  return sorted_commands
+end
 
 -- Manhattan distance (for clustering proximity check)
 local function manhattan_distance(p1, p2)
-    return math.abs(p1.x - p2.x) + math.abs(p1.z - p2.z)
+  return math.abs(p1.x - p2.x) + math.abs(p1.z - p2.z)
 end
 
 -- Calculate the centroid (average position) of a set of points
 local function calculate_centroid(cluster)
-    local sum_x, sum_z = 0, 0
-    for _, point in ipairs(cluster) do
-        sum_x = sum_x + point.x
-        sum_z = sum_z + point.z
-    end
-    return {x = sum_x / #cluster, z = sum_z / #cluster}
+  local sum_x, sum_z = 0, 0
+  for _, point in ipairs(cluster) do
+    sum_x = sum_x + point.x
+    sum_z = sum_z + point.z
+  end
+  return {x = sum_x / #cluster, z = sum_z / #cluster}
 end
 
 -- K-means clustering algorithm
 local function kmeans(commands, k, max_iterations)
-    -- Step 1: Randomly select initial cluster centers (centroids)
-    local centroids = {}
+  -- Step 1: Randomly select initial cluster centers (centroids)
+  local centroids = {}
+  for i = 1, k do
+    table.insert(centroids, commands[math.random(1, #commands)])
+  end
+
+  local clusters = {}
+  local prev_centroids = nil
+  local iterations = 0
+
+  while iterations < max_iterations do
+    -- Step 2: Clear clusters
+    clusters = {}
     for i = 1, k do
-        table.insert(centroids, commands[math.random(1, #commands)])
+      clusters[i] = {}
     end
 
-    local clusters = {}
-    local prev_centroids = nil
-    local iterations = 0
+    -- Step 3: Assign each command to the nearest centroid
+    for _, command in ipairs(commands) do
+      local closest_centroid = 1
+      local min_distance = manhattan_distance(command, centroids[1])
 
-    while iterations < max_iterations do
-        -- Step 2: Clear clusters
-        clusters = {}
-        for i = 1, k do
-            clusters[i] = {}
+      for i = 2, k do
+        local dist = manhattan_distance(command, centroids[i])
+        if dist < min_distance then
+          closest_centroid = i
+          min_distance = dist
         end
-
-        -- Step 3: Assign each command to the nearest centroid
-        for _, command in ipairs(commands) do
-            local closest_centroid = 1
-            local min_distance = manhattan_distance(command, centroids[1])
-
-            for i = 2, k do
-                local dist = manhattan_distance(command, centroids[i])
-                if dist < min_distance then
-                    closest_centroid = i
-                    min_distance = dist
-                end
-            end
-            table.insert(clusters[closest_centroid], command)
-        end
-
-        -- Step 4: Recalculate centroids based on the current clusters
-        prev_centroids = centroids
-        for i = 1, k do
-            if #clusters[i] > 0 then
-                centroids[i] = calculate_centroid(clusters[i])
-            end
-        end
-
-        -- Step 5: Check if centroids have stopped changing (convergence)
-        local converged = true
-        for i = 1, k do
-            if manhattan_distance(prev_centroids[i], centroids[i]) > 0.01 then  -- small tolerance
-                converged = false
-                break
-            end
-        end
-
-        if converged then
-            break
-        end
-        iterations = iterations + 1
+      end
+      table.insert(clusters[closest_centroid], command)
     end
 
-    return clusters, centroids
+    -- Step 4: Recalculate centroids based on the current clusters
+    prev_centroids = centroids
+    for i = 1, k do
+      if #clusters[i] > 0 then
+        centroids[i] = calculate_centroid(clusters[i])
+      end
+    end
+
+    -- Step 5: Check if centroids have stopped changing (convergence)
+    local converged = true
+    for i = 1, k do
+      if manhattan_distance(prev_centroids[i], centroids[i]) > 0.01 then -- small tolerance
+        converged = false
+        break
+      end
+    end
+
+    if converged then
+      break
+    end
+    iterations = iterations + 1
+  end
+
+  return clusters, centroids
 end
 
 local function calculateDistance(x1, z1, x2, z2)
-    return math.sqrt((x2 - x1)^2 + (z2 - z1)^2)
+  return math.sqrt((x2 - x1) ^ 2 + (z2 - z1) ^ 2)
 end
-
 
 function widget:KeyPress(key, mods, isRepeat)
   -- if (key == 114 and mods['ctrl'] and mods['alt']) then
@@ -495,6 +495,15 @@ function widget:KeyPress(key, mods, isRepeat)
 
   local foundCommandQueue = false
   if (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] then
+    -- elseif selectSplitKeys[key] and mods['alt'] and not mods['shift'] and mods['ctrl'] then
+    --   local selected_units = Spring.GetSelectedUnits()
+    --   if #selected_units ~= #partitionIds then
+    --     partitionIds = {}
+    --   end
+    --   for i = 1, #selected_units do
+    --     partitionIds[selected_units[i]] = true
+    --   end
+    --   SelectSubset(selected_units, selectSplitKeys[key])
     -- for i, unit_id in ipairs(selected_units) do
     if key ~= KEYSYMS.A and not mods['ctrl'] and #selectedUnitIds > 0 then
       for i = 1, #selectedUnitIds do
@@ -511,7 +520,7 @@ function widget:KeyPress(key, mods, isRepeat)
           end
           -- does not seem to stop when removing to an empty queue, therefore:
           if #cmd_queue == 2 then
-            Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { "alt" })
+            Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
           end
         end
       end
@@ -536,7 +545,7 @@ function widget:KeyPress(key, mods, isRepeat)
         for i = 1, #builderIds do
           local unit_id = builderIds[i]
           local x, _, z = Spring.GetUnitPosition(unit_id)
-          builders[i] = {id=unit_id, x=x, z=z}
+          builders[i] = {id = unit_id, x = x, z = z}
         end
         -- sort by proximity to mouse
         local mouseX, mouseY = Spring.GetMouseState()
@@ -545,30 +554,14 @@ function widget:KeyPress(key, mods, isRepeat)
         -- log('sorting', table.tostring(builders))
         table.sort(builders, SortMouseDistance)
 
-
         -- log('cycleI 1', conCycleNumber)
-        conCycleNumber = ((conCycleNumber-1) % #builderIds) + 1
+        conCycleNumber = ((conCycleNumber - 1) % #builderIds) + 1
         -- log('cycleI 2', conCycleNumber)
 
         Spring.SelectUnit(builders[conCycleNumber].id)
         conCycleNumber = conCycleNumber + 1
       end
-
     end
-
-  -- elseif selectSplitKeys[key] and mods['alt'] and not mods['shift'] and mods['ctrl'] then
-  --   local selected_units = Spring.GetSelectedUnits()
-
-  --   if #selected_units ~= #partitionIds then
-  --     partitionIds = {}
-  --   end
-
-  --   for i = 1, #selected_units do
-  --     partitionIds[selected_units[i]] = true
-  --   end
-
-  --   SelectSubset(selected_units, selectSplitKeys[key])
-
   elseif (key == KEYSYMS.F) and mods['ctrl'] then
     if #selectedUnitIds == 0 then
       return
@@ -580,14 +573,17 @@ function widget:KeyPress(key, mods, isRepeat)
       for j = 1, #commands do
         local command = commands[j]
         if command.id < 1 then
-          local commandString = tostring(commands[j].id) .. ' ' .. tostring(commands[j].params[1]) .. ' ' .. tostring(commands[j].params[2]) .. ' ' .. tostring(commands[j].params[3])
+          local commandString =
+            tostring(commands[j].id) ..
+            ' ' ..
+              tostring(commands[j].params[1]) ..
+                ' ' .. tostring(commands[j].params[2]) .. ' ' .. tostring(commands[j].params[3])
           if mergedCommands[commandString] == nil then
             mergedCommands[commandString] = command
           end
         end
       end
     end
-
 
     -- local selectedUnitsMap = {}
     local xPositions = {}
@@ -598,29 +594,45 @@ function widget:KeyPress(key, mods, isRepeat)
       table.insert(xPositions, x)
       table.insert(zPositions, z)
     end
-    selectedPos = {x=median(xPositions), z=median(zPositions)}
+    selectedPos = {x = median(xPositions), z = median(zPositions)}
 
     local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds)
 
     for i = 1, #allImmobileBuilders do
       local x, _, z = Spring.GetUnitPosition(allImmobileBuilders[i])
       if x and z then
-        allImmobileBuilders[i] = {id = allImmobileBuilders[i], x=x, z=z, buildDistance=immobileBuilderDefs[Spring.GetUnitDefID(allImmobileBuilders[i])]}
+        allImmobileBuilders[i] = {
+          id = allImmobileBuilders[i],
+          x = x,
+          z = z,
+          buildDistance = immobileBuilderDefs[Spring.GetUnitDefID(allImmobileBuilders[i])]
+        }
       end
     end
-
-
 
     local commands = {}
     local nCommands = 0
     for _, command in pairs(mergedCommands) do
       nCommands = nCommands + 1
-      commands[nCommands] = {command.id, command.params, command.options, buildSpeed=0, assistersBuildSpeeds={}, isShield=isShieldDefId[-command.id], x=command.params and command.params[1], z=command.params and command.params[3]}
+      commands[nCommands] = {
+        command.id,
+        command.params,
+        command.options,
+        id = command.id,
+        params = command.params,
+        options = command.options,
+        buildSpeed = 0,
+        assistersBuildSpeeds = {},
+        isShield = isShieldDefId[-command.id],
+        x = command.params and command.params[1],
+        z = command.params and command.params[3]
+      }
       if command.params[1] and command.params[3] then
-
         for j = 1, #allImmobileBuilders do
-          if Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]) < allImmobileBuilders[j].buildDistance then
-
+          if
+            Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]) <
+              allImmobileBuilders[j].buildDistance
+           then
             local buildSpeed = unitIdBuildSpeeds:get(allImmobileBuilders[j].id)
             if buildSpeed == nil then
               buildSpeed = UnitDefs[Spring.GetUnitDefID(allImmobileBuilders[j].id)].buildSpeed
@@ -642,14 +654,11 @@ function widget:KeyPress(key, mods, isRepeat)
     -- preparing commands done
 
     if not mods['shift'] and not mods['alt'] then
-
       table.sort(commands, SortbuildSpeedDistance)
       commands = snake_sort_with_lookahead(commands, lookahead_steps)
       Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {}, {})
       Spring.GiveOrderArrayToUnitArray(selectedUnitIds, commands)
-
     elseif mods['shift'] and not mods['alt'] then
-
       local builders = {}
       for i = 1, #selectedUnitIds do
         local unitId = selectedUnitIds[i]
@@ -657,7 +666,7 @@ function widget:KeyPress(key, mods, isRepeat)
         table.insert(builders, {id = unitId, x = x, z = z, buildSpeed = 1})
       end
 
-      local clusters = kmeans(commands, #builders,  100)
+      local clusters = kmeans(commands, #builders, 100)
 
       local snakeSortedClusters = {}
       for i, cluster in ipairs(clusters) do
@@ -682,70 +691,71 @@ function widget:KeyPress(key, mods, isRepeat)
       -- end
 
       -- Step 2: Assign builders to the closest cluster based on the distance to the first command in each cluster
-      local builderAssignments = {}  -- To store which cluster each builder is assigned to
-      local assignedClusters = {}    -- To mark clusters that are already assigned
+      local builderAssignments = {} -- To store which cluster each builder is assigned to
+      local assignedClusters = {} -- To mark clusters that are already assigned
 
       for i, builder in ipairs(builders) do
-          local minDistance = math.huge
-          local closestCluster = nil
-          local closestClusterIndex = nil
+        local minDistance = math.huge
+        local closestCluster = nil
+        local closestClusterIndex = nil
 
-          -- Find the closest cluster that hasn't been assigned yet
-          for j, cluster in ipairs(snakeSortedClusters) do
-              if not assignedClusters[j] then
-                -- Get the first command of the cluster to calculate distance
-                local firstCommand = cluster[1]
-                -- log('firstCommand',firstCommand[2][1], firstCommand[2][2])
-                if firstCommand ~= nil then
-                  local builderBuildingDistance = calculateDistance(builder.x, builder.z, firstCommand[2][1], firstCommand[2][2])
+        -- Find the closest cluster that hasn't been assigned yet
+        for j, cluster in ipairs(snakeSortedClusters) do
+          if not assignedClusters[j] then
+            -- Get the first command of the cluster to calculate distance
+            local firstCommand = cluster[1]
+            -- log('firstCommand',firstCommand[2][1], firstCommand[2][2])
+            if firstCommand ~= nil then
+              local builderBuildingDistance =
+                calculateDistance(builder.x, builder.z, firstCommand[2][1], firstCommand[2][2])
 
-                  if builderBuildingDistance< minDistance then
-                      minDistance = builderBuildingDistance
-                      closestCluster = cluster
-                      closestClusterIndex = j
-                  end
-                end
+              if builderBuildingDistance < minDistance then
+                minDistance = builderBuildingDistance
+                closestCluster = cluster
+                closestClusterIndex = j
               end
+            end
           end
+        end
 
-          -- Assign the builder to the closest cluster and mark it as assigned
-          if closestCluster ~= nil and closestClusterIndex ~= nil then
-              builderAssignments[i] = closestCluster
-              assignedClusters[closestClusterIndex] = true
-          end
+        -- Assign the builder to the closest cluster and mark it as assigned
+        if closestCluster ~= nil and closestClusterIndex ~= nil then
+          builderAssignments[i] = closestCluster
+          assignedClusters[closestClusterIndex] = true
+        end
       end
 
       -- Step 3: Add secondary tasks for each builder after their primary cluster
       for i, builder in ipairs(builders) do
-          local builderCommands = deepcopy(builderAssignments[i] or {})
+        local builderCommands = deepcopy(builderAssignments[i] or {})
 
-          -- Assign secondary tasks: other clusters not assigned to this builder
-          for j, cluster in ipairs(snakeSortedClusters) do
-              if builderAssignments[i] ~= cluster then
-                  for k = 1, #cluster do
-                      table.insert(builderCommands, cluster[k])
-                  end
-              end
+        -- Assign secondary tasks: other clusters not assigned to this builder
+        for j, cluster in ipairs(snakeSortedClusters) do
+          if builderAssignments[i] ~= cluster then
+            for k = 1, #cluster do
+              table.insert(builderCommands, cluster[k])
+            end
           end
+        end
 
-          -- Stop existing commands and give new command set
-          Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
-          Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
+        -- Stop existing commands and give new command set
+        Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
+        Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
       end
 
-      -- for i, cluster in ipairs(clusters) do
-      --   table.sort(cluster, SortbuildSpeedDistance)
+    -- for i, cluster in ipairs(clusters) do
+    --   table.sort(cluster, SortbuildSpeedDistance)
 
-      --   local clusterCommands = snake_sort_with_lookahead(cluster, lookahead_steps)
-      --   Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
-      --   Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
-      --   -- local builderId = builders[i].id
+    --   local clusterCommands = snake_sort_with_lookahead(cluster, lookahead_steps)
+    --   Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
+    --   Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
+    --   -- local builderId = builders[i].id
 
-      --   -- Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
-      --   -- Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
-      --   -- local nClusterCommands = #clusterCommands
-      --   -- splitBuilderWatch[builderId] = {commands=commands, lastCommand=clusterCommands[nClusterCommands], nClusterCommands=nClusterCommands}
-      -- end
+    --   -- Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
+    --   -- Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
+    --   -- local nClusterCommands = #clusterCommands
+    --   -- splitBuilderWatch[builderId] = {commands=commands, lastCommand=clusterCommands[nClusterCommands], nClusterCommands=nClusterCommands}
+    -- end
     end
   end
 end
@@ -824,4 +834,3 @@ end
 -- if #selectHistory > 40 then
 --   table.remove(selectHistory, 1)
 -- end
-
