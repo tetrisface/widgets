@@ -1,7 +1,6 @@
 function widget:GetInfo()
 	return {
-		-- name = "Top Bar test",
-		name = 'Top Bar',
+		name = 'Top Bar backup',
 		desc = 'Shows Resources, wind speed, commander counter, and various options.',
 		author = 'Floris',
 		date = 'Feb, 2017',
