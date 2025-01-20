@@ -1,80 +1,93 @@
 function widget:GetInfo()
   return {
-    desc    = "Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.",
-    author  = "tetrisface",
-    version = "",
-    date    = "Apr, 2024",
-    name    = "Shield Ground Rings",
-    license = "GPLv2 or later",
-    layer   = -99990,
-    enabled = true,
+    desc = 'Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.',
+    author = 'tetrisface',
+    version = '',
+    date = 'Apr, 2024',
+    name = 'Shield Ground Rings',
+    license = 'GPLv2 or later',
+    layer = -99990,
+    enabled = true
   }
 end
 
-local DiffTimers         = Spring.DiffTimers
+local DiffTimers = Spring.DiffTimers
 local GetTeamUnitsByDefs = Spring.GetTeamUnitsByDefs
-local GetTimer           = Spring.GetTimer
-local GetUnitCommands    = Spring.GetUnitCommands
-local GetUnitHealth      = Spring.GetUnitHealth
-local GetUnitPosition    = Spring.GetUnitPosition
+local GetTimer = Spring.GetTimer
+local GetUnitCommands = Spring.GetUnitCommands
+local GetUnitDefID = Spring.GetUnitDefID
+local GetUnitHealth = Spring.GetUnitHealth
+local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitShieldState = Spring.GetUnitShieldState
-local UnitDefs           = UnitDefs
-local mathCos            = math.cos
-local mathSin            = math.sin
-local max                = math.max
+local UnitDefs = UnitDefs
+local mathCos = math.cos
+local mathSin = math.sin
+local max = math.max
 
-local glColorMask        = gl.ColorMask
-local glStencilFunc      = gl.StencilFunc
-local glStencilTest      = gl.StencilTest
-local glColor            = gl.Color
-local glBeginEnd         = gl.BeginEnd
-local glVertex           = gl.Vertex
-local GL_ALWAYS          = GL.ALWAYS
-local GL_NOTEQUAL        = GL.NOTEQUAL
-local GL_KEEP            = 0x1E00 --GL.KEEP
-local GL_REPLACE         = GL.REPLACE
-local GL_TRIANGLE_FAN    = GL.TRIANGLE_FAN
+local glColorMask = gl.ColorMask
+local glStencilFunc = gl.StencilFunc
+local glStencilTest = gl.StencilTest
+local glColor = gl.Color
+local glBeginEnd = gl.BeginEnd
+local glVertex = gl.Vertex
+local GL_ALWAYS = GL.ALWAYS
+local GL_NOTEQUAL = GL.NOTEQUAL
+local GL_KEEP = 0x1E00 --GL.KEEP
+local GL_REPLACE = GL.REPLACE
+local GL_TRIANGLE_FAN = GL.TRIANGLE_FAN
 
-local alpha              = 0.6
-local nCircleVertices    = 101
-local vertexAngle        = math.pi * 2 / (nCircleVertices - 1)
-local drawCheckMs        = 1
-local shieldsUpdateMs    = 100
-local yellow             = { 181 / 255, 137 / 255, 0 / 255 }
-local cyan               = { 42 / 255, 161 / 255, 152 / 255 }
-local orange             = { 203 / 255, 75 / 255, 22 / 255 }
-local ENUM_ONLINE        = 1
-local ENUM_OFFLINE       = 2
-local ENUM_ALL           = 3
+local alpha = 0.6
+local nCircleVertices = 101
+local vertexAngle = math.pi * 2 / (nCircleVertices - 1)
+local drawCheckMs = 1
+local shieldsUpdateMs = 100
+local yellow = {181 / 255, 137 / 255, 0 / 255}
+local cyan = {42 / 255, 161 / 255, 152 / 255}
+local orange = {203 / 255, 75 / 255, 22 / 255}
+local ENUM_ONLINE = 1
+local ENUM_OFFLINE = 2
+local ENUM_ALL = 3
 
-local t0                 = GetTimer()
-local drawCheckTimer     = GetTimer()
+local t0 = GetTimer()
+local drawCheckTimer = GetTimer()
 local shieldsUpdateTimer = GetTimer()
-local defIdRadius        = {}
-local defIds             = {}
-local nDefIds            = 0
-local shields            = {}
-local nShields           = 0
-local shieldBuilders     = {}
-local active             = false
+local defIdRadius = {}
+local defIds = {}
+local nDefIds = 0
+local shields = {}
+local nShields = 0
+local shieldBuilders = {}
+local active = false
 local activeShieldRadius = 550
-local glList             = nil
+local glList = nil
 
 function widget:Initialize()
-  t0                 = GetTimer()
-  drawCheckTimer     = GetTimer()
-  defIdRadius        = {}
-  defIds             = {}
-  nDefIds            = 0
-  shields            = {}
-  nShields           = 0
-  shieldBuilders     = {}
-  active             = false
+  t0 = GetTimer()
+  drawCheckTimer = GetTimer()
+  defIdRadius = {}
+  defIds = {}
+  nDefIds = 0
+  shields = {}
+  nShields = 0
+  shieldBuilders = {}
+  active = false
   activeShieldRadius = 550
-  glList             = nil
+  glList = nil
   for unitDefId, unitDef in pairs(UnitDefs) do
-    if unitDef.isBuilding and unitDef.hasShield then
-      defIdRadius[unitDefId] = unitDef.customParams and unitDef.customParams.shield_radius or 550
+    if
+      unitDef.isBuilding and
+        (unitDef.hasShield or
+          (unitDef.customparams and unitDef.customparams.shield_radius and unitDef.customparams.shield_radius > 0))
+     then
+      defIdRadius[unitDefId] = unitDef.customparams and unitDef.customparams.shield_radius or 550
+      nDefIds = nDefIds + 1
+      defIds[nDefIds] = unitDefId
+    elseif unitDef.name == 'armgatet3' then
+      defIdRadius[unitDefId] = 710
+      nDefIds = nDefIds + 1
+      defIds[nDefIds] = unitDefId
+    elseif unitDef.name == 'corgatet3' then
+      defIdRadius[unitDefId] = 825
       nDefIds = nDefIds + 1
       defIds[nDefIds] = unitDefId
     end
@@ -90,22 +103,28 @@ local function doCircle(x, y, z, radius)
   end
 end
 
-local function DrawCircles(drawOnOff, radius)
+local function DrawCircles(drawOnOff, radiusOffset, isOuterRadius)
   for i = 1, nShields do
-    local shieldUnitPosition = shields[i]
+    local shield = shields[i]
 
-    if drawOnOff == ENUM_ALL or shieldUnitPosition.online == drawOnOff then
-      local x = shieldUnitPosition.x
-      local y = shieldUnitPosition.y + 6
-      local z = shieldUnitPosition.z
+    if drawOnOff == ENUM_ALL or shield.online == drawOnOff then
+      local x = shield.x
+      local y = shield.y + 6
+      local z = shield.z
 
+      local radius = shield.radius + (radiusOffset or 0)
+      if isOuterRadius then
+        radius = shield.radius * 2 - 180
+      end
       glBeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, radius)
     end
   end
 end
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
-  return outMin + ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) * (outMax - outMin)
+  return outMin +
+    ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) *
+      (outMax - outMin)
 end
 
 local function DrawShieldRanges()
@@ -116,42 +135,43 @@ local function DrawShieldRanges()
   glStencilFunc(GL_ALWAYS, 1, 1)
 
   local pulseMs = DiffTimers(GetTimer(), t0, true) % 1000
-  local pulseAlpha = pulseMs < 500 and Interpolate(pulseMs, 0, 499, 0.1, 0.35) or Interpolate(pulseMs, 500, 999, 0.35, 0.1)
+  local pulseAlpha =
+    pulseMs < 500 and Interpolate(pulseMs, 0, 499, 0.1, 0.35) or Interpolate(pulseMs, 500, 999, 0.35, 0.1)
 
   -- mask online shields
   glColorMask(false, false, false, false) -- disable color drawing
-  DrawCircles(ENUM_ONLINE, 510)
+  DrawCircles(ENUM_ONLINE, -40)
 
   -- cyan online borders
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   glColor(cyan[1], cyan[2], cyan[3], alpha)
   glColorMask(true, true, true, true) -- re-enable color drawing
-  DrawCircles(ENUM_ONLINE, 556)
+  DrawCircles(ENUM_ONLINE, 6)
 
   -- mask offline shields
   glColorMask(false, false, false, false)
-  DrawCircles(ENUM_OFFLINE, 510)
+  DrawCircles(ENUM_OFFLINE, -40)
 
   -- cyan offline borders
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   glColor(cyan[1], cyan[2], cyan[3], pulseAlpha)
   glColorMask(true, true, true, true)
-  DrawCircles(ENUM_OFFLINE, 556)
+  DrawCircles(ENUM_OFFLINE, 6)
 
   -- mask yellow/orange
   glStencilFunc(GL_ALWAYS, 1, 1)
   glColorMask(false, false, false, false)
-  DrawCircles(ENUM_ALL, 556)
+  DrawCircles(ENUM_ALL, 6)
 
   glStencilFunc(GL_NOTEQUAL, 1, 1)
   -- yellow
   glColor(yellow[1], yellow[2], yellow[3], alpha - 0.25)
   glColorMask(true, true, true, true)
-  DrawCircles(ENUM_ONLINE, 920)
+  DrawCircles(ENUM_ONLINE, nil, true)
   -- orange
   glColor(orange[1], orange[2], orange[3], pulseAlpha)
   glColorMask(true, true, true, true)
-  DrawCircles(ENUM_OFFLINE, 920)
+  DrawCircles(ENUM_OFFLINE, nil, true)
 
   gl.PopMatrix()
   glStencilFunc(GL_ALWAYS, 1, 1)
@@ -159,7 +179,7 @@ local function DrawShieldRanges()
 end
 
 local function ShieldsUpdate()
-  if not active or DiffTimers(GetTimer(), shieldsUpdateTimer, true) < shieldsUpdateMs then
+  if DiffTimers(GetTimer(), shieldsUpdateTimer, true) < shieldsUpdateMs then
     return
   end
 
@@ -179,7 +199,6 @@ local function ShieldsUpdate()
   for n = 1, nShieldBuilderCheckUnitIds do
     local shieldBuilderCheckUnitId = shieldBuilderCheckUnitIds[n]
     if shieldBuilderCheckUnitId then
-
       shieldBuilders[shieldBuilderCheckUnitId] = nil
 
       local commandQueue = GetUnitCommands(shieldBuilderCheckUnitId, 1000)
@@ -195,6 +214,7 @@ local function ShieldsUpdate()
               y = command.params[2],
               z = command.params[3],
               online = ENUM_OFFLINE,
+              radius = defIdRadius[-command.id]
             }
           end
         end
@@ -214,22 +234,24 @@ local function ShieldsUpdate()
     for i = 1, nShieldUnitIds do
       local id = shieldUnitIds[i]
       local x, y, z = GetUnitPosition(id, true)
+      local _, shieldState = 2, GetUnitShieldState(id)
       nShields = nShields + 1
       shields[nShields] = {
         x = x,
         y = y,
         z = z,
-        online = select(2, GetUnitShieldState(id)) > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
+        online = shieldState > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
+        radius = defIdRadius[GetUnitDefID(id)]
       }
     end
   end
 
-  drawCheckMs = max(1, nTotalShieldUnitIds/10)
-  shieldsUpdateMs = max(100, 100 + nTotalShieldUnitIds*2)
+  drawCheckMs = max(1, nTotalShieldUnitIds / 10)
+  shieldsUpdateMs = max(100, 100 + nTotalShieldUnitIds * 2)
 end
 
 local function DrawCheck()
-  if DiffTimers(GetTimer(), drawCheckTimer, true) < drawCheckMs then
+  if active and DiffTimers(GetTimer(), drawCheckTimer, true) < drawCheckMs then
     return
   end
 

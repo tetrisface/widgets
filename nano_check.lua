@@ -1,5 +1,5 @@
-local WIDGET_NAME = "Construction Turrets Range Check"
-local WIDGET_VERSION = "1.4e"
+local WIDGET_NAME = 'Construction Turrets Range Check'
+local WIDGET_VERSION = '1.4e'
 -- ### VERSIONS ###
 -- 1.0 - initial release, basic
 -- 1.1 - added more command types (reclaim, attack)
@@ -14,10 +14,10 @@ local WIDGET_VERSION = "1.4e"
 function widget:GetInfo()
     return {
         name = WIDGET_NAME,
-        desc = "Stops construction turrets from being assigned to constructions out of reach.",
-        author = "Nehroz",
-        date = "2024.9.15", -- update date.
-        license = "GPL v3",
+        desc = 'Stops construction turrets from being assigned to constructions out of reach.',
+        author = 'Nehroz',
+        date = '2024.9.15', -- update date.
+        license = 'GPL v3',
         layer = 0,
         version = WIDGET_VERSION
     }
@@ -32,8 +32,8 @@ LRUCache.__index = LRUCache
 function LRUCache:new(max_size)
     local cache = {
         max_size = max_size or 10, -- Default max size to 10 if not specified
-        cache = {},                -- Key-Value store (uID -> value = radius)
-        order = {}                 -- To track the order of use (most recent at the end)
+        cache = {}, -- Key-Value store (uID -> value = radius)
+        order = {} -- To track the order of use (most recent at the end)
     }
     setmetatable(cache, LRUCache)
     return cache
@@ -87,7 +87,7 @@ end
 -- Should be bigger than`COMMAND_LIMIT/expected number of nanos`. Default is 15.
 -- NOTE: There is no "overflow" protection. Setting DELAY to low will cause stacks to fill up constantly.
 local DELAY = 15
-local TURRETS = {"armnanotc", "cornanotc", "armnanotct2", "cornanotct2"} -- names of nano turrets names
+local TURRETS = {'armnanotc', 'cornanotc', 'armnanotct2', 'cornanotct2'} -- names of nano turrets names
 local COMMAND_LIMIT = 20 -- Maximum number of commands to be processed in a single frame, blocking
 local is_play = false
 local counter = 0
@@ -102,7 +102,9 @@ local radius_cache = LRUCache:new(10) -- LRU cache to reduce the number of calls
 
 -- converts a table to a Set()-like
 local function make_set(t) -- coverts a table to a Set()-like
-    for _, key in ipairs(t) do t[key] = true end
+    for _, key in ipairs(t) do
+        t[key] = true
+    end
 end
 
 local function check_turret_range(uID)
@@ -112,22 +114,22 @@ local function check_turret_range(uID)
     local is_first_cmd = true
     local cmds = Spring.GetUnitCommands(uID, -1)
     local new_cmds = {}
-    for i = #cmds, 1, -1  do
+    for i = #cmds, 1, -1 do
         local cmd = cmds[i]
-        if (cmd.id == CMD.REPAIR
-        or cmd.id == CMD.GUARD
-        or cmd.id == CMD.RECLAIM
-        or cmd.id == CMD.ATTACK) then
+        if (cmd.id == CMD.REPAIR or cmd.id == CMD.GUARD or cmd.id == CMD.RECLAIM or cmd.id == CMD.ATTACK) then
             local tuID = cmd.params[1]
             local tx, ty, tz = Spring.GetUnitPosition(tuID)
-            if tx == nil then break end
+            if tx == nil then
+                break
+            end
             -- NOTE equal to Spring.GetUnitSeparation(u1, u2, false, false) Uses 3D distance not 2D
             -- This is faster then synch reading from the engine; jumping between threats.
             -- 1.4e changed to use 2D distance x and z instead of 3D, as that seems to be how nanos work
-            local distance = math.sqrt((x - tx)^2 + (z - tz)^2) --math.sqrt((x-tx)^2+(y-ty)^2+(z-tz)^2)
+            local distance = math.sqrt((x - tx) ^ 2 + (z - tz) ^ 2) --math.sqrt((x-tx)^2+(y-ty)^2+(z-tz)^2)
             -- LRU caching of model radius, so we don't have to get it every time
             local radius = radius_cache:get(tuID)
             if not radius then
+                -- Spring.GetUnitDefID(tuID) nil
                 radius = Spring.GetUnitDefDimensions(Spring.GetUnitDefID(tuID)).radius
                 radius_cache:put(tuID, radius)
             end
@@ -160,7 +162,7 @@ function widget:Initialize()
     -- pre-check set
     for _, name in ipairs(TURRETS) do
         if UnitDefNames[name].buildDistance == nil then
-            Spring.Echo("Error: " .. name .. " has no buildDistance")
+            Spring.Echo('Error: ' .. name .. ' has no buildDistance')
             widget:Shutdown()
         end
     end
@@ -174,25 +176,24 @@ function widget:GameFrame()
 
         -- apply scheduled orders, on the next frame
         if #to_be_cleared > 0 then
-            Spring.GiveOrderToUnitArray(to_be_cleared, CMD.STOP, {}, {} )
+            Spring.GiveOrderToUnitArray(to_be_cleared, CMD.STOP, {}, {})
             command_budget = command_budget - #to_be_cleared
             to_be_cleared = {}
         end
 
         if #new_orders > 0 and #to_be_cleared == 0 then
-            for i= #new_orders, 1, -1 do
+            for i = #new_orders, 1, -1 do
                 if command_budget <= 0 then
                     break
                 end
                 Spring.GiveOrderArrayToUnit(new_orders[i][1], new_orders[i][2])
                 table.remove(new_orders, i) -- pop
                 command_budget = command_budget - 1
-
             end
         end
 
         if #to_be_cleared == 0 and #new_orders == 0 then
-            if  processed then
+            if processed then
                 listening = false
             elseif counter >= DELAY then -- after x frames the check is done
                 counter = 0
@@ -207,7 +208,9 @@ end
 
 -- Grabs any nano in selection and stores it in the list
 function widget:SelectionChanged(selectedUnits)
-    if is_play ~= false then return end
+    if is_play ~= false then
+        return
+    end
     current_towers = {}
     for _, unitID in ipairs(selectedUnits) do
         local unitDefID = Spring.GetUnitDefID(unitID)
@@ -219,7 +222,9 @@ end
 
 -- Listener to when nano receives a command
 function widget:UnitCommand(uID, _, _, _, _, _, _)
-    if is_play ~= false then return end
+    if is_play ~= false then
+        return
+    end
     for _, nano in ipairs(current_towers) do
         if uID == nano then
             listening = true

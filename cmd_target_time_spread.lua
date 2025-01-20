@@ -1,23 +1,22 @@
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
-    return {}
-  end
-  function widget:GetInfo()
+if Spring.GetSpectatingState() or Spring.IsReplay() then
+  return {}
+end
+function widget:GetInfo()
   return {
-    name    = "CMD target time spread",
-    desc    = "",
-    author  = "tetrisface",
-    version = "",
-    date    = "feb, 2024",
-    license = "",
-    layer   = -99990,
-    enabled = true,
+    name = 'CMD target time spread',
+    desc = '',
+    author = 'tetrisface',
+    version = '',
+    date = 'feb, 2024',
+    license = '',
+    layer = -99990,
+    enabled = true
   }
 end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Widgets/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
-
 
 -- dont wait if has queued stuff and leaking
 -- local cmdQueue = GetUnitCommands(builderId, 3)
@@ -31,7 +30,11 @@ local antis = {
   [UnitDefNames['armamd'].id] = true,
   [UnitDefNames['armscab'].id] = true,
   [UnitDefNames['corfmd'].id] = true,
-  [UnitDefNames['cormabm'].id] = true,
+  [UnitDefNames['cormabm'].id] = true
+}
+local lraa = {
+  [UnitDefNames['corscreamer'].id] = true,
+  [UnitDefNames['armmercury'].id] = true
 }
 
 function widget:KeyPress(key, mods, isRepeat)
@@ -49,12 +52,13 @@ function widget:KeyPress(key, mods, isRepeat)
       maxReloadTime = hardcoded[unitDefId]
       isStockpiling = true
     else
-    local weapons = UnitDefs[unitDefId].weapons
-    isStockpiling = Spring.GetUnitStockpile(units[1]) ~= nil
+      local weapons = UnitDefs[unitDefId].weapons
+      isStockpiling = Spring.GetUnitStockpile(units[1]) ~= nil
       for i = 1, #weapons do
         local weaponDef = WeaponDefs[weapons[i].weaponDef]
         -- local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
-        local weaponReloadTime = isStockpiling and (weaponDef.stockpileTime + (weaponDef.weaponTimer or 0))/30 or weaponDef.reloadTime
+        local weaponReloadTime =
+          isStockpiling and (weaponDef.stockpileTime + (weaponDef.weaponTimer or 0)) / 30 or weaponDef.reloadTime
         if weaponReloadTime > maxReloadTime then
           maxReloadTime = weaponReloadTime
           maxReloadWeaponNumber = i
@@ -69,7 +73,7 @@ function widget:KeyPress(key, mods, isRepeat)
     for i = 1, nUnits do
       local unitId = units[i]
 
-      Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
+      Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
 
       local reloadTimeLeft = maxReloadTime
       if isStockpiling then
@@ -79,17 +83,20 @@ function widget:KeyPress(key, mods, isRepeat)
       nNewReloadWaitUnits = nNewReloadWaitUnits + 1
       newReloadWaitUnits[nNewReloadWaitUnits] = {
         reloadTimeLeft = reloadTimeLeft,
-        unitId = unitId,
+        unitId = unitId
       }
     end
 
-    table.sort(newReloadWaitUnits, function(a, b)
-      return a.reloadTimeLeft < b.reloadTimeLeft
-    end)
+    table.sort(
+      newReloadWaitUnits,
+      function(a, b)
+        return a.reloadTimeLeft < b.reloadTimeLeft
+      end
+    )
 
     local reloadWaitUnit
     local maxWait = 0
-    local gameFrameSecond = Spring.GetGameFrame()/30
+    local gameFrameSecond = Spring.GetGameFrame() / 30
     for i = 1, #newReloadWaitUnits do
       reloadWaitUnit = newReloadWaitUnits[i]
       reloadWaitUnit.attackAtTime = interval * (i - 1) + gameFrameSecond
@@ -105,7 +112,7 @@ function widget:KeyPress(key, mods, isRepeat)
         local cmdQueue = Spring.GetUnitCommands(reloadWaitUnit.unitId, 1)
         local cmd = cmdQueue and cmdQueue[1]
         if cmd then
-          Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REMOVE, { cmd.tag }, { "ctrl" })
+          Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REMOVE, {cmd.tag}, {'ctrl'})
         end
         reloadWaitUnit.attackAtTime = reloadWaitUnit.attackAtTime + maxWait
         reloadWaitUnit.attackAtPos = pos
@@ -126,9 +133,9 @@ local function RegisterUnit(unitId, unitDefId, unitTeam)
 
   local def = UnitDefs[unitDefId]
 
-  if def.canStockpile then
-    Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
-    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
+  if def.canStockpile and not lraa[unitDefId] and def.isBuilding then
+    Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
+    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
     if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefId] then
       Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, CMD.OPT_SHIFT)
@@ -161,7 +168,7 @@ function widget:GameFrame(n)
     else
       local stockpile, queued = Spring.GetUnitStockpile(reloadWaitUnit.unitId)
       if stockpile and queued and stockpile > 0 and queued > 0 then
-        Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, { "ctrl", "shift", "right" })
+        Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
       end
     end
   end

@@ -22,6 +22,12 @@ local resurrectorDefIds = {}
 local areaReclaimParams = {}
 local waitReclaimUnits = {}
 
+local function isFriendlyFiringDef(def)
+  return not (def.name == 'armthor' or def.name == 'armassimilator' or def.name:find 'corkarganeth' or
+    def.name:find 'legpede' or
+    def.name:find 'legkeres')
+end
+
 local function isReclaimerUnit(def)
   return def.canResurrect and
     not (def.name:match '^armcom.*' or def.name:match '^corcom.*' or def.name:match '^legcom.*' or def.name == 'armthor' or
@@ -58,11 +64,21 @@ function widget:Initialize()
   end
 end
 
-local function UnitIdUnitDef(unitId)
-  return UnitDefs[Spring.GetUnitDefID(unitId)]
+function widget:UnitFromFactory(unitID, unitDefID, unitTeam)
+  widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
-function widget:UnitFromFactory(unitID, unitDefID, unitTeam)
+function widget:UnitFinished(unitID, unitDefID, unitTeam)
+  if unitTeam ~= myTeamId then
+    return
+  end
+
+  local def = UnitDefs[unitDefID]
+
+  if not isFriendlyFiringDef(def) then
+    Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, {2}, 0)
+    Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {0}, 0)
+  end
 end
 
 function widget:UnitCreated(unitID, unitDefID, unitTeam)
@@ -72,14 +88,15 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
 
   -- log('created', UnitIdUnitDef(unitID).translatedHumanName, unitID)
 
-  local def = UnitIdUnitDef(unitID)
+  local def = UnitDefs[unitDefID]
 
   -- evocom + thor fix
   if def.name == 'armthor' or def.name:find '^armcom.*' or def.name:find '^corcom.*' or def.name:find '^legcom.*' then
     Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {0}, 0)
-    if def.name == 'armthor' then
-      Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, {2}, 0)
-    end
+    return
+  end
+  if not isFriendlyFiringDef(def) then
+    Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, {2}, 0)
   end
 
   if isFactoryDefIds[unitDefID] then
@@ -151,7 +168,7 @@ function widget:GameFrame(gameFrame)
         local unitId = idleResurrectors[i]
         local commands = Spring.GetUnitCommands(unitId, 2)
         if
-          isReclaimerUnit(UnitIdUnitDef(unitId)) and
+          isReclaimerUnit(UnitDefs[Spring.GetUnitDefID(unitId)]) and
             (#commands == 0 or
               (#commands == 1 and commands[1].id == CMD.MOVE and select(4, Spring.GetUnitVelocity(unitId)) < 0.02))
          then

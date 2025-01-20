@@ -81,7 +81,7 @@ end
 
 local function removeFirstCommand(unit_id)
   local cmd_queue = Spring.GetUnitCommands(unit_id, 4)
-  if cmd_queue[2]['id'] == 70 then
+  if #cmd_queue > 1 and cmd_queue[2]['id'] == 70 then
     -- remove real command before empty one
     Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[2].tag}, {nil})
   end
@@ -93,8 +93,8 @@ local function removeLastCommand(unit_id)
   local remove_cmd = cmd_queue[#cmd_queue]
   -- empty commands are somehow put between cmds,
   -- but not by the "space/add to start of cmdqueue" widget
-  if remove_cmd['id'] == 70 then
-    -- remove real command before empty one
+  if remove_cmd['id'] == 0 then
+    -- remove empty command
     Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue - 1].tag}, {nil})
   end
   -- remove the last command
@@ -398,6 +398,9 @@ end
 
 -- Manhattan distance (for clustering proximity check)
 local function manhattan_distance(p1, p2)
+  if p1 == nil or p2 == nil or p1.x == nil or p1.z == nil or p2.x == nil or p2.z == nil then
+    return 0
+  end
   return math.abs(p1.x - p2.x) + math.abs(p1.z - p2.z)
 end
 
@@ -405,8 +408,10 @@ end
 local function calculate_centroid(cluster)
   local sum_x, sum_z = 0, 0
   for _, point in ipairs(cluster) do
-    sum_x = sum_x + point.x
-    sum_z = sum_z + point.z
+    if point ~= nil and point.x ~= nil and point.z ~= nil then
+      sum_x = sum_x + point.x
+      sum_z = sum_z + point.z
+    end
   end
   return {x = sum_x / #cluster, z = sum_z / #cluster}
 end
@@ -494,7 +499,10 @@ function widget:KeyPress(key, mods, isRepeat)
   local selectedUnitIds = Spring.GetSelectedUnits()
 
   local foundCommandQueue = false
-  if (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] then
+  if
+    (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] and
+      not mods['ctrl']
+   then
     -- elseif selectSplitKeys[key] and mods['alt'] and not mods['shift'] and mods['ctrl'] then
     --   local selected_units = Spring.GetSelectedUnits()
     --   if #selected_units ~= #partitionIds then
@@ -505,11 +513,11 @@ function widget:KeyPress(key, mods, isRepeat)
     --   end
     --   SelectSubset(selected_units, selectSplitKeys[key])
     -- for i, unit_id in ipairs(selected_units) do
-    if key ~= KEYSYMS.A and not mods['ctrl'] and #selectedUnitIds > 0 then
+    if key ~= KEYSYMS.A and #selectedUnitIds > 0 then
       for i = 1, #selectedUnitIds do
         local unit_id = selectedUnitIds[i]
         local cmd_queue = Spring.GetUnitCommands(unit_id, 200)
-        if cmd_queue and #cmd_queue > 1 then
+        if cmd_queue and (#cmd_queue > 0) then
           foundCommandQueue = true
           if key == KEYSYMS.S then
             removeFirstCommand(unit_id)
@@ -534,6 +542,7 @@ function widget:KeyPress(key, mods, isRepeat)
       conCycleNumber = 1
     end
 
+    log('asdf')
     -- log('#selected_units', #selected_units, 'conCycleNumber', conCycleNumber)
 
     if #selectedUnitIds == 0 or (#selectedUnitIds > 0 and conCycleNumber ~= nil) then

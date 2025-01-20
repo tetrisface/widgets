@@ -1,31 +1,32 @@
 function widget:GetInfo()
   return {
-    desc    = "Raptor Nuke Warning",
-    author  = "tetrisface",
-    version = "",
-    date    = "feb, 2024",
-    name    = "Raptor Nuke Warning",
-    license = "",
-    layer   = -99990,
-    enabled = true,
+    desc = 'Raptor Nuke Warning',
+    author = 'tetrisface',
+    version = '',
+    date = 'feb, 2024',
+    name = 'Raptor Nuke Warning',
+    license = '',
+    layer = -99990,
+    enabled = true
   }
 end
 
-local vsx, vsy        = Spring.GetViewGeometry()
+local vsx, vsy = Spring.GetViewGeometry()
 local showNukeWarning = false
-local hasAnti         = false
-local alive           = true
+local hasAnti = false
+local alive = true
 local nukeList
 local font
 
-local armamdId        = UnitDefNames['armamd'].id
-local armscabId       = UnitDefNames['armscab'].id
-local corfmdId        = UnitDefNames['corfmd'].id
-local cormabmId       = UnitDefNames['cormabm'].id
+local armamdId = UnitDefNames['armamd'].id
+local armscabId = UnitDefNames['armscab'].id
+local corfmdId = UnitDefNames['corfmd'].id
+local cormabmId = UnitDefNames['cormabm'].id
+local legabmId = UnitDefNames['legabm'].id
 
 function widget:ViewResize()
   vsx, vsy = Spring.GetViewGeometry()
-  font     = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
+  font = WG['fonts'].getFont('fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf'))
 end
 
 local function CreateNukeWarning()
@@ -53,10 +54,11 @@ function widget:GameFrame(n)
   if alive then
     if n % 100 == 0 then
       local myTeamId = Spring.GetMyTeamID()
-      hasAnti = Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0
-          or Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0
+      hasAnti =
+        Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0 or Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0 or
+        Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0 or
+        Spring.GetTeamUnitDefCount(myTeamId, legabmId) > 0 or
+        Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0
     end
     if n % 25 == 0 then
       local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
@@ -77,5 +79,5 @@ function widget:Initialize()
     widgetHandler:RemoveWidget()
   end
 
-  font = WG['fonts'].getFont("fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf"))
+  font = WG['fonts'].getFont('fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf'))
 end

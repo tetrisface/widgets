@@ -1,10 +1,10 @@
 function widget:GetInfo()
   return {
-    desc = 'Some code from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc',
+    desc = 'Some inspiration from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc',
     author = 'tetrisface',
     version = '',
     date = 'feb, 2016',
-    name = 'cons',
+    name = 'eco cons',
     license = '',
     layer = -99990,
     enabled = true
@@ -166,9 +166,9 @@ local function EnergyMakeDef(_unitDef)
 end
 
 function widget:Initialize()
-  -- if Spring.GetSpectatingState() or Spring.IsReplay() then
-  --   widgetHandler:RemoveWidget()
-  -- end
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    widgetHandler:RemoveWidget()
+  end
 
   myTeamId = Spring.GetMyTeamID()
   forwardedFromTargetIds = NewSetList()
@@ -428,9 +428,9 @@ local function purgeRepairs(builderId, cmdQueue, queueSize)
   end
 
   if #removeCommands > 0 then
-    if IsUnitSelectedLog(builderId) then
+    -- if IsUnitSelectedLog(builderId) then
     -- log('purging', #removeCommands)
-    end
+    -- end
     Spring.GiveOrderArrayToUnit(builderId, removeCommands)
   end
   return GetUnitCommands(builderId, queueSize)
@@ -637,13 +637,13 @@ local function getMyResources(type)
 
   if type == 'metal' then
     for _, unitID in ipairs(units) do
-      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
+      local metalMake, metalUse = GetUnitResources(unitID)
       total = total + metalMake - metalUse
       exp = exp + metalUse
     end
   else
     for _, unitID in ipairs(units) do
-      local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
+      local _, _, energyMake, energyUse = GetUnitResources(unitID)
       total = total + energyMake - energyUse
       exp = exp + energyUse
     end
@@ -739,6 +739,9 @@ local function getUnitsUpkeep()
 end
 
 local function IsTimeToMoveOn(secondsLeft, builderId, builderDef, targetTotalBuildSpeed)
+  if not targetTotalBuildSpeed then
+    return false
+  end
   local plannerBuildSpeed = BuilderById(builderId).def.buildSpeed
   local plannerBuildShare = plannerBuildSpeed / targetTotalBuildSpeed
   local slowness = (45 / builderDef.speed)
@@ -1126,7 +1129,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
       end
     else
       local reclaiming = false
-      if MRandom() < 0.1 then
+      if MRandom() < (builderDef.translatedHumanName == 'Base Builder' and 0.6 or 0.16) then
         features, nFeaturesAll = getReclaimableFeatures(builderPosX, builderPosZ, builderDef.buildDistance)
         if nFeaturesAll > 0 then
           -- log('randomly reclaiming', builderDef.translatedHumanName)
@@ -1400,7 +1403,7 @@ local function Builders(gameFrame)
     end
   end
 
-  if math.random(15, 45) % 30 == 0 then
+  if math.random(20) == 20 then
     BatchOrder(selectedUnits, gameFrame)
   end
 
