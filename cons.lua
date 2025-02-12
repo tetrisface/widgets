@@ -410,8 +410,11 @@ local function purgeRepairs(builderId, cmdQueue, queueSize)
         local buildingUnitId = buildQueueUnits[1]
         local cylinderTargetDefId = GetUnitDefID(buildingUnitId)
 
-        -- dont purge upgrades
-        if not upgradableFromDefIds[cylinderTargetDefId] and not upgradableToDefIds[-cmd.id] then
+        -- dont purge upgrades and when covered by con
+        if
+          UnitDefs[cylinderTargetDefId].isBuilding and not upgradableFromDefIds[cylinderTargetDefId] and
+            not upgradableToDefIds[-cmd.id]
+         then
           local health, maxHealth, _, _, targetBuild = GetUnitHealth(buildingUnitId)
           -- dont purge finished and healthy
           if (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) then

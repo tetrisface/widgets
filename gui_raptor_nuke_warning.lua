@@ -17,12 +17,18 @@ local hasAnti = false
 local alive = true
 local nukeList
 local font
+local nukes = not Spring.GetModOptions().unit_restrictions_nonukes
+
+if not nukes then
+  widgetHandler:RemoveWidget()
+  return false
+end
 
 local armamdId = UnitDefNames['armamd'].id
 local armscabId = UnitDefNames['armscab'].id
 local corfmdId = UnitDefNames['corfmd'].id
 local cormabmId = UnitDefNames['cormabm'].id
-local legabmId = UnitDefNames['legabm'].id
+local legabmId = UnitDefNames['legabm'] and UnitDefNames['legabm'].id
 
 function widget:ViewResize()
   vsx, vsy = Spring.GetViewGeometry()
@@ -51,14 +57,19 @@ function widget:DrawScreen()
 end
 
 function widget:GameFrame(n)
+  if not nukes then
+    widgetHandler:RemoveWidget()
+    return
+  end
+
   if alive then
     if n % 100 == 0 then
       local myTeamId = Spring.GetMyTeamID()
       hasAnti =
         Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0 or Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0 or
         Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0 or
-        Spring.GetTeamUnitDefCount(myTeamId, legabmId) > 0 or
-        Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0
+        Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0 or
+        (legabmId and Spring.GetTeamUnitDefCount(myTeamId, legabmId) > 0)
     end
     if n % 25 == 0 then
       local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
@@ -75,7 +86,7 @@ function widget:TeamDied(teamID)
 end
 
 function widget:Initialize()
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
+  if Spring.GetSpectatingState() or Spring.IsReplay() or not nukes then
     widgetHandler:RemoveWidget()
   end
 

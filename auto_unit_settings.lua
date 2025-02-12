@@ -14,7 +14,18 @@ end
 VFS.Include('luaui/Widgets/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
--- local isCommanderRepeatChecked = true
+local antis = {
+  [UnitDefNames['armamd'].id] = true,
+  [UnitDefNames['armscab'].id] = true,
+  [UnitDefNames['corfmd'].id] = true,
+  [UnitDefNames['cormabm'].id] = true,
+  [UnitDefNames['legabm'].id] = true
+}
+local lraa = {
+  [UnitDefNames['corscreamer'].id] = true,
+  [UnitDefNames['armmercury'].id] = true
+}
+
 local myTeamId = Spring.GetMyTeamID()
 local isFactoryDefIds = {}
 local reclaimerDefIds = {}
@@ -29,13 +40,25 @@ local function isFriendlyFiringDef(def)
 end
 
 local function isReclaimerUnit(def)
-  return def.canResurrect and
+  local isReclaimer =
+    (def.canResurrect or def.canReclaim) and
     not (def.name:match '^armcom.*' or def.name:match '^corcom.*' or def.name:match '^legcom.*' or def.name == 'armthor' or
-      (def.customParams and def.customParams.iscommander))
+      (def.customParams and def.customParams.iscommander)) and
+    not (def.buildOptions and def.buildOptions[1] ~= nil)
+
+  if isReclaimer then
+    log(
+      def.translatedHumanName,
+      'reclaimer',
+      isReclaimer,
+      not (def.buildOptions and #def.buildOptions > 0),
+      def.buildOptions
+    )
+  end
+  return isReclaimer
 end
 
 function widget:Initialize()
-  -- isCommanderRepeatChecked = true
   myTeamId = Spring.GetMyTeamID()
   isFactoryDefIds = {}
   reclaimerDefIds = {}
@@ -123,6 +146,16 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
     waitReclaimUnits[unitID] = 1
   -- elseif vehicleCons[unitDefID] then
   --   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
+  end
+
+  if def.canStockpile and not lraa[unitDefId] and def.isBuilding then
+    Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
+    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
+    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
+    if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefId] then
+      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, CMD.OPT_SHIFT)
+      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
+    end
   end
 end
 

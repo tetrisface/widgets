@@ -26,17 +26,6 @@ VFS.Include('luaui/Headers/keysym.h.lua')
 local reloadWaitUnits = {}
 local hardcoded = {}
 
-local antis = {
-  [UnitDefNames['armamd'].id] = true,
-  [UnitDefNames['armscab'].id] = true,
-  [UnitDefNames['corfmd'].id] = true,
-  [UnitDefNames['cormabm'].id] = true
-}
-local lraa = {
-  [UnitDefNames['corscreamer'].id] = true,
-  [UnitDefNames['armmercury'].id] = true
-}
-
 function widget:KeyPress(key, mods, isRepeat)
   if key == KEYSYMS.Q and mods['alt'] and not mods['shift'] and not mods['ctrl'] then -- q
     local units = Spring.GetSelectedUnits()
@@ -120,26 +109,6 @@ function widget:KeyPress(key, mods, isRepeat)
         nReloadWaitUnits = nReloadWaitUnits + 1
         reloadWaitUnits[nReloadWaitUnits] = reloadWaitUnit
       end
-    end
-  end
-end
-
-local myTeamId = Spring.GetMyTeamID()
-
-local function RegisterUnit(unitId, unitDefId, unitTeam)
-  if unitTeam ~= myTeamId then
-    return
-  end
-
-  local def = UnitDefs[unitDefId]
-
-  if def.canStockpile and not lraa[unitDefId] and def.isBuilding then
-    Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
-    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
-    Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
-    if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefId] then
-      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, CMD.OPT_SHIFT)
-      Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
     end
   end
 end
