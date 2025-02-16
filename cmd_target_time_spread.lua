@@ -97,7 +97,7 @@ function widget:KeyPress(key, mods, isRepeat)
     for i = 1, #newReloadWaitUnits do
       reloadWaitUnit = newReloadWaitUnits[i]
       local shouldBe2, isUserTarget, pos = Spring.GetUnitWeaponTarget(reloadWaitUnit.unitId, maxReloadWeaponNumber)
-      if pos and #pos == 3 then
+      if pos and type(pos) == 'table' and #pos == 3 then
         local cmdQueue = Spring.GetUnitCommands(reloadWaitUnit.unitId, 1)
         local cmd = cmdQueue and cmdQueue[1]
         if cmd then
@@ -111,14 +111,6 @@ function widget:KeyPress(key, mods, isRepeat)
       end
     end
   end
-end
-
-function widget:UnitCreated(unitId, unitDefId, unitTeam)
-  RegisterUnit(unitId, unitDefId, unitTeam)
-end
-
-function widget:UnitGiven(unitId, unitDefId, unitTeam, oldTeam)
-  RegisterUnit(unitId, unitDefId, unitTeam)
 end
 
 function widget:GameFrame(n)

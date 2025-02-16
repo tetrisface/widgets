@@ -18,9 +18,11 @@ local antis = {
   [UnitDefNames['armamd'].id] = true,
   [UnitDefNames['armscab'].id] = true,
   [UnitDefNames['corfmd'].id] = true,
-  [UnitDefNames['cormabm'].id] = true,
-  [UnitDefNames['legabm'].id] = true
+  [UnitDefNames['cormabm'].id] = true
 }
+if UnitDefNames['legabm'] then
+  antis[UnitDefNames['legabm'].id] = true
+end
 local lraa = {
   [UnitDefNames['corscreamer'].id] = true,
   [UnitDefNames['armmercury'].id] = true
@@ -46,15 +48,15 @@ local function isReclaimerUnit(def)
       (def.customParams and def.customParams.iscommander)) and
     not (def.buildOptions and def.buildOptions[1] ~= nil)
 
-  if isReclaimer then
-    log(
-      def.translatedHumanName,
-      'reclaimer',
-      isReclaimer,
-      not (def.buildOptions and #def.buildOptions > 0),
-      def.buildOptions
-    )
-  end
+  -- if isReclaimer then
+  --   log(
+  --     def.translatedHumanName,
+  --     'reclaimer',
+  --     isReclaimer,
+  --     not (def.buildOptions and #def.buildOptions > 0),
+  --     def.buildOptions
+  --   )
+  -- end
   return isReclaimer
 end
 
@@ -148,7 +150,7 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
   --   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
   end
 
-  if def.canStockpile and not lraa[unitDefId] and def.isBuilding then
+  if def.canStockpile and not lraa[unitDefId] and def.isBuilding and unitID then
     Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
