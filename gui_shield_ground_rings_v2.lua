@@ -36,12 +36,13 @@ local yellow = {181/255, 137/255,  0/255, 0.35}
 local cyan   = { 42/255, 161/255, 152/255, 0.6}
 local orange = {203/255,  75/255, 22/255, 0.35}
 
--- Ring config
+-- Statics
 local nCircleVertices = 64
 local shieldsUpdateMs = 100
+local drawCheckMs = 1
 
 -- State
-local t0                  = GetTimer()
+local drawCheckTimer      = GetTimer()
 local shieldsUpdateTimer  = GetTimer()
 local defIdRadius         = {}
 local defIds              = {}
@@ -69,8 +70,6 @@ local circleInstanceVBOLayout = {
 local luaShaderDir = "LuaUI/Include/"
 local LuaShader = VFS.Include(luaShaderDir.."LuaShader.lua")
 
-local isGL4Initialized = false
-
 -- Vertex Shader: Passes the unit circle coordinate (position.xy) to the fragment shader.
 local vsSrc = [[
 #version 420
@@ -87,6 +86,7 @@ uniform float gameFrame;
 out DataVS {
   vec4 vertexColor;
   vec2 vUnitPos; // pass unit circle coordinate to fragment shader
+  int radius; // pass radius to fragment shader
 };
 
 //__ENGINEUNIFORMBUFFERDEFS__
@@ -99,6 +99,7 @@ float heightAtWorldPos(vec2 w) {
 void main() {
   // Save the unit circle coordinate (roughly in the range [-1,1])
   vUnitPos = position.xy;
+  radius = int(position.w);
 
   // Scale the unit circle by radius and add the center position (from posscale.xz)
   vec2 circlePos = position.xy * posscale.w + posscale.xz;
@@ -119,6 +120,7 @@ local fsSrc = [[
 in DataVS {
   vec4 vertexColor;
   vec2 vUnitPos;
+  int radius;
 };
 
 uniform int maskMode; // 0 = normal ring; 1 = mask mode (outer band only)
@@ -132,16 +134,17 @@ void main() {
 
   if (maskMode == 1) {
     // Mask pass: only output fragments in the outer band of the circle.
-    if(dist >= ringInner && dist < 1.0) {
+    if(dist < ringInner ) {
       fragColor = vec4(1.0); // value is arbitrary for stencil writes
     } else {
       discard;
     }
-  } else {
-    // Normal pass: draw only the outer edge.
-    float alphaFactor = step(ringInner, dist);
-    fragColor = vec4(vertexColor.rgb, vertexColor.a * alphaFactor);
+    return;
   }
+
+  // Normal pass: draw only the outer edge.
+  float alphaFactor = step(ringInner, dist);
+  fragColor = vec4(vertexColor.rgb, vertexColor.a * alphaFactor);
 }
 ]]
 
@@ -321,7 +324,11 @@ local function updateShieldData()
 end
 
 function widget:DrawWorld()
-  if nShields == 0 or not shieldShader or not shieldVAO or (nOnline == 0 and nOffline == 0) then
+  if nShields == 0
+    or not shieldShader
+    or not shieldVAO
+    or (nOnline == 0 and nOffline == 0)
+    or not active then
     return
   end
   gl.Texture(0, "$heightmap")
@@ -330,57 +337,45 @@ function widget:DrawWorld()
   gl.StencilTest(true)
   if nOnline > 0 then
     -- gl.ClearStencil(0)
-    -- gl.Clear(GL.STENCIL_BUFFER_BIT)
+    gl.Clear(GL.STENCIL_BUFFER_BIT)
     gl.ColorMask(false, false, false, false)
     shieldShader:Activate()
-    gl.UniformInt(maskModeUniform, 0)
-    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    gl.StencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
-    shieldShader:Deactivate()
-    gl.ColorMask(true, true, true, true)
-
-    gl.UniformInt(maskModeUniform, 0)
+    gl.UniformInt(maskModeUniform, 1)
     gl.StencilFunc(GL_ALWAYS, 1, 1)
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldShader:Activate()
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
+
+    gl.ColorMask(true, true, true, true)
+    gl.UniformInt(maskModeUniform, 0)
+    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
+    -- gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
     shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
     shieldShader:Deactivate()
-
   end
 
-  -- OFFLINE RINGS PASS (instances after the online ones)
-  if nOffline > 0 then
-    -- gl.ClearStencil(0)
-    -- gl.Clear(GL.STENCIL_BUFFER_BIT)
-
-    -- Mask pass: write stencil for the outer band only.
-    gl.ColorMask(false, false, false, false)
-    shieldShader:Activate()
-    gameFrame = Spring.GetGameFrame()
-
-    shieldShader:SetUniform("gameFrame", gameFrame)
-    gl.StencilFunc(GL_ALWAYS, 1, 1)
-    gl.StencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, nOnline, nOffline)
-    shieldShader:Deactivate()
-    gl.ColorMask(true, true, true, true)
-
-    -- Drawing pass: draw where stencil equals 1.
-    gl.StencilFunc(GL_KEEP, 1, 1)
-    gl.StencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE)
-    shieldShader:Activate()
-    shieldShader:SetUniform("gameFrame", gameFrame)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, nOnline, nOffline)
-    shieldShader:Deactivate()
-
-  end
   gl.StencilTest(false)
-
-
   gl.Texture(0, false)
+end
+
+local function DrawCheck()
+  if active and DiffTimers(GetTimer(), drawCheckTimer, true) < drawCheckMs then
+    return
+  end
+
+  drawCheckTimer = GetTimer()
+  local _, command = Spring.GetActiveCommand()
+
+  if not command or command >= 0 then
+    active = false
+    return
+  end
+
+  if defIdRadius[-command] then
+    active = true
+  end
 end
 
 function widget:Update()
   updateShieldData()
+  DrawCheck()
 end
