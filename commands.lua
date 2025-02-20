@@ -258,6 +258,9 @@ local lookahead_steps = 10 -- Number of steps to look ahead for better direction
 
 -- Function to calculate distance between two points
 local function distance(p1, p2)
+  if not p1 or not p1.x or not p1.z or not p2 or not p2.x or not p2.z then
+    return 0
+  end
   return math.sqrt((p1.x - p2.x) ^ 2 + (p1.z - p2.z) ^ 2)
 end
 

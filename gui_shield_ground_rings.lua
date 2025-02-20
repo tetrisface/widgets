@@ -19,6 +19,7 @@ local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitShieldState = Spring.GetUnitShieldState
+local GetGroundHeight = Spring.GetGroundHeight
 local UnitDefs = UnitDefs
 local mathCos = math.cos
 local mathSin = math.sin
@@ -54,6 +55,8 @@ local shieldsUpdateTimer = GetTimer()
 local defIdRadius = {}
 local defIds = {}
 local nDefIds = 0
+local shieldYPositions = {}
+local medianY = 10
 local shields = {}
 local nShields = 0
 local shieldBuilders = {}
@@ -67,6 +70,8 @@ function widget:Initialize()
   defIdRadius = {}
   defIds = {}
   nDefIds = 0
+  shieldYPositions = {}
+  medianY = 10
   shields = {}
   nShields = 0
   shieldBuilders = {}
@@ -94,12 +99,31 @@ function widget:Initialize()
   end
 end
 
-local function doCircle(x, y, z, radius)
-  glVertex(x, y, z)
+local function median(numbers)
+    table.sort(numbers)
+
+    local length = #numbers
+
+    if length == 1 then
+        return numbers[1]
+    end
+
+    if length % 2 == 1 then
+        return numbers[math.ceil(length/2)]
+    end
+
+    local middle1 = numbers[length/2]
+    local middle2 = numbers[(length/2) + 1]
+    return (middle1 + middle2) / 2
+end
+
+
+local function doCircle(x, z, radius)
+  glVertex(x, medianY, z)
   for i = 1, nCircleVertices do
     local cx = x + (radius * mathCos(i * vertexAngle))
     local cz = z + (radius * mathSin(i * vertexAngle))
-    glVertex(cx, y, cz)
+    glVertex(cx, medianY, cz)
   end
 end
 
@@ -109,14 +133,13 @@ local function DrawCircles(drawOnOff, radiusOffset, isOuterRadius)
 
     if drawOnOff == ENUM_ALL or shield.online == drawOnOff then
       local x = shield.x
-      local y = shield.y + 6
       local z = shield.z
 
       local radius = shield.radius + (radiusOffset or 0)
       if isOuterRadius then
         radius = shield.radius * 2 - 180
       end
-      glBeginEnd(GL_TRIANGLE_FAN, doCircle, x, y, z, radius)
+      glBeginEnd(GL_TRIANGLE_FAN, doCircle, x, z, radius)
     end
   end
 end
@@ -128,6 +151,7 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 end
 
 local function DrawShieldRanges()
+  medianY = median(shieldYPositions) + 10
   gl.PushMatrix()
   gl.DepthTest(GL.LEQUAL)
   gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
@@ -186,6 +210,7 @@ local function ShieldsUpdate()
   shieldsUpdateTimer = GetTimer()
 
   shields = {}
+  shieldYPositions = {}
   nShields = 0
 
   local shieldBuilderCheckUnitIds = Spring.GetSelectedUnits() or {}
@@ -209,9 +234,9 @@ local function ShieldsUpdate()
           if defIdRadius[-command.id] then
             isShieldBuilder = true
             nShields = nShields + 1
+            shieldYPositions[nShields] = command.params[2]
             shields[nShields] = {
               x = command.params[1],
-              y = command.params[2],
               z = command.params[3],
               online = ENUM_OFFLINE,
               radius = defIdRadius[-command.id]
@@ -236,9 +261,9 @@ local function ShieldsUpdate()
       local x, y, z = GetUnitPosition(id, true)
       local _, shieldState = 2, GetUnitShieldState(id)
       nShields = nShields + 1
+      shieldYPositions[nShields] = y
       shields[nShields] = {
         x = x,
-        y = y,
         z = z,
         online = shieldState > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
         radius = defIdRadius[GetUnitDefID(id)]
