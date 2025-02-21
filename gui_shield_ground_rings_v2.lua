@@ -76,17 +76,16 @@ local vsSrc = [[
 #line 10000
 
 layout(location = 0) in vec4 position;      // unit circle vertex positions
-layout(location = 1) in vec4 posscale;        // center (x,z) and radius (w); posscale.y unused here
-layout(location = 2) in vec4 color;           // color + alpha
-layout(location = 3) in vec4 params;          // parameters (online flag, etc.)
+layout(location = 1) in vec4 posscale;      // center (x,z) and radius (w); posscale.y unused here
+layout(location = 2) in vec4 color;         // color + alpha
+layout(location = 3) in vec4 params;        // parameters (online flag, etc.)
 
 uniform sampler2D heightmapTex;
 uniform float gameFrame;
 
 out DataVS {
   vec4 vertexColor;
-  vec2 vUnitPos; // pass unit circle coordinate to fragment shader
-  int radius; // pass radius to fragment shader
+  vec2 vUnitPos;
 };
 
 //__ENGINEUNIFORMBUFFERDEFS__
@@ -97,9 +96,7 @@ float heightAtWorldPos(vec2 w) {
 }
 
 void main() {
-  // Save the unit circle coordinate (roughly in the range [-1,1])
   vUnitPos = position.xy;
-  radius = int(position.w);
 
   // Scale the unit circle by radius and add the center position (from posscale.xz)
   vec2 circlePos = position.xy * posscale.w + posscale.xz;
@@ -107,7 +104,6 @@ void main() {
   vec4 worldPos = vec4(circlePos.x, height + 2.0, circlePos.y, 1.0);
   gl_Position = cameraViewProj * worldPos;
 
-  // Use pulsing alpha for offline shields (params.x < 0.5) otherwise constant alpha.
   float pulseAlpha = (params.x < 0.5) ? (0.65 + sin(gameFrame * 0.2) * 0.25) : color.a;
   vertexColor = vec4(color.rgb, pulseAlpha);
 }
@@ -120,7 +116,6 @@ local fsSrc = [[
 in DataVS {
   vec4 vertexColor;
   vec2 vUnitPos;
-  int radius;
 };
 
 uniform int maskMode; // 0 = normal ring; 1 = mask mode (outer band only)
