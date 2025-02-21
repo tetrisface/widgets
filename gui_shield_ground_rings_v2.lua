@@ -1,12 +1,12 @@
 function widget:GetInfo()
   return {
-    desc = 'Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.',
-    author = 'tetrisface',
-    version = '',
-    date = 'Apr, 2024',
-    name = 'Shield Ground Rings',
+    desc    = 'Draws extra ground rings around queued and finished shields using VBOs/VAOs. Overlapping ring segments are merged so that collision boundaries show a single layer of color, giving online shields visual priority over offline ones.',
+    author  = 'tetrisface',
+    version = '2.0',
+    date    = 'Apr, 2024',
+    name    = 'Shield Ground Rings GL4',
     license = 'GPLv2 or later',
-    layer = 999,
+    layer   = -99990,
     enabled = true,
     depends = {'gl4'},
   }
@@ -42,7 +42,6 @@ local shieldsUpdateMs = 100
 local drawCheckMs = 1
 
 -- State
-local t0                  = GetTimer()
 local drawCheckTimer      = GetTimer()
 local shieldsUpdateTimer  = GetTimer()
 local defIdRadius         = {}
@@ -338,6 +337,7 @@ function widget:DrawWorld()
   gl.UniformFloat(pulseAlphaUniform, pulseMs < 500
     and (0.1 + (0.35 - 0.1) * (pulseMs / 499))  -- up from 0.1 to 0.35
     or (0.35 + (0.1 - 0.35) * ((pulseMs - 500) / 499)))  -- down from 0.35 to 0.1)
+
 
   -- Draw online shields
   if nOnline > 0 then
