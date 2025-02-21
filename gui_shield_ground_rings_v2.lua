@@ -326,51 +326,47 @@ function widget:DrawWorld()
     or not active then
     return
   end
+
   gl.Texture(0, "$heightmap")
-  Spring.Echo('shields',nOnline,nOffline, nShields)
-
-  -- ONLINE RINGS PASS (instances starting at offset 0)
   gl.StencilTest(true)
-  -- if nOnline > 0 then
-  --   -- gl.ClearStencil(0)
-  --   gl.Clear(GL.STENCIL_BUFFER_BIT)
-  --   gl.ColorMask(false, false, false, false)
-  --   shieldShader:Activate()
-  --   gl.UniformInt(maskModeUniform, 1)
-  --   gl.StencilFunc(GL_ALWAYS, 1, 1)
-  --   gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-  --   shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
-
-  --   gl.ColorMask(true, true, true, true)
-  --   gl.UniformInt(maskModeUniform, 0)
-  --   gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-  --   -- gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-  --   shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
-  --   shieldShader:Deactivate()
-  -- end
-
-    -- if nOffline > 0 then
-      -- local start = nOnline > 0 and
-      -- gl.ClearStencil(0)
   gl.Clear(GL.STENCIL_BUFFER_BIT)
-  gl.ColorMask(false, false, false, false)
+
   shieldShader:Activate()
-  gl.UniformInt(maskModeUniform, 1)
-  gl.StencilFunc(GL_ALWAYS, 1, 1)
-  gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-  shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nCircleVertices)
+  shieldShader:SetUniform("gameFrame", Spring.GetGameFrame())
 
-  gl.ColorMask(true, true, true, true)
-  gl.UniformInt(maskModeUniform, 0)
-  gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-  -- gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-  shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nCircleVertices)
+  -- Draw online shields
+  if nOnline > 0 then
+    gl.ColorMask(false, false, false, false)
+    gl.UniformInt(maskModeUniform, 1)
+    gl.StencilFunc(GL_ALWAYS, 1, 1)
+    gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOnline)
+
+    gl.ColorMask(true, true, true, true)
+    gl.UniformInt(maskModeUniform, 0)
+    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOnline)
+  end
+
+  -- Draw offline shields
+  if nOffline > 0 then
+    gl.ColorMask(false, false, false, false)
+    gl.UniformInt(maskModeUniform, 1)
+    gl.StencilFunc(GL_ALWAYS, 1, 1)
+    gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOffline, nOnline)
+
+    gl.ColorMask(true, true, true, true)
+    gl.UniformInt(maskModeUniform, 0)
+    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOffline, nOnline)
+  end
+
   shieldShader:Deactivate()
-    -- end
-
   gl.StencilTest(false)
   gl.Texture(0, false)
 end
+
 
 local function DrawCheck()
   if active and DiffTimers(GetTimer(), drawCheckTimer, true) < drawCheckMs then
