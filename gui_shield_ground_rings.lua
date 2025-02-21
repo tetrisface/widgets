@@ -99,8 +99,7 @@ void main() {
 
   // Scale the unit circle by radius and add the center position (from posscale.xz)
   vec2 circlePos = position.xy * posscale.w + posscale.xz;
-  float height = heightAtWorldPos(circlePos);
-  vec4 worldPos = vec4(circlePos.x, height + 2.0, circlePos.y, 1.0);
+  vec4 worldPos = vec4(circlePos.x, heightAtWorldPos(circlePos), circlePos.y, 1.0);
   gl_Position = cameraViewProj * worldPos;
 
   float pulseAlpha = (params.x < 0.5) ? pulseAlpha : color.a;
@@ -124,7 +123,7 @@ out vec4 fragColor;
 
 void main() {
   float dist = length(vUnitPos);
-  float ringWidthFactor = 1 - (50/radius);
+  float ringWidthFactor = 1 - (54/radius);
 
   if (maskMode == 1) {
     // Mask pass: only output fragments in the outer band of the circle.
