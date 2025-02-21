@@ -34,8 +34,6 @@ local orange             = { 203 / 255, 75 / 255, 22 / 255, 22 / 255 }
 
 -- Static
 local nCircleVertices    = 64
-local updateShieldsMs    = 100
-local updateActiveMs     = 1
 
 -- State
 local t0                 = GetTimer()
@@ -50,6 +48,8 @@ local isActive           = false
 local shieldBuilders     = {}
 local nOnline            = 0
 local nOffline           = 0
+local updateShieldsMs    = 0
+local updateActiveMs     = 0
 
 -- GL4 objects
 local shieldRingVBO
@@ -241,7 +241,7 @@ local function sortShieldsOnlineDesc(a, b)
 end
 
 local function UpdateShieldData()
-  if DiffTimers(GetTimer(), shieldsUpdateTimer, true) < updateShieldsMs then
+  if not isActive or DiffTimers(GetTimer(), shieldsUpdateTimer, true) < updateShieldsMs then
     return
   end
   shieldsUpdateTimer = GetTimer()
@@ -283,7 +283,8 @@ local function UpdateShieldData()
 
   for _, teamID in ipairs(Spring.GetTeamList()) do
     local teamShields = GetTeamUnitsByDefs(teamID, defIds)
-    for _, unitID in ipairs(teamShields) do
+    for i = 1, #teamShields do
+      local unitID = teamShields[i]
       local x, y, z = GetUnitPosition(unitID, true)
       local _, shieldState = GetUnitShieldState(unitID)
       local health = select(5, GetUnitHealth(unitID))
@@ -322,6 +323,10 @@ local function UpdateShieldData()
   if shieldInstanceVBO and nShields > 0 then
     shieldInstanceVBO:Upload(vbo)
   end
+
+  updateShieldsMs = math.max(100, 100 + nShields * 2)
+  updateActiveMs = math.max(60, nShields / 10)
+
 end
 
 local function UpdateIsActive()
@@ -332,19 +337,12 @@ local function UpdateIsActive()
   drawCheckTimer = GetTimer()
   local _, command = Spring.GetActiveCommand()
 
-  if not command or command >= 0 then
-    isActive = false
-    return
-  end
-
-  if defIdRadius[-command] then
-    isActive = true
-  end
+  isActive = command and defIdRadius[-command] ~= nil
 end
 
 function widget:DrawWorld()
-  UpdateShieldData()
   UpdateIsActive()
+  UpdateShieldData()
   if not isActive or nShields == 0 or not shieldShader or not shieldVAO then
     return
   end
