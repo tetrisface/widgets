@@ -81,7 +81,7 @@ layout(location = 2) in vec4 color;         // color + alpha
 layout(location = 3) in vec4 params;        // parameters (online flag, etc.)
 
 uniform sampler2D heightmapTex;
-uniform float gameFrame;
+uniform float pulseAlpha;
 
 out DataVS {
   vec4 vertexColor;
@@ -104,7 +104,7 @@ void main() {
   vec4 worldPos = vec4(circlePos.x, height + 2.0, circlePos.y, 1.0);
   gl_Position = cameraViewProj * worldPos;
 
-  float pulseAlpha = (params.x < 0.5) ? (0.65 + sin(gameFrame * 0.2) * 0.25) : color.a;
+  float pulseAlpha = (params.x < 0.5) ? pulseAlpha : color.a;
   vertexColor = vec4(color.rgb, pulseAlpha);
 }
 ]]
@@ -181,7 +181,7 @@ local function initGL4()
       maskMode     = 0,
     },
     uniformFloat = {
-      gameFrame = 0,
+      pulseAlpha = 0,
     }
   }, "ShieldRingsShader")
 
@@ -192,6 +192,7 @@ local function initGL4()
   end
 
   maskModeUniform = gl.GetUniformLocation(shieldShader.shaderObj, "maskMode")
+  pulseAlphaUniform = gl.GetUniformLocation(shieldShader.shaderObj, "pulseAlpha")
 
   return true
 end
@@ -332,7 +333,7 @@ function widget:DrawWorld()
   gl.Clear(GL.STENCIL_BUFFER_BIT)
 
   shieldShader:Activate()
-  shieldShader:SetUniform("gameFrame", Spring.GetGameFrame())
+  gl.UniformFloat(pulseAlphaUniform, (Spring.GetGameFrame() % 30) / 30)
 
   -- Draw online shields
   if nOnline > 0 then
