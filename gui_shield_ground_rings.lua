@@ -52,11 +52,12 @@ local nOnline            = 0
 local nOffline           = 0
 
 -- GL4 objects
-local shieldRingVBO      = nil
-local shieldInstanceVBO  = nil
-local shieldVAO          = nil
-local shieldShader       = nil
-
+local shieldRingVBO
+local shieldInstanceVBO
+local shieldVAO
+local shieldShader
+local maskModeUniform
+local pulseAlphaUniform
 
 local circleInstanceVBOLayout = {
   {id = 1, name = 'posscale', size = 4}, -- position (x,y,z) + radius (w)
@@ -141,7 +142,6 @@ void main() {
 }
 ]]
 
-local maskModeUniform
 local function initGL4()
   shieldRingVBO = gl.GetVBO(GL.ARRAY_BUFFER, true)
   local vboData = {}
