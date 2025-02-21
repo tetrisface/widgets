@@ -150,7 +150,7 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
   --   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
   end
 
-  if def.canStockpile and not lraa[unitDefId] and def.isBuilding and unitID then
+  if def.canStockpile and not lraa[unitDefId] and def.isBuilding and unitID ~= nil and type(unitID) == 'number' then
     Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
     Spring.GiveOrderToUnit(unitId, CMD.STOCKPILE, {}, 0)
