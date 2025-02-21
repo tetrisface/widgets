@@ -19,7 +19,6 @@ local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitPosition = Spring.GetUnitPosition
 local GetUnitShieldState = Spring.GetUnitShieldState
-local GetGroundHeight = Spring.GetGroundHeight
 local UnitDefs = UnitDefs
 local mathCos = math.cos
 local mathSin = math.sin
