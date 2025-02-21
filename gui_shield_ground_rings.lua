@@ -22,46 +22,41 @@ local GetUnitShieldState = Spring.GetUnitShieldState
 local GetUnitPosition    = Spring.GetUnitPosition
 local UnitDefs           = UnitDefs
 
--- GL constants (we assume these are defined by Spring's GL module)
-local GL_KEEP             = 0x1E00
-local GL_REPLACE          = GL.REPLACE
-local GL_ALWAYS           = GL.ALWAYS
-local GL_EQUAL            = GL.EQUAL
-local GL_NOTEQUAL         = GL.NOTEQUAL
-local GL_INCR             = 0x1E02
-local GL_TRIANGLE_FAN     = GL.TRIANGLE_FAN
+local GL_KEEP            = 0x1E00
+local GL_REPLACE         = GL.REPLACE
+local GL_ALWAYS          = GL.ALWAYS
+local GL_NOTEQUAL        = GL.NOTEQUAL
+local GL_TRIANGLE_FAN    = GL.TRIANGLE_FAN
 
 -- Colors
-local yellow = {181/255, 137/255,  0/255, 0.35}
-local cyan   = { 42/255, 161/255, 152/255, 0.6}
-local orange = {203/255,  75/255, 22/255, 0.35}
+local cyan               = { 42 / 255, 161 / 255, 152 / 255, 152 / 255 }
+local orange             = { 203 / 255, 75 / 255, 22 / 255, 22 / 255 }
 
--- Statics
-local nCircleVertices = 64
-local shieldsUpdateMs = 100
-local drawCheckMs = 1
+-- Static
+local nCircleVertices    = 64
+local updateShieldsMs    = 100
+local updateActiveMs     = 1
 
 -- State
-local t0      = GetTimer()
-local drawCheckTimer      = GetTimer()
-local shieldsUpdateTimer  = GetTimer()
-local defIdRadius         = {}
-local defIds              = {}
-local nDefIds             = 0
-local shields             = {}
-local nShields            = 0
-local active              = false
-local shieldBuilders          = {}
+local t0                 = GetTimer()
+local drawCheckTimer     = GetTimer()
+local shieldsUpdateTimer = GetTimer()
+local defIdRadius        = {}
+local defIds             = {}
+local nDefIds            = 0
+local shields            = {}
+local nShields           = 0
+local isActive           = false
+local shieldBuilders     = {}
+local nOnline            = 0
+local nOffline           = 0
 
 -- GL4 objects
-local shieldRingVBO       = nil
-local shieldInstanceVBO   = nil
-local shieldVAO           = nil
-local shieldShader        = nil
+local shieldRingVBO      = nil
+local shieldInstanceVBO  = nil
+local shieldVAO          = nil
+local shieldShader       = nil
 
--- We split instance data into two groups: online (drawn first) and offline (drawn second).
-local nOnline  = 0
-local nOffline = 0
 
 local circleInstanceVBOLayout = {
   {id = 1, name = 'posscale', size = 4}, -- position (x,y,z) + radius (w)
@@ -72,7 +67,6 @@ local circleInstanceVBOLayout = {
 local luaShaderDir = "LuaUI/Include/"
 local LuaShader = VFS.Include(luaShaderDir.."LuaShader.lua")
 
--- Vertex Shader: Passes the unit circle coordinate (position.xy) to the fragment shader.
 local vsSrc = [[
 #version 420
 #line 10000
@@ -131,7 +125,6 @@ void main() {
   float dist = length(vUnitPos);
   float ringWidthFactor = 1 - (50/radius);
 
-
   if (maskMode == 1) {
     // Mask pass: only output fragments in the outer band of the circle.
     if(dist < ringWidthFactor ) {
@@ -150,7 +143,6 @@ void main() {
 
 local maskModeUniform
 local function initGL4()
-  -- Create circle VBO for unit circle vertices.
   shieldRingVBO = gl.GetVBO(GL.ARRAY_BUFFER, true)
   local vboData = {}
   for i = 0, nCircleVertices - 1 do
@@ -208,7 +200,7 @@ function widget:Initialize()
   nDefIds = 0
   shields = {}
   nShields = 0
-  active = false
+  isActive = false
   shieldBuilders = {}
 
   for unitDefId, unitDef in pairs(UnitDefs) do
@@ -245,14 +237,20 @@ function widget:Initialize()
 
   return initGL4()
 end
-local function updateShieldData()
-  if DiffTimers(GetTimer(), shieldsUpdateTimer, true) < shieldsUpdateMs then
+local function sortShieldsOnlineDesc(a, b)
+  return a.online and not b.online
+end
+
+local function UpdateShieldData()
+  if DiffTimers(GetTimer(), shieldsUpdateTimer, true) < updateShieldsMs then
     return
   end
   shieldsUpdateTimer = GetTimer()
 
   shields = {}
   nShields = 0
+  nOnline = 0
+  nOffline = 0
 
   local shieldBuilderCheckUnitIds = Spring.GetSelectedUnits() or {}
   local nShieldBuilderCheckUnitIds = #shieldBuilderCheckUnitIds
@@ -272,6 +270,7 @@ local function updateShieldData()
         if defIdRadius[-cmd.id] then
           isShieldBuilder = true
           nShields = nShields + 1
+          nOffline = nOffline + 1
           shields[nShields] = {
             pos    = {cmd.params[1], cmd.params[2], cmd.params[3]},
             online = false,
@@ -283,71 +282,71 @@ local function updateShieldData()
     shieldBuilders[shieldBuilderCheckUnitId] = isShieldBuilder and true or nil
   end
 
-  -- Get existing shields
   for _, teamID in ipairs(Spring.GetTeamList()) do
     local teamShields = GetTeamUnitsByDefs(teamID, defIds)
     for _, unitID in ipairs(teamShields) do
       local x, y, z = GetUnitPosition(unitID, true)
       local _, shieldState = GetUnitShieldState(unitID)
       local health = select(5, GetUnitHealth(unitID))
-
+      local isOnline = (shieldState > 400 and health == 1)
+      nOnline = isOnline and nOnline + 1 or nOnline
       nShields = nShields + 1
       shields[nShields] = {
         pos    = {x, y, z},
-        online = (shieldState > 400 and health == 1),
+        online = isOnline,
         radius = defIdRadius[GetUnitDefID(unitID)]
       }
     end
   end
 
-  -- Split instance data: online instances first, then offline.
-  local onlineInstances = {}
-  local offlineInstances = {}
+  table.sort(shields, sortShieldsOnlineDesc)
 
-  for _, shield in ipairs(shields) do
+  local vbo = {}
+  for i = 1, #shields do
+    local shield = shields[i]
     local color = shield.online and cyan or orange
-    local instanceEntry = {
-      shield.pos[1], shield.pos[2], shield.pos[3], shield.radius,
-      color[1], color[2], color[3], color[4],
-      shield.online and 1.0 or 0.0, 0.0, 0.0, 0.0,
-    }
-    if shield.online then
-      table.insert(onlineInstances, instanceEntry)
-    else
-      table.insert(offlineInstances, instanceEntry)
-    end
+    local vboOffset = (i - 1) * 12
+    vbo[vboOffset + 1] = shield.pos[1]
+    vbo[vboOffset + 2] = shield.pos[2]
+    vbo[vboOffset + 3] = shield.pos[3]
+    vbo[vboOffset + 4] = shield.radius
+    vbo[vboOffset + 5] = color[1]
+    vbo[vboOffset + 6] = color[2]
+    vbo[vboOffset + 7] = color[3]
+    vbo[vboOffset + 8] = color[4]
+    vbo[vboOffset + 9] = shield.online and 1.0 or 0.0
+    vbo[vboOffset + 10] = 0.0
+    vbo[vboOffset + 11] = 0.0
+    vbo[vboOffset + 12] = 0.0
   end
 
-  nOnline  = #onlineInstances
-  nOffline = #offlineInstances
+  if shieldInstanceVBO and nShields > 0 then
+    shieldInstanceVBO:Upload(vbo)
+  end
+end
 
-  if nOnline == 0 and nOffline == 0 then
+local function UpdateIsActive()
+  if isActive and DiffTimers(GetTimer(), drawCheckTimer, true) < updateActiveMs then
     return
   end
 
-  local combinedInstances = {}
-  for i = 1, nOnline do
-    for j = 1, #onlineInstances[i] do
-      combinedInstances[#combinedInstances + 1] = onlineInstances[i][j]
-    end
-  end
-  for i = 1, nOffline do
-    for j = 1, #offlineInstances[i] do
-      combinedInstances[#combinedInstances + 1] = offlineInstances[i][j]
-    end
+  drawCheckTimer = GetTimer()
+  local _, command = Spring.GetActiveCommand()
+
+  if not command or command >= 0 then
+    isActive = false
+    return
   end
 
-  if shieldInstanceVBO then
-    shieldInstanceVBO:Upload(combinedInstances)
+  if defIdRadius[-command] then
+    isActive = true
   end
 end
 
 function widget:DrawWorld()
-  if nShields == 0
-    or not shieldShader
-    or not shieldVAO
-    or (nOnline == 0 and nOffline == 0)
-    or not active then
+  UpdateShieldData()
+  UpdateIsActive()
+  if not isActive or nShields == 0 or not shieldShader or not shieldVAO then
     return
   end
 
@@ -392,28 +391,4 @@ function widget:DrawWorld()
   shieldShader:Deactivate()
   gl.StencilTest(false)
   gl.Texture(0, false)
-end
-
-
-local function DrawCheck()
-  if active and DiffTimers(GetTimer(), drawCheckTimer, true) < drawCheckMs then
-    return
-  end
-
-  drawCheckTimer = GetTimer()
-  local _, command = Spring.GetActiveCommand()
-
-  if not command or command >= 0 then
-    active = false
-    return
-  end
-
-  if defIdRadius[-command] then
-    active = true
-  end
-end
-
-function widget:Update()
-  updateShieldData()
-  DrawCheck()
 end
