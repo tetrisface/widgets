@@ -4,7 +4,7 @@ function widget:GetInfo()
     author = 'tetrisface',
     version = '',
     date = 'Apr, 2024',
-    name = 'Shield Ground Rings Old',
+    name = 'Shield Ground Rings 2D',
     license = 'GPLv2 or later',
     layer = -99990,
     enabled = true
