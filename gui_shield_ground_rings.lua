@@ -51,6 +51,7 @@ local nDefIds             = 0
 local shields             = {}
 local nShields            = 0
 local active              = false
+local shieldBuilders          = {}
 
 -- GL4 objects
 local shieldRingVBO       = nil
@@ -87,6 +88,7 @@ uniform float pulseAlpha;
 out DataVS {
   vec4 vertexColor;
   vec2 vUnitPos;
+  float radius;
 };
 
 //__ENGINEUNIFORMBUFFERDEFS__
@@ -98,6 +100,7 @@ float heightAtWorldPos(vec2 w) {
 
 void main() {
   vUnitPos = position.xy;
+  radius = posscale.w;
 
   // Scale the unit circle by radius and add the center position (from posscale.xz)
   vec2 circlePos = position.xy * posscale.w + posscale.xz;
@@ -117,6 +120,7 @@ local fsSrc = [[
 in DataVS {
   vec4 vertexColor;
   vec2 vUnitPos;
+  float radius;
 };
 
 uniform int maskMode; // 0 = normal ring; 1 = mask mode (outer band only)
@@ -125,13 +129,13 @@ out vec4 fragColor;
 
 void main() {
   float dist = length(vUnitPos);
-  float ringInner = 0.9; // adjust to control ring thickness
+  float ringWidthFactor = 1 - (50/radius);
 
 
   if (maskMode == 1) {
     // Mask pass: only output fragments in the outer band of the circle.
-    if(dist < ringInner ) {
-      fragColor = vec4(1.0); // value is arbitrary for stencil writes
+    if(dist < ringWidthFactor ) {
+      fragColor = vec4(1.0);
     } else {
       discard;
     }
@@ -139,7 +143,7 @@ void main() {
   }
 
   // Normal pass: draw only the outer edge.
-  float alphaFactor = step(ringInner, dist);
+  float alphaFactor = step(ringWidthFactor, dist);
   fragColor = vec4(vertexColor.rgb, vertexColor.a * alphaFactor);
 }
 ]]
@@ -165,12 +169,10 @@ local function initGL4()
   shieldInstanceVBO = gl.GetVBO(GL.ARRAY_BUFFER, true)
   shieldInstanceVBO:Define(1000, circleInstanceVBOLayout)
 
-  -- Create VAO and attach vertex and instance buffers.
   shieldVAO = gl.GetVAO()
   shieldVAO:AttachVertexBuffer(shieldRingVBO, 0)
   shieldVAO:AttachInstanceBuffer(shieldInstanceVBO)
 
-  -- Create shader.
   local engineUniformBufferDefs = LuaShader.GetEngineUniformBufferDefs()
   vsSrc = vsSrc:gsub("//__ENGINEUNIFORMBUFFERDEFS__", engineUniformBufferDefs)
 
@@ -207,8 +209,8 @@ function widget:Initialize()
   shields = {}
   nShields = 0
   active = false
+  shieldBuilders = {}
 
-  -- Identify shield units.
   for unitDefId, unitDef in pairs(UnitDefs) do
     if unitDef.isBuilding and (unitDef.hasShield or
        (unitDef.customparams and unitDef.customparams.shield_radius and unitDef.customparams.shield_radius > 0)) then
@@ -226,12 +228,23 @@ function widget:Initialize()
     end
   end
 
-  if not initGL4() then
-    return
+  local shieldBuilderDefIds = {}
+  for _, unitDef in pairs(UnitDefs) do
+    if unitDef.buildOptions then
+      for _, buildoptionDefID in pairs(unitDef.buildOptions) do
+        if defIdRadius[buildoptionDefID] then
+          table.insert(shieldBuilderDefIds, unitDef.id)
+        end
+      end
+    end
   end
-end
+  local possibleShieldBuilders = Spring.GetTeamUnitsByDefs(Spring.GetMyTeamID(), shieldBuilderDefIds)
+  for i = 1, #possibleShieldBuilders do
+    shieldBuilders[possibleShieldBuilders[i]] = true
+  end
 
--- updateShieldData splits instance data into online and offline groups.
+  return initGL4()
+end
 local function updateShieldData()
   if DiffTimers(GetTimer(), shieldsUpdateTimer, true) < shieldsUpdateMs then
     return
@@ -241,13 +254,23 @@ local function updateShieldData()
   shields = {}
   nShields = 0
 
-  -- Check shield-building commands from selected units.
-  local selectedUnits = Spring.GetSelectedUnits() or {}
-  for _, unitID in ipairs(selectedUnits) do
-    local cmds = GetUnitCommands(unitID, 1000)
+  local shieldBuilderCheckUnitIds = Spring.GetSelectedUnits() or {}
+  local nShieldBuilderCheckUnitIds = #shieldBuilderCheckUnitIds
+
+  for k, _ in pairs(shieldBuilders) do
+    nShieldBuilderCheckUnitIds = nShieldBuilderCheckUnitIds + 1
+    shieldBuilderCheckUnitIds[nShieldBuilderCheckUnitIds] = k
+  end
+
+  for n = 1, nShieldBuilderCheckUnitIds do
+    local shieldBuilderCheckUnitId = shieldBuilderCheckUnitIds[n]
+    local cmds = GetUnitCommands(shieldBuilderCheckUnitId, 1000)
+    local isShieldBuilder = false
     if cmds then
-      for _, cmd in ipairs(cmds) do
+      for i = 1, #cmds do
+        local cmd = cmds[i]
         if defIdRadius[-cmd.id] then
+          isShieldBuilder = true
           nShields = nShields + 1
           shields[nShields] = {
             pos    = {cmd.params[1], cmd.params[2], cmd.params[3]},
@@ -257,9 +280,10 @@ local function updateShieldData()
         end
       end
     end
+    shieldBuilders[shieldBuilderCheckUnitId] = isShieldBuilder and true or nil
   end
 
-  -- Check existing shield units.
+  -- Get existing shields
   for _, teamID in ipairs(Spring.GetTeamList()) do
     local teamShields = GetTeamUnitsByDefs(teamID, defIds)
     for _, unitID in ipairs(teamShields) do
@@ -280,13 +304,11 @@ local function updateShieldData()
   local onlineInstances = {}
   local offlineInstances = {}
 
-  for i, shield in ipairs(shields) do
+  for _, shield in ipairs(shields) do
+    local color = shield.online and cyan or orange
     local instanceEntry = {
       shield.pos[1], shield.pos[2], shield.pos[3], shield.radius,
-      (shield.online and cyan or orange)[1],
-      (shield.online and cyan or orange)[2],
-      (shield.online and cyan or orange)[3],
-      (shield.online and cyan or orange)[4],
+      color[1], color[2], color[3], color[4],
       shield.online and 1.0 or 0.0, 0.0, 0.0, 0.0,
     }
     if shield.online then
@@ -334,10 +356,10 @@ function widget:DrawWorld()
   gl.Clear(GL.STENCIL_BUFFER_BIT)
 
   shieldShader:Activate()
-    local pulseMs = Spring.DiffTimers(GetTimer(), t0, true) % 1000
+  local pulseMs = Spring.DiffTimers(GetTimer(), t0, true) % 1000
   gl.UniformFloat(pulseAlphaUniform, pulseMs < 500
-    and (0.1 + (0.35 - 0.1) * (pulseMs / 499))  -- up from 0.1 to 0.35
-    or (0.35 + (0.1 - 0.35) * ((pulseMs - 500) / 499)))  -- down from 0.35 to 0.1)
+    and (0.1 + (0.35 - 0.1) * (pulseMs / 499))
+    or (0.35 + (0.1 - 0.35) * ((pulseMs - 500) / 499)))
 
   -- Draw online shields
   if nOnline > 0 then
@@ -345,12 +367,12 @@ function widget:DrawWorld()
     gl.UniformInt(maskModeUniform, 1)
     gl.StencilFunc(GL_ALWAYS, 1, 1)
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
 
     gl.ColorMask(true, true, true, true)
     gl.UniformInt(maskModeUniform, 0)
     gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
   end
 
   -- Draw offline shields
@@ -359,12 +381,12 @@ function widget:DrawWorld()
     gl.UniformInt(maskModeUniform, 1)
     gl.StencilFunc(GL_ALWAYS, 1, 1)
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOffline, nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline, nOnline)
 
     gl.ColorMask(true, true, true, true)
     gl.UniformInt(maskModeUniform, 0)
     gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN,nCircleVertices, 0,  nOffline, nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline, nOnline)
   end
 
   shieldShader:Deactivate()
