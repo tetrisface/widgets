@@ -1,12 +1,12 @@
 function widget:GetInfo()
   return {
     desc = 'Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.',
-    author = 'tetrisface',
+    author  = 'tetrisface',
     version = '',
-    date = 'Apr, 2024',
-    name = 'Shield Ground Rings',
+    date    = 'Apr, 2024',
+    name    = 'Shield Ground Rings',
     license = 'GPLv2 or later',
-    layer = 999,
+    layer   = -99990,
     enabled = true,
     depends = {'gl4'},
   }
@@ -42,7 +42,7 @@ local shieldsUpdateMs = 100
 local drawCheckMs = 1
 
 -- State
-local t0                  = GetTimer()
+local t0      = GetTimer()
 local drawCheckTimer      = GetTimer()
 local shieldsUpdateTimer  = GetTimer()
 local defIdRadius         = {}
