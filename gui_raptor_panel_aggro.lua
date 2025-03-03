@@ -10,11 +10,10 @@ function widget:GetInfo()
 		date = "May 04, 2008",
 		license = "GNU GPL, v2 or later",
 		layer = -9,
-		enabled = true --  loaded by default?
+		enabled = true
 	}
 end
 
--- to be deleted pending PR #2572
 local WallDefNames = {
 	armdrag  = true,
 	armfort  = true,
@@ -23,17 +22,7 @@ local WallDefNames = {
 	scavdrag = true,
 	scavfort = true,
 }
--- Calculate an eco value based on energy and metal production
--- Echo("Built units eco value: " .. ecoValue)
-
--- Ends up building an object like:
--- {
---  0: [non-eco]
---	25: [t1 windmill, t1 solar, t1 mex],
---	75: [adv solar]
---	1000: [fusion]
---	3000: [adv fusion]
--- }
+local isRaptors = Spring.Utilities.Gametype.IsRaptors()
 local function EcoValueDef(unitDef)
 	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or WallDefNames[unitDef.name] then
 		return 0
@@ -81,16 +70,11 @@ local function EcoValueDef(unitDef)
 end
 
 local defIDsEcoValues = {}
-if io.open('LuaRules/gadgets/raptors/common.lua', "r") == nil then
-	for unitDefID, unitDef in pairs(UnitDefs) do
-		local ecoValue = EcoValueDef(unitDef) or 0
-		if ecoValue > 0 then
-			defIDsEcoValues[unitDefID] = ecoValue
-		end
+for unitDefID, unitDef in pairs(UnitDefs) do
+	local ecoValue = EcoValueDef(unitDef) or 0
+	if ecoValue > 0 then
+		defIDsEcoValues[unitDefID] = ecoValue
 	end
-else
-	-- keep this line, pending PR #2572
-	defIDsEcoValues = VFS.Include('LuaRules/gadgets/raptors/common.lua').defIDsEcoValues
 end
 
 local useWaveMsg                 = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg
@@ -140,7 +124,7 @@ local stageGrace                 = 0
 local stageMain                  = 1
 local stageQueen                 = 2
 
-local guiPanel --// a displayList
+local guiPanel
 local updatePanel
 local hasRaptorEvent             = false
 
