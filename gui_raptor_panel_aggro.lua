@@ -279,7 +279,7 @@ local function CutStringAtPixelWidth(text, width)
 end
 
 local function DrawPlayerAttractions(stage)
-	local row = stageMain == isRaptors and (stage and 3 or 2) or 1
+	local row = isRaptors and (stageMain == stage and 3 or 2) or 1
 	font:Print(I18N("ui.raptors.playerEcoAttractionLabel"):gsub("ui.raptors.playerEcoAttractionLabel", 'Player Eco Attractions:'), panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
