@@ -99,7 +99,7 @@ void main() {
 
   // Scale the unit circle by radius and add the center position (from posscale.xz)
   vec2 circlePos = position.xy * posscale.w + posscale.xz;
-  vec4 worldPos = vec4(circlePos.x, heightAtWorldPos(circlePos), circlePos.y, 1.0);
+  vec4 worldPos = vec4(circlePos.x, heightAtWorldPos(circlePos)+2.0, circlePos.y, 1.0);
   gl_Position = cameraViewProj * worldPos;
 
   float pulseAlpha = (params.x < 0.5) ? pulseAlpha : color.a;
@@ -388,4 +388,14 @@ function widget:DrawWorld()
   shieldShader:Deactivate()
   gl.StencilTest(false)
   gl.Texture(0, false)
+end
+
+function widget:Shutdown()
+  if shieldInstanceVBO and shieldInstanceVBO.VAO then
+    shieldInstanceVBO.VAO:Delete()
+  end
+
+  if shieldShader then
+    shieldShader:Finalize()
+  end
 end
