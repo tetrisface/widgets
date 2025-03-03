@@ -1,10 +1,10 @@
-if not (Spring.Utilities.Gametype.IsRaptors() and not Spring.Utilities.Gametype.IsScavengers()) then
+if not Spring.Utilities.Gametype.IsRaptors() and not Spring.Utilities.Gametype.IsScavengers() then
 	return false
 end
 
 function widget:GetInfo()
 	return {
-		name = "Raptor Stats Panel",
+		name = "Raptor Stats Panel With Eco Attraction",
 		desc = "Shows statistics and progress when fighting vs Raptors",
 		author = "quantum",
 		date = "May 04, 2008",
@@ -22,6 +22,7 @@ local WallDefNames = {
 	scavdrag = true,
 	scavfort = true,
 }
+
 local isRaptors = Spring.Utilities.Gametype.IsRaptors()
 local function EcoValueDef(unitDef)
 	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or WallDefNames[unitDef.name] then
@@ -77,7 +78,7 @@ for unitDefID, unitDef in pairs(UnitDefs) do
 	end
 end
 
-local useWaveMsg                 = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg
+local useWaveMsg                 = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
 
 local I18N                       = Spring.I18N
 
@@ -119,7 +120,8 @@ local currentlyResistantToNames  = {}
 local playerEcoAttractionsRaw    = {}
 local playerEcoAttractionsRender = {}
 local teamIDs                    = {}
-local raptorTeamID
+local raptorsTeamID
+local scavengersTeamID
 local stageGrace                 = 0
 local stageMain                  = 1
 local stageQueen                 = 2
@@ -462,18 +464,20 @@ function RaptorEvent(raptorEventArgs)
 	end
 end
 
-local function RegisterUnit(unitDefID, unitTeam)
-	playerEcoAttractionsRaw[unitTeam] = playerEcoAttractionsRaw[unitTeam] + (defIDsEcoValues[unitDefID] or 0)
-end
-
-local function DeregisterUnit(unitDefID, unitTeam)
-	playerEcoAttractionsRaw[unitTeam] = playerEcoAttractionsRaw[unitTeam] - (defIDsEcoValues[unitDefID] or 0)
-end
-
-function widget:UnitCreated(_, unitDefID, unitTeam)
-	if unitTeam ~= raptorTeamID then
-		RegisterUnit(unitDefID, unitTeam)
+local function RegisterUnit(unitDefID, unitTeamID)
+	if playerEcoAttractionsRaw[unitTeamID] then
+		playerEcoAttractionsRaw[unitTeamID] = playerEcoAttractionsRaw[unitTeamID] + (defIDsEcoValues[unitDefID] or 0)
 	end
+end
+
+local function DeregisterUnit(unitDefID, unitTeamID)
+	if playerEcoAttractionsRaw[unitTeamID] then
+		playerEcoAttractionsRaw[unitTeamID] = playerEcoAttractionsRaw[unitTeamID] - (defIDsEcoValues[unitDefID] or 0)
+	end
+end
+
+function widget:UnitCreated(_, unitDefID, unitTeamID)
+	RegisterUnit(unitDefID, unitTeamID)
 end
 
 function widget:UnitGiven(_, unitDefID, unitTeam, oldTeam)
@@ -482,9 +486,7 @@ function widget:UnitGiven(_, unitDefID, unitTeam, oldTeam)
 end
 
 function widget:UnitDestroyed(_, unitDefID, unitTeam)
-	if unitTeam ~= raptorTeamID then
-		DeregisterUnit(unitDefID, unitTeam)
-	end
+	DeregisterUnit(unitDefID, unitTeam)
 end
 
 function widget:Initialize()
@@ -511,17 +513,25 @@ function widget:Initialize()
 	updatePos(x, y)
 
 	teamIDs = Spring.GetTeamList()
-	for i = 1, #teamIDs do
+	for i = 1, #teamIDs - 1 do
 		local teamID = teamIDs[i]
 		local teamLuaAI = Spring.GetTeamLuaAI(teamID)
-		if (teamLuaAI and string.find(teamLuaAI, "Raptors")) then
-			raptorTeamID = teamID
+		if teamLuaAI then
+			if string.find(teamLuaAI, "Raptors") then
+				raptorsTeamID = teamID
+			elseif string.find(teamLuaAI, "Scavengers") then
+				scavengersTeamID = teamID
+			end
 		else
 			playerEcoAttractionsRaw[teamID] = 0
 		end
 	end
-	if not raptorTeamID then
-		raptorTeamID = Spring.GetGaiaTeamID()
+	if raptorsTeamID == nil then
+		raptorsTeamID = Spring.GetGaiaTeamID()
+	end
+
+	if scavengersTeamID == nil then
+		scavengersTeamID = Spring.GetGaiaTeamID()
 	end
 
 	local allUnits = Spring.GetAllUnits()
@@ -529,7 +539,7 @@ function widget:Initialize()
 		local unitID = allUnits[i]
 		local unitDefID = Spring.GetUnitDefID(unitID)
 		local unitTeamID = Spring.GetUnitTeam(unitID)
-		if unitTeamID ~= raptorTeamID then
+		if unitTeamID ~= raptorsTeamID then
 			RegisterUnit(unitDefID, unitTeamID)
 		end
 	end
