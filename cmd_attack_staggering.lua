@@ -3,7 +3,7 @@ if Spring.GetSpectatingState() or Spring.IsReplay() then
 end
 function widget:GetInfo()
   return {
-    name = 'CMD target time spread',
+    name = 'CMD Attack Staggering',
     desc = '',
     author = 'tetrisface',
     version = '',
