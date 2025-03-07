@@ -164,7 +164,7 @@ local function PlayerEcoAttractionsAggregation()
 		local teamID = teamIDs[i]
 		local playerName = PlayerName(teamID)
 
-		if playerName and not playerName:find("Raptors") then
+		if playerName and not (playerName:find("Raptors") or playerName:find("Scavengers")) then
 			local ecoAttractionValue = playerEcoAttractionsRaw[teamID] or 0
 			ecoAttractionValue = ecoAttractionValue > 0 and ecoAttractionValue or 0
 
@@ -494,6 +494,7 @@ function widget:UnitDestroyed(_, unitDefID, unitTeam)
 end
 
 function widget:Initialize()
+	Spring.SendCommands('disablewidget Raptor Stats Panel')
 	widget:ViewResize()
 
 	displayList = gl.CreateList(function()
@@ -517,14 +518,17 @@ function widget:Initialize()
 	updatePos(x, y)
 
 	teamIDs = Spring.GetTeamList()
-	for i = 1, #teamIDs - 1 do
-		local teamID = teamIDs[i]
+	local tempTeamIDs = table.copy(teamIDs)
+	for i = 1, #tempTeamIDs - 1 do
+		local teamID = tempTeamIDs[i]
 		local teamLuaAI = Spring.GetTeamLuaAI(teamID)
 		if teamLuaAI then
 			if string.find(teamLuaAI, "Raptors") then
 				raptorsTeamID = teamID
+				table.remove(teamIDs, i)
 			elseif string.find(teamLuaAI, "Scavengers") then
 				scavengersTeamID = teamID
+				table.remove(teamIDs, i)
 			end
 		else
 			playerEcoAttractionsRaw[teamID] = 0
