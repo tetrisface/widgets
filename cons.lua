@@ -166,9 +166,9 @@ local function EnergyMakeDef(_unitDef)
 end
 
 function widget:Initialize()
-  if Spring.GetSpectatingState() or Spring.IsReplay() then
-    widgetHandler:RemoveWidget()
-  end
+  -- if Spring.GetSpectatingState() or Spring.IsReplay() then
+  --   widgetHandler:RemoveWidget()
+  -- end
 
   myTeamId = Spring.GetMyTeamID()
   forwardedFromTargetIds = NewSetList()
@@ -463,7 +463,7 @@ local function getMetalMakersUpkeep()
   return totalUpKeep
 end
 
-local function UpdateResources(n)
+local function UpdateResourceNeeds(n)
   local metalCurrent, metalStorage, metalExpenseWanted, metalIncome, metalExpenseActual =
     GetTeamResources(myTeamId, 'metal')
   local energyCurrent, energyStorage, energyExpenseWanted, energyIncome, energyExpenseActual =
@@ -626,7 +626,7 @@ local function UpdateResources(n)
   -- mMMNeed = math.max(0, math.min(1, (positiveMMLevel and 1 or 0) * (energyIncome / energyExpenseActual) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
 end
 
-local function getMyResources(type)
+local function GetResourceStatus(type)
   local lvl, storage, pullExpWanted, inc, expActual, shareSlider, sent, recieved = GetTeamResources(myTeamId, type)
 
   if not inc then
@@ -658,7 +658,7 @@ local function getMyResources(type)
 end
 
 local function buildingWillStallType(type, consumption, secondsLeft, releasedExpenditures)
-  local currentChange, lvl, storage, _, alreadyInStall = getMyResources(type)
+  local currentChange, lvl, storage, _, alreadyInStall = GetResourceStatus(type)
 
   local changeWhenBuilding = currentChange - consumption + releasedExpenditures
 
@@ -788,6 +788,7 @@ local function SortMAndMM(a, b)
     (MetalMakingEfficiencyDef(a.def) > MetalMakingEfficiencyDef(b.def))
 end
 
+-- TODO Not Implemented
 local function BuildQueueSkipPriority(builderId)
   local commands = Spring.GetCommandQueue(builderId, 500)
 
@@ -808,6 +809,7 @@ local function BuildQueueSkipPriority(builderId)
     end
   end
 end
+
 local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, cmdQueueTagg)
   local targetDef = UnitDefs[GetUnitDefID(targetId)]
   local targetTotalBuildSpeed = assignedTargetBuildSpeed[targetId]
@@ -1396,7 +1398,7 @@ local function Builders(gameFrame)
     end
   end
 
-  UpdateResources(gameFrame)
+  UpdateResourceNeeds(gameFrame)
 
   selectedUnits = {}
   if not isUnitLogActive then
