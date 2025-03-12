@@ -166,9 +166,9 @@ local function EnergyMakeDef(_unitDef)
 end
 
 function widget:Initialize()
-  -- if Spring.GetSpectatingState() or Spring.IsReplay() then
-  --   widgetHandler:RemoveWidget()
-  -- end
+  if Spring.GetSpectatingState() or Spring.IsReplay() then
+    widgetHandler:RemoveWidget()
+  end
 
   myTeamId = Spring.GetMyTeamID()
   forwardedFromTargetIds = NewSetList()
@@ -905,35 +905,57 @@ local function getReclaimableFeatures(x, z, radius)
 end
 
 local function SortFactor(a, b)
-  local buildSpeed = a.def.buildSpeed > b.def.buildSpeed and 1 or 0
-  -- log('SortFactor', a.def.translatedHumanName, b.def.translatedHumanName)
-  -- log('SortFactor p', buildSpeed)
+  -- Convert boolean comparison to 1 or 0
+  local buildSpeedA = Interpolate(a.def.buildSpeed, 0, 1000, 0, 1)
+  local buildSpeedB = Interpolate(b.def.buildSpeed, 0, 1000, 0, 1)
+  -- Calculate energy efficiency ratios
   local energyMakeDefA = EnergyMakeDef(a.def) / a.def.cost
   local energyMakeDefB = EnergyMakeDef(b.def) / b.def.cost
-  local energyMakeDef =
-    energyMakeDefA <= 0 and energyMakeDefB <= 0 and 0 or
-    energyMakeDefA > 0 and energyMakeDefB > 0 and Interpolate(energyMakeDefA / energyMakeDefB, 0.2, 2, 0, 1) or
-    energyMakeDefA > 0 and 1 or
-    0
-  -- log('SortFactor e', energyMakeDef, energyMakeDefA, energyMakeDefB)
+  -- Determine energy factor
+  local energyMakeDef = 0
+  if energyMakeDefA > 0 and energyMakeDefB > 0 then
+    energyMakeDef = Interpolate(energyMakeDefA / energyMakeDefB, 0.2, 2, 0, 1)
+  elseif energyMakeDefA > 0 then
+    energyMakeDef = 1
+  end
+
+  -- Get M and MM sort factor
   local sortMAndMM = SortMAndMM(a, b) and 1 or 0
-  -- log('SortFactor m', sortMAndMM)
-  -- log('SortFactor comp', powerNeed * buildSpeed
-  --   + energyNeed * energyMakeDef
-  --   + mMMNeed * sortMAndMM, powerNeed * (1 - buildSpeed)
-  --   + energyNeed * (1 - energyMakeDef)
-  --   + mMMNeed * (1 - sortMAndMM))
-  local result =
-    powerNeed * buildSpeed + energyNeed * energyMakeDef + mMMNeed * sortMAndMM >
-    powerNeed * (1 - buildSpeed) + energyNeed * (1 - energyMakeDef) + mMMNeed * (1 - sortMAndMM)
-  return result
+  -- Calculate scores for each option
+  local scoreA = powerNeed * buildSpeedA + energyNeed * energyMakeDef + mMMNeed * sortMAndMM
+  local scoreB = powerNeed * buildSpeedB + energyNeed * (1 - energyMakeDef) + mMMNeed * (1 - sortMAndMM)
+
+  -- Log results if needed
+  -- log('sort2', a.def.name, b.def.name,
+  --   scoreA,
+  --   scoreB,
+  --   'b a',
+  --   buildSpeedA,
+  --   'b b',
+  --   buildSpeedB,
+  --   'e a',
+  --   energyMakeDefA,
+  --   'e b',
+  --   energyMakeDefB,
+  --   'm m',
+  --   sortMAndMM,
+  --   'p',
+  --   powerNeed,
+  --   'e',
+  --   energyNeed,
+  --   'm',
+  --   mMMNeed
+  -- )
+
+  -- Return true if A scores higher than B
+  return scoreA > scoreB
 end
 
 local function SortBuildEcoPrio(a, b)
   if a == nil or b == nil then
     return false
   end
-  -- log('sort defid', (a.defId == b.defId) and (a.build > b.build))
+  -- log('sort1', a.def.translatedHumanName, b.def.translatedHumanName, SortFactor(a, b))
   local result =
     ((a.defId == b.defId) and (a.build > b.build)) or SortFactor(a, b) or
     (not needPower and not needEnergy and not needMM and
@@ -1352,14 +1374,14 @@ local function BatchOrder(selectedUnits, gameFrame)
     if nAssignedBuilders > 0 then
       for targetId, _builders in pairs(targets) do
         if #_builders > 1 then
-          log(string.format('p %0i e %i m %i', powerNeed * 100, energyNeed * 100, mMMNeed * 100))
-          log(
-            needName ..
-              string.format(' batch %.2f builders %s %s target ', needValue, #_builders, table.tostring(_builders)) ..
-                targetId,
-            UnitDefs[GetUnitDefID(targetId)].translatedHumanName,
-            gameFrame
-          )
+          -- log(string.format('p %0i e %i m %i', powerNeed * 100, energyNeed * 100, mMMNeed * 100))
+          -- log(
+          --   needName ..
+          --     string.format(' batch %.2f builders %s %s target ', needValue, #_builders, table.tostring(_builders)) ..
+          --       targetId,
+          --   UnitDefs[GetUnitDefID(targetId)].translatedHumanName,
+          --   gameFrame
+          -- )
 
           Spring.GiveOrderToUnitArray(_builders, CMD.INSERT, {0, CMD.REPAIR, CMD.OPT_CTRL, targetId}, {'alt'})
         end

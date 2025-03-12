@@ -131,6 +131,10 @@ local updatePanel
 local hasRaptorEvent             = false
 
 local modOptions                 = Spring.GetModOptions()
+local multipleBosses             = modOptions.raptor_queen_count and modOptions.raptor_queen_count > 1 or false
+
+local healthLabelID              = 'ui.raptors.queenHealth' .. (multipleBosses and 's' or '')
+local resistanceLabelID          = 'ui.raptors.queen' .. (multipleBosses and 's' or '') .. 'ResistantToList'
 
 local rules                      = {
 	"raptorDifficulty",
@@ -327,13 +331,13 @@ local function CreatePanelDisplayList()
 				currentlyResistantTo = {}
 			end
 		elseif stage == stageQueen then
-			font:Print(I18N('ui.raptors.queenHealth', { health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
+			font:Print(I18N(healthLabelID, { health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
 			local healthText = tostring(gameInfo.raptorQueenHealth)
 			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize)
 
 			for i = 1, #currentlyResistantToNames do
 				if i == 1 then
-					font:Print(I18N('ui.raptors.queenResistantToList'), panelMarginX, PanelRow(11), panelFontSize)
+					font:Print(I18N(resistanceLabelID), panelMarginX, PanelRow(11), panelFontSize)
 				end
 				font:Print(currentlyResistantToNames[i], panelMarginX + 20, PanelRow(11 + i), panelFontSize)
 			end
