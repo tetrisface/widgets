@@ -1,7 +1,7 @@
 function widget:GetInfo()
   return {
     desc = 'Raptor Nuke Warning',
-    author = 'tetrisface',
+    author = 'TetrisCo',
     version = '',
     date = 'feb, 2024',
     name = 'Raptor Nuke Warning',
@@ -10,6 +10,9 @@ function widget:GetInfo()
     enabled = true
   }
 end
+
+-- GitHub https://gist.github.com/tetrisface/68a96fd102a642d12812411035fdc860
+-- Discord https://discord.com/channels/549281623154229250/1206703169585811456
 
 local vsx, vsy = Spring.GetViewGeometry()
 local showNukeWarning = false
@@ -66,10 +69,11 @@ function widget:GameFrame(n)
     if n % 100 == 0 then
       local myTeamId = Spring.GetMyTeamID()
       hasAnti =
-        Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0 or Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0 or
-        Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0 or
-        Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0 or
-        (legabmId and Spring.GetTeamUnitDefCount(myTeamId, legabmId) > 0)
+          Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0 or
+          Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0 or
+          Spring.GetTeamUnitDefCount(myTeamId, corfmdId) > 0 or
+          Spring.GetTeamUnitDefCount(myTeamId, cormabmId) > 0 or
+          (legabmId and Spring.GetTeamUnitDefCount(myTeamId, legabmId) > 0)
     end
     if n % 25 == 0 then
       local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')

@@ -6,7 +6,7 @@ function widget:GetInfo()
 	return {
 		name = "Raptor Stats Panel With Eco Attraction",
 		desc = "Shows statistics and progress when fighting vs Raptors",
-		author = "quantum",
+		author = "quantum, TetrisCo",
 		date = "May 04, 2008",
 		license = "GNU GPL, v2 or later",
 		layer = -9,
@@ -602,7 +602,7 @@ end
 
 function widget:MousePress(x, y, button)
 	if x > x1 and x < x1 + (w * widgetScale) and
-		y > y1 and y < y1 + (h * widgetScale)
+			y > y1 and y < y1 + (h * widgetScale)
 	then
 		moving = true
 	end
