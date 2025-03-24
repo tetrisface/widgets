@@ -97,7 +97,7 @@ local selectedUnits = {}
 -- local mapPosUnitCache = LRUCacheTable:new(100)
 
 -- WG["ObjectSpotlight"].addSpotlight = function() end
--- log = function() end
+log = function() end
 
 local function IsUnitSelectedLog(unitId)
   if isUnitLogActive then

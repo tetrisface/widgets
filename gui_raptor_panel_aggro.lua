@@ -279,7 +279,7 @@ end
 
 local function DrawPlayerAttractions(stage)
 	local row = isRaptors and (stageMain == stage and 3 or 2) or 1
-	font:Print(I18N("ui.raptors.playerEcoAttractionLabel"):gsub("ui.raptors.playerEcoAttractionLabel", 'Player Eco Attractions:'), panelMarginX, PanelRow(row), panelFontSize)
+	font:Print('Player Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
 		font:SetTextColor(playerEcoAttraction.color.red, playerEcoAttraction.color.green, playerEcoAttraction.color.blue, playerEcoAttraction.color.alpha)
@@ -507,12 +507,7 @@ function widget:Initialize()
 	UpdateRules()
 	viewSizeX, viewSizeY = gl.GetViewSizes()
 	local x = math.abs(math.floor(viewSizeX - 320))
-	local y = math.abs(math.floor(viewSizeY - 300))
-
-	-- reposition if scavengers panel is shown as well
-	if Spring.Utilities.Gametype.IsScavengers() then
-		x = x - 315
-	end
+	local y = math.abs(math.floor(viewSizeY - 300)) - (Spring.Utilities.Gametype.IsScavengers() and 257)
 
 	updatePos(x, y)
 
