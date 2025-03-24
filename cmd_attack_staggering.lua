@@ -14,7 +14,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 -- dont wait if has queued stuff and leaking
@@ -46,7 +46,7 @@ function widget:KeyPress(key, mods, isRepeat)
         local weaponDef = WeaponDefs[weapons[i].weaponDef]
         -- local weaponReloadTime = weaponDef.stockpileTime * (weaponDef.reload == 2 and 1 or 10)
         local weaponReloadTime =
-          isStockpiling and (weaponDef.stockpileTime + (weaponDef.weaponTimer or 0)) / 30 or weaponDef.reloadTime
+            isStockpiling and (weaponDef.stockpileTime + (weaponDef.weaponTimer or 0)) / 30 or weaponDef.reloadTime
         if weaponReloadTime > maxReloadTime then
           maxReloadTime = weaponReloadTime
           maxReloadWeaponNumber = i
@@ -61,7 +61,7 @@ function widget:KeyPress(key, mods, isRepeat)
     for i = 1, nUnits do
       local unitId = units[i]
 
-      Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
+      Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
 
       local reloadTimeLeft = maxReloadTime
       if isStockpiling then
@@ -100,7 +100,7 @@ function widget:KeyPress(key, mods, isRepeat)
         local cmdQueue = Spring.GetUnitCommands(reloadWaitUnit.unitId, 1)
         local cmd = cmdQueue and cmdQueue[1]
         if cmd then
-          Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REMOVE, {cmd.tag}, {'ctrl'})
+          Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.REMOVE, { cmd.tag }, { 'ctrl' })
         end
         reloadWaitUnit.attackAtTime = reloadWaitUnit.attackAtTime + maxWait
         reloadWaitUnit.attackAtPos = pos
@@ -128,7 +128,7 @@ function widget:GameFrame(n)
     else
       local stockpile, queued = Spring.GetUnitStockpile(reloadWaitUnit.unitId)
       if stockpile and queued and stockpile > 0 and queued > 0 then
-        Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
+        Spring.GiveOrderToUnit(reloadWaitUnit.unitId, CMD.STOCKPILE, {}, { 'ctrl', 'shift', 'right' })
       end
     end
   end

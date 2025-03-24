@@ -13,7 +13,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local mapLineColor             = { 181 / 255, 137 / 255, 0 / 255 } -- yellow

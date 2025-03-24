@@ -10,7 +10,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local decrease = KEYSYMS.A
@@ -21,6 +21,7 @@ function widget:Initialize()
     widgetHandler:RemoveWidget()
   end
 end
+
 local n = 0
 function widget:KeyPress(key, mods, isRepeat)
   -- n = n + 1
@@ -35,13 +36,12 @@ function widget:KeyPress(key, mods, isRepeat)
 
     local unitDef = UnitDefs[-buildingDefId]
 
-    local size = math.min(unitDef.xsize, unitDef.zsize)/2
+    local size = math.min(unitDef.xsize, unitDef.zsize) / 2
 
-    local spacing = Spring.GetBuildSpacing ()
+    local spacing = Spring.GetBuildSpacing()
     local change = key == decrease and -1 or 1
-    spacing = spacing + change*size
+    spacing = spacing + change * size
     spacing = math.floor(spacing / size + 0.5) * size
     Spring.SetBuildSpacing(spacing)
-
   end
 end

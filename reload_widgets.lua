@@ -11,7 +11,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 local Set = VFS.Include('common/SetList.lua').NewSetListNoTable
 local testSet = Set()

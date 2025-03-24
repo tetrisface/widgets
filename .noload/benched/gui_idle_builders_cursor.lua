@@ -23,7 +23,7 @@ end
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
 VFS.Include('luaui/Headers/keysym.h.lua')
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 
 local activationScreenPos  = {}
 local builders             = {}

@@ -10,7 +10,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local myTeamId = Spring.GetMyTeamID()
@@ -38,8 +38,8 @@ local immobileBuilderDefIds = {
   UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil
 }
 
-local selectPrios = {'ack', 'aca', 'acv', 'ca', 'ck', 'cv'}
-local factionPrios = {'arm', 'cor', 'leg'}
+local selectPrios = { 'ack', 'aca', 'acv', 'ca', 'ck', 'cv' }
+local factionPrios = { 'arm', 'cor', 'leg' }
 
 local immobileBuilderDefs = {}
 for _, immobileBuilderDefId in ipairs(immobileBuilderDefIds) do
@@ -83,9 +83,9 @@ local function removeFirstCommand(unit_id)
   local cmd_queue = Spring.GetUnitCommands(unit_id, 4)
   if #cmd_queue > 1 and cmd_queue[2]['id'] == 70 then
     -- remove real command before empty one
-    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[2].tag}, {nil})
+    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[2].tag }, { nil })
   end
-  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[1].tag}, {nil})
+  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[1].tag }, { nil })
 end
 
 local function removeLastCommand(unit_id)
@@ -95,10 +95,10 @@ local function removeLastCommand(unit_id)
   -- but not by the "space/add to start of cmdqueue" widget
   if remove_cmd['id'] == 0 then
     -- remove empty command
-    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue - 1].tag}, {nil})
+    Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue - 1].tag }, { nil })
   end
   -- remove the last command
-  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue].tag}, {nil})
+  Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue].tag }, { nil })
 end
 
 -- function updateGeoDefs()
@@ -165,7 +165,7 @@ local function reverseQueue(unit_id)
   --  end
 
   local queue = Spring.GetCommandQueue(unit_id, 10000)
-  Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
+  Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { 'alt' })
   --  local build_queue = Spring.GetRealBuildQueue(unit_id)
 
   -- log(table.tostring(queue))
@@ -220,7 +220,7 @@ local function KeyUnits(key)
       local unitName = (j == 0 and key or factionPrios[j]) .. selectPrios[i]
       if UnitDefNames[unitName] then
         -- log('for', myTeamId, table.tostring({UnitDefNames[unitName].id}))
-        builders = Spring.GetTeamUnitsByDefs(myTeamId, {UnitDefNames[unitName].id})
+        builders = Spring.GetTeamUnitsByDefs(myTeamId, { UnitDefNames[unitName].id })
         -- log('for', j, i, factionPrios[j], key .. selectPrios[i], #builders)
         if builders and #builders > 0 then
           break
@@ -288,10 +288,10 @@ local function SortbuildSpeedDistance(a, b)
 
   -- Sort by proximity to the selected position
   local aDistanceToSelected =
-    (a.x - selectedPos.x) * (a.x - selectedPos.x) + (a.z - selectedPos.z) * (a.z - selectedPos.z)
+      (a.x - selectedPos.x) * (a.x - selectedPos.x) + (a.z - selectedPos.z) * (a.z - selectedPos.z)
 
   local bDistanceToSelected =
-    (b.x - selectedPos.x) * (b.x - selectedPos.x) + (b.z - selectedPos.z) * (b.z - selectedPos.z)
+      (b.x - selectedPos.x) * (b.x - selectedPos.x) + (b.z - selectedPos.z) * (b.z - selectedPos.z)
   return aDistanceToSelected < bDistanceToSelected
 end
 
@@ -354,7 +354,7 @@ local function snake_sort_with_lookahead(commands, _lookahead_steps)
     local highest_buildSpeed = -math.huge
 
     -- Evaluate both horizontal and vertical paths
-    for _, direction in ipairs({'horizontal', 'vertical'}) do
+    for _, direction in ipairs({ 'horizontal', 'vertical' }) do
       local total_buildSpeed, path_commands = evaluate_path(current_building, commands, direction, _lookahead_steps)
 
       -- Choose the direction with the highest total buildSpeed in the lookahead window
@@ -373,7 +373,7 @@ local function snake_sort_with_lookahead(commands, _lookahead_steps)
         local dist = distance(current_building, building)
         if dist < closest_distance then
           closest_distance = dist
-          best_path_buildings = {building}
+          best_path_buildings = { building }
         end
       end
     end
@@ -416,7 +416,7 @@ local function calculate_centroid(cluster)
       sum_z = sum_z + point.z
     end
   end
-  return {x = sum_x / #cluster, z = sum_z / #cluster}
+  return { x = sum_x / #cluster, z = sum_z / #cluster }
 end
 
 -- K-means clustering algorithm
@@ -484,50 +484,52 @@ local function calculateDistance(x1, z1, x2, z2)
 end
 
 function widget:KeyPress(key, mods, isRepeat)
-  if key == KEYSYMS.T and mods['ctrl'] and mods['alt'] and mods['shift'] then
-    -- Spring.SendCommands('cheat 1')
-    -- Spring.SendCommands('godmode 1')
-    -- Spring.SendCommands('globallos 1')
-    -- Spring.SendCommands('give 1 corcat')
-    -- Spring.SendCommands('give 1 cordemon')
-    -- Spring.SendCommands('give 1 corjugg')
-    -- Spring.SendCommands('give 1 corkarg')
-    -- Spring.SendCommands('give 1 corkorg')
-    -- Spring.SendCommands('give 1 corshiva')
-    -- Spring.SendCommands('give 1 corsok')
-    -- Spring.SendCommands('give 1 armbanth')
-    -- Spring.SendCommands('give 1 armlun')
-    -- Spring.SendCommands('give 1 armmar')
-    -- Spring.SendCommands('give 1 armprowl')
-    -- Spring.SendCommands('give 1 armraz')
-    -- Spring.SendCommands('give 1 armthor')
-    -- Spring.SendCommands('give 1 armvang')
-    -- Spring.SendCommands('give 1 leegmech')
-    -- Spring.SendCommands('give 1 legeheatraymech')
-    -- Spring.SendCommands('give 1 legerailtank')
-    -- Spring.SendCommands('give 1 legeshotgunmech')
-    -- Spring.SendCommands('give 1 legjav')
-    -- Spring.SendCommands('give 1 legkeres')
-    -- Spring.SendCommands('give 1 armcomlvl10')
-    Spring.SendCommands('give armaca')
-    Spring.SendCommands('give coraca')
-    Spring.SendCommands('give legaca')
-    Spring.SendCommands('give armack')
-    Spring.SendCommands('give corack')
-    Spring.SendCommands('give legack')
-    Spring.SendCommands('give armacv')
-    Spring.SendCommands('give coracv')
-    Spring.SendCommands('give legacv')
+  if key == KEYSYMS.W and mods['ctrl'] and mods['alt'] and mods['shift'] then
+    --  --[[
+    Spring.SendCommands('give 1 armbanth')
+    Spring.SendCommands('give 1 armcomlvl10')
+    Spring.SendCommands('give 1 armlun')
+    Spring.SendCommands('give 1 armmar')
+    Spring.SendCommands('give 1 armprowl')
+    Spring.SendCommands('give 1 armraz')
+    Spring.SendCommands('give 1 armthor')
+    Spring.SendCommands('give 1 armvang')
+    Spring.SendCommands('give 1 corcat')
+    Spring.SendCommands('give 1 cordemon')
+    Spring.SendCommands('give 1 corjugg')
+    Spring.SendCommands('give 1 corkarg')
+    Spring.SendCommands('give 1 corkorg')
+    Spring.SendCommands('give 1 corshiva')
+    Spring.SendCommands('give 1 corsok')
+    Spring.SendCommands('give 1 leegmech')
+    Spring.SendCommands('give 1 legeheatraymech')
+    Spring.SendCommands('give 1 legerailtank')
+    Spring.SendCommands('give 1 legeshotgunmech')
+    Spring.SendCommands('give 1 legjav')
+    Spring.SendCommands('give 1 legkeres')
+    -- ]]
 
-    Spring.SendCommands('give armaca_scav')
-    Spring.SendCommands('give coraca_scav')
-    Spring.SendCommands('give legaca_scav')
-    Spring.SendCommands('give armack_scav')
-    Spring.SendCommands('give corack_scav')
-    Spring.SendCommands('give legack_scav')
-    Spring.SendCommands('give armacv_scav')
-    Spring.SendCommands('give coracv_scav')
-    Spring.SendCommands('give legacv_scav')
+    -- Spring.SendCommands('give armaca')
+    -- Spring.SendCommands('give coraca')
+    -- Spring.SendCommands('give legaca')
+    -- Spring.SendCommands('give armack')
+    -- Spring.SendCommands('give corack')
+    -- Spring.SendCommands('give legack')
+    -- Spring.SendCommands('give armacv')
+    -- Spring.SendCommands('give coracv')
+    -- Spring.SendCommands('give legacv')
+
+    -- Spring.SendCommands('give armaca_scav')
+    -- Spring.SendCommands('give coraca_scav')
+    -- Spring.SendCommands('give legaca_scav')
+    -- Spring.SendCommands('give armack_scav')
+    -- Spring.SendCommands('give corack_scav')
+    -- Spring.SendCommands('give legack_scav')
+    -- Spring.SendCommands('give armacv_scav')
+    -- Spring.SendCommands('give coracv_scav')
+    -- Spring.SendCommands('give legacv_scav')
+    --
+    -- Spring.SendCommands('give corafus')
 
     return
   end
@@ -550,9 +552,9 @@ function widget:KeyPress(key, mods, isRepeat)
 
   local foundCommandQueue = false
   if
-    (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] and
+      (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] and not mods['shift'] and
       not mods['ctrl']
-   then
+  then
     -- elseif selectSplitKeys[key] and mods['alt'] and not mods['shift'] and mods['ctrl'] then
     --   local selected_units = Spring.GetSelectedUnits()
     --   if #selected_units ~= #partitionIds then
@@ -573,12 +575,12 @@ function widget:KeyPress(key, mods, isRepeat)
             removeFirstCommand(unit_id)
           elseif key == KEYSYMS.D then
             removeLastCommand(unit_id)
-          -- elseif key == KEYSYMS.A and #cmd_queue > 1 then
-          --   reverseQueue(unit_id)
+            -- elseif key == KEYSYMS.A and #cmd_queue > 1 then
+            --   reverseQueue(unit_id)
           end
           -- does not seem to stop when removing to an empty queue, therefore:
           if #cmd_queue == 2 then
-            Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
+            Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { 'alt' })
           end
         end
       end
@@ -604,7 +606,7 @@ function widget:KeyPress(key, mods, isRepeat)
         for i = 1, #builderIds do
           local unit_id = builderIds[i]
           local x, _, z = Spring.GetUnitPosition(unit_id)
-          builders[i] = {id = unit_id, x = x, z = z}
+          builders[i] = { id = unit_id, x = x, z = z }
         end
         -- sort by proximity to mouse
         local mouseX, mouseY = Spring.GetMouseState()
@@ -633,10 +635,10 @@ function widget:KeyPress(key, mods, isRepeat)
         local command = commands[j]
         if command.id < 1 then
           local commandString =
-            tostring(commands[j].id) ..
-            ' ' ..
+              tostring(commands[j].id) ..
+              ' ' ..
               tostring(commands[j].params[1]) ..
-                ' ' .. tostring(commands[j].params[2]) .. ' ' .. tostring(commands[j].params[3])
+              ' ' .. tostring(commands[j].params[2]) .. ' ' .. tostring(commands[j].params[3])
           if mergedCommands[commandString] == nil then
             mergedCommands[commandString] = command
           end
@@ -653,7 +655,7 @@ function widget:KeyPress(key, mods, isRepeat)
       table.insert(xPositions, x)
       table.insert(zPositions, z)
     end
-    selectedPos = {x = median(xPositions), z = median(zPositions)}
+    selectedPos = { x = median(xPositions), z = median(zPositions) }
 
     local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds)
 
@@ -689,9 +691,9 @@ function widget:KeyPress(key, mods, isRepeat)
       if command.params[1] and command.params[3] then
         for j = 1, #allImmobileBuilders do
           if
-            Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]) <
+              Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]) <
               allImmobileBuilders[j].buildDistance
-           then
+          then
             local buildSpeed = unitIdBuildSpeeds:get(allImmobileBuilders[j].id)
             if buildSpeed == nil then
               buildSpeed = UnitDefs[Spring.GetUnitDefID(allImmobileBuilders[j].id)].buildSpeed
@@ -722,7 +724,7 @@ function widget:KeyPress(key, mods, isRepeat)
       for i = 1, #selectedUnitIds do
         local unitId = selectedUnitIds[i]
         local x, _, z = Spring.GetUnitPosition(unitId)
-        table.insert(builders, {id = unitId, x = x, z = z, buildSpeed = 1})
+        table.insert(builders, { id = unitId, x = x, z = z, buildSpeed = 1 })
       end
 
       local clusters = kmeans(commands, #builders, 100)
@@ -751,7 +753,7 @@ function widget:KeyPress(key, mods, isRepeat)
 
       -- Step 2: Assign builders to the closest cluster based on the distance to the first command in each cluster
       local builderAssignments = {} -- To store which cluster each builder is assigned to
-      local assignedClusters = {} -- To mark clusters that are already assigned
+      local assignedClusters = {}   -- To mark clusters that are already assigned
 
       for i, builder in ipairs(builders) do
         local minDistance = math.huge
@@ -766,7 +768,7 @@ function widget:KeyPress(key, mods, isRepeat)
             -- log('firstCommand',firstCommand[2][1], firstCommand[2][2])
             if firstCommand ~= nil then
               local builderBuildingDistance =
-                calculateDistance(builder.x, builder.z, firstCommand[2][1], firstCommand[2][2])
+                  calculateDistance(builder.x, builder.z, firstCommand[2][1], firstCommand[2][2])
 
               if builderBuildingDistance < minDistance then
                 minDistance = builderBuildingDistance
@@ -802,19 +804,19 @@ function widget:KeyPress(key, mods, isRepeat)
         Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
       end
 
-    -- for i, cluster in ipairs(clusters) do
-    --   table.sort(cluster, SortbuildSpeedDistance)
+      -- for i, cluster in ipairs(clusters) do
+      --   table.sort(cluster, SortbuildSpeedDistance)
 
-    --   local clusterCommands = snake_sort_with_lookahead(cluster, lookahead_steps)
-    --   Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
-    --   Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
-    --   -- local builderId = builders[i].id
+      --   local clusterCommands = snake_sort_with_lookahead(cluster, lookahead_steps)
+      --   Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
+      --   Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
+      --   -- local builderId = builders[i].id
 
-    --   -- Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
-    --   -- Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
-    --   -- local nClusterCommands = #clusterCommands
-    --   -- splitBuilderWatch[builderId] = {commands=commands, lastCommand=clusterCommands[nClusterCommands], nClusterCommands=nClusterCommands}
-    -- end
+      --   -- Spring.GiveOrderToUnit(builderId, CMD.STOP, {}, {})
+      --   -- Spring.GiveOrderArrayToUnit(builderId, clusterCommands)
+      --   -- local nClusterCommands = #clusterCommands
+      --   -- splitBuilderWatch[builderId] = {commands=commands, lastCommand=clusterCommands[nClusterCommands], nClusterCommands=nClusterCommands}
+      -- end
     end
   end
 end

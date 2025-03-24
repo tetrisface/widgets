@@ -11,7 +11,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 
 local GetUnitLastAttacker = Spring.GetUnitLastAttacker
 local WorldToScreenCoords = Spring.WorldToScreenCoords

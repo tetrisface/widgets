@@ -1,18 +1,18 @@
 function widget:GetInfo()
-    return {
-        name      = "Dont Stand in Fire",
-        desc      = "Shows projectile ground splash so that you can avoid standing in the fire",
-        author    = "lov",
-        date      = "July 2023",
-        version   = "1.1",
-        license   = "GNU GPL, v2 or later",
-        layer     = 9999,
-        enabled   = false,
-        handler   = true,
-    }
+  return {
+    name    = "Dont Stand in Fire",
+    desc    = "Shows projectile ground splash so that you can avoid standing in the fire",
+    author  = "lov",
+    date    = "July 2023",
+    version = "1.1",
+    license = "GNU GPL, v2 or later",
+    layer   = 9999,
+    enabled = false,
+    handler = true,
+  }
 end
 
-VFS.Include('luaui/Widgets/misc/helpers.lua')
+VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 
 local projectiles = {}
 local drawListIndex = 1
@@ -101,13 +101,13 @@ function widget:Initialize()
   -- weaponFunc[WeaponDefNames['cortrem_tremor_focus_fire'].id] = findArtilleryGroundIntersection
 end
 
-local function drawSplash(x,y,z, srange)
+local function drawSplash(x, y, z, srange)
   glPushMatrix()
 
-  local cColor = {1, 255, 1, 0.5}
+  local cColor = { 1, 255, 1, 0.5 }
   glColor(cColor[1], cColor[2], cColor[3], alpha * 2)
   glLineWidth(3)
-  glDrawGroundCircle(x, y+16, z, srange*1.1, 32)
+  glDrawGroundCircle(x, y + 16, z, srange * 1.1, 32)
 
   glPopMatrix()
 end
@@ -117,20 +117,20 @@ end
 --end
 
 local function findArtilleryGroundIntersection(p)
-  local x,y,z = Spring_GetProjectilePosition(p)
-  local vx,vy,vz = Spring_GetProjectileVelocity(p)
+  local x, y, z = Spring_GetProjectilePosition(p)
+  local vx, vy, vz = Spring_GetProjectileVelocity(p)
   local grav = Spring_GetProjectileGravity(p)
   local step = .6
   local maxSteps = 10000
-  for i=1, maxSteps do
-    x = x+vx*step
-    z = z+vz*step
-    vy = vy+(grav*step)
-    y = y+vy*step
-    local height = Spring_GetGroundHeight(x,z)
+  for i = 1, maxSteps do
+    x = x + vx * step
+    z = z + vz * step
+    vy = vy + (grav * step)
+    y = y + vy * step
+    local height = Spring_GetGroundHeight(x, z)
     -- log('height',height, y, 'x ' .. x .. ' y ' .. y .. ' z ' .. z)
     if height > y then
-      return {x=x,y=height,z=z}
+      return { x = x, y = height, z = z }
     end
   end
   return nil
@@ -140,13 +140,13 @@ local function findRocketGroundIntersection(p)
   local targtype, targ = Spring_GetProjectileTarget(p)
   if targtype == string.byte('g') then
     -- ground
-    return {x=targ[1],y=targ[2],z=targ[3]}
+    return { x = targ[1], y = targ[2], z = targ[3] }
   elseif targtype == string.byte('u') then
     --return findArtilleryGroundIntersection(p)
     --return Spring_GetUnitPosition(targ)
   elseif targtype == string.byte('f') then
     local pos = Spring_GetFeaturePosition(targ)
-    return {x=pos[1],y=pos[2],z=pos[3]}
+    return { x = pos[1], y = pos[2], z = pos[3] }
   end
   return nil
 end
@@ -173,7 +173,7 @@ local function calculateImpact(p, frame)
   -- local ix,iy,iz = weaponIdTypes[did] == ARTILLERY_TYPE and findArtilleryGroundIntersection(p) or findRocketGroundIntersection(p)
   local result = weaponIdTypes[did] == ARTILLERY_TYPE and findArtilleryGroundIntersection(p) or findRocketGroundIntersection(p)
   if not result then
-    projectiles[p] = {ix=0,iy=0,iz=0,srange=0, frame=frame}
+    projectiles[p] = { ix = 0, iy = 0, iz = 0, srange = 0, frame = frame }
     return
   end
 
@@ -182,17 +182,17 @@ local function calculateImpact(p, frame)
   if wd then
     srange = wd["damageAreaOfEffect"]
   end
-  projectiles[p] = {ix=result.x, iy=result.y, iz=result.z, srange=srange, frame=frame}
+  projectiles[p] = { ix = result.x, iy = result.y, iz = result.z, srange = srange, frame = frame }
   drawList[drawListIndex] = p
   drawListIndex = drawListIndex + 1
 end
 
 function widget:GameFrame(frame)
   if frame % 15 == 0 then
-    local pros = Spring_GetProjectilesInRectangle(0,0,10000,10000,false,true)
+    local pros = Spring_GetProjectilesInRectangle(0, 0, 10000, 10000, false, true)
     drawList = {}
     drawListIndex = 1
-    for pi=1,#pros do
+    for pi = 1, #pros do
       local p = pros[pi]
       calculateImpact(p, frame)
     end
@@ -200,7 +200,7 @@ function widget:GameFrame(frame)
 end
 
 function widget:DrawWorldPreUnit()
-  for i=1,#drawList do
+  for i = 1, #drawList do
     showProjectileSplash(drawList[i])
   end
 end
