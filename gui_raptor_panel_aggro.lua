@@ -111,8 +111,6 @@ local moving
 local waveSpeed                  = 0.1
 local waveCount                  = 0
 local waveTime
-local gotScore
-local scoreCount                 = 0
 local gameInfo                   = {}
 local resistancesTable           = {}
 local currentlyResistantTo       = {}
@@ -131,10 +129,7 @@ local updatePanel
 local hasRaptorEvent             = false
 
 local modOptions                 = Spring.GetModOptions()
-local multipleBosses             = modOptions.raptor_queen_count and modOptions.raptor_queen_count > 1 or false
-
-local healthLabelID              = 'ui.raptors.queenHealth' .. (multipleBosses and 's' or '')
-local resistanceLabelID          = 'ui.raptors.queen' .. (multipleBosses and 's' or '') .. 'ResistantToList'
+local nBosses                    = modOptions.raptor_queen_count
 
 local rules                      = {
 	"raptorDifficulty",
@@ -321,7 +316,7 @@ local function CreatePanelDisplayList()
 			local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', { anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)), techAnger = gameInfo.raptorTechAnger })
 			font:Print(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
 
-			font:Print(I18N('ui.raptors.queenETA', { time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize)
+			font:Print(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize)
 			local gain = gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
 			local time = string.formatTime((100 - gameInfo.raptorQueenAnger) / gain)
 			font:Print(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2), panelFontSize)
@@ -331,13 +326,13 @@ local function CreatePanelDisplayList()
 				currentlyResistantTo = {}
 			end
 		elseif stage == stageQueen then
-			font:Print(I18N(healthLabelID, { health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
+			font:Print(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
 			local healthText = tostring(gameInfo.raptorQueenHealth)
 			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize)
 
 			for i = 1, #currentlyResistantToNames do
 				if i == 1 then
-					font:Print(I18N(resistanceLabelID), panelMarginX, PanelRow(11), panelFontSize)
+					font:Print(I18N('ui.raptors.queenResistantToList', { count = nBosses }), panelMarginX, PanelRow(11), panelFontSize)
 				end
 				font:Print(currentlyResistantToNames[i], panelMarginX + 20, PanelRow(11 + i), panelFontSize)
 			end
@@ -366,7 +361,7 @@ local function getMarqueeMessage(raptorEventArgs)
 		messages[1] = I18N('ui.raptors.firstWave1')
 		messages[2] = I18N('ui.raptors.firstWave2')
 	elseif raptorEventArgs.type == "queen" then
-		messages[1] = I18N('ui.raptors.queenIsAngry1')
+		messages[1] = I18N('ui.raptors.queenIsAngry1', { count = nBosses })
 		messages[2] = I18N('ui.raptors.queenIsAngry2')
 	elseif raptorEventArgs.type == "airWave" then
 		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
@@ -384,7 +379,7 @@ end
 
 local function getResistancesMessage()
 	local messages = {}
-	messages[1] = I18N('ui.raptors.resistanceUnits')
+	messages[1] = I18N('ui.raptors.resistanceUnits', { count = nBosses })
 	for i = 1, #resistancesTable do
 		local attackerName = UnitDefs[resistancesTable[i]].name
 		messages[i + 1] = I18N('units.names.' .. attackerName)
@@ -580,17 +575,6 @@ function widget:GameFrame(n)
 	if n % 30 == 0 then
 		UpdateRules()
 		UpdatePlayerEcoAttractionRender()
-	end
-	if gotScore then
-		local sDif = gotScore - scoreCount
-		if sDif > 0 then
-			scoreCount = scoreCount + math.ceil(sDif / 7.654321)
-			if scoreCount > gotScore then
-				scoreCount = gotScore
-			else
-				updatePanel = true
-			end
-		end
 	end
 end
 
