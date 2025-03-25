@@ -819,6 +819,22 @@ function widget:KeyPress(key, mods, isRepeat)
       -- end
     end
   end
+
+  if key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then
+    local reclaimers = {}
+    local reclaimCommands = {}
+    log('selectedUnitIds', #selectedUnitIds)
+    for i = 1, #selectedUnitIds do
+      local unitID = selectedUnitIds[i]
+      if unitDef(unitID).canReclaim then
+        table.insert(reclaimers, unitID)
+      else
+        table.insert(reclaimCommands, { CMD.RECLAIM, unitID, { "shift" } })
+      end
+    end
+
+    Spring.GiveOrderArrayToUnitArray(reclaimers, reclaimCommands)
+  end
 end
 
 -- function widget:GameFrame(gameframe)

@@ -66,8 +66,8 @@ function widget:GameFrame(n)
   end
 
   if alive then
+    local myTeamId = Spring.GetMyTeamID()
     if n % 100 == 0 then
-      local myTeamId = Spring.GetMyTeamID()
       hasAnti =
           Spring.GetTeamUnitDefCount(myTeamId, armamdId) > 0 or
           Spring.GetTeamUnitDefCount(myTeamId, armscabId) > 0 or
@@ -77,7 +77,11 @@ function widget:GameFrame(n)
     end
     if n % 25 == 0 then
       local raptorTechAnger = Spring.GetGameRulesParam('raptorTechAnger')
-      showNukeWarning = not hasAnti and n % 50 < 25 and raptorTechAnger ~= nil and raptorTechAnger > 65
+      showNukeWarning = not hasAnti
+          and n % 50 < 25
+          and raptorTechAnger ~= nil and raptorTechAnger > 65 and raptorTechAnger < 90
+          and select(4, Spring.GetTeamResources(myTeamId, 'energy')) > 1000
+          and Spring.GetTeamUnitCount(myTeamId) > 3
     end
   end
 end

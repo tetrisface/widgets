@@ -41,9 +41,9 @@ local nCircleVertices = 101
 local vertexAngle = math.pi * 2 / (nCircleVertices - 1)
 local drawCheckMs = 1
 local shieldsUpdateMs = 100
-local yellow = {181 / 255, 137 / 255, 0 / 255}
-local cyan = {42 / 255, 161 / 255, 152 / 255}
-local orange = {203 / 255, 75 / 255, 22 / 255}
+local yellow = { 181 / 255, 137 / 255, 0 / 255 }
+local cyan = { 42 / 255, 161 / 255, 152 / 255 }
+local orange = { 203 / 255, 75 / 255, 22 / 255 }
 local ENUM_ONLINE = 1
 local ENUM_OFFLINE = 2
 local ENUM_ALL = 3
@@ -78,11 +78,10 @@ function widget:Initialize()
   activeShieldRadius = 550
   glList = nil
   for unitDefId, unitDef in pairs(UnitDefs) do
-    if
-      unitDef.isBuilding and
+    if unitDef.isBuilding and
         (unitDef.hasShield or
           (unitDef.customparams and unitDef.customparams.shield_radius and unitDef.customparams.shield_radius > 0))
-     then
+    then
       defIdRadius[unitDefId] = unitDef.customparams and unitDef.customparams.shield_radius or 550
       nDefIds = nDefIds + 1
       defIds[nDefIds] = unitDefId
@@ -99,21 +98,21 @@ function widget:Initialize()
 end
 
 local function median(numbers)
-    table.sort(numbers)
+  table.sort(numbers)
 
-    local length = #numbers
+  local length = #numbers
 
-    if length == 1 then
-        return numbers[1]
-    end
+  if length == 1 then
+    return numbers[1]
+  end
 
-    if length % 2 == 1 then
-        return numbers[math.ceil(length/2)]
-    end
+  if length % 2 == 1 then
+    return numbers[math.ceil(length / 2)]
+  end
 
-    local middle1 = numbers[length/2]
-    local middle2 = numbers[(length/2) + 1]
-    return (middle1 + middle2) / 2
+  local middle1 = numbers[length / 2]
+  local middle2 = numbers[(length / 2) + 1]
+  return ((middle1 or middle2) + (middle2 or middle1)) / 2
 end
 
 
@@ -145,7 +144,7 @@ end
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
   return outMin +
-    ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) *
+      ((((value < inMin) and inMin or ((value > inMax) and inMax or value)) - inMin) / (inMax - inMin)) *
       (outMax - outMin)
 end
 
@@ -159,7 +158,7 @@ local function DrawShieldRanges()
 
   local pulseMs = DiffTimers(GetTimer(), t0, true) % 1000
   local pulseAlpha =
-    pulseMs < 500 and Interpolate(pulseMs, 0, 499, 0.1, 0.35) or Interpolate(pulseMs, 500, 999, 0.35, 0.1)
+      pulseMs < 500 and Interpolate(pulseMs, 0, 499, 0.1, 0.35) or Interpolate(pulseMs, 500, 999, 0.35, 0.1)
 
   -- mask online shields
   glColorMask(false, false, false, false) -- disable color drawing

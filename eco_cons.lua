@@ -196,7 +196,7 @@ function widget:Initialize()
   local myUnits = GetTeamUnits(myTeamId)
   for _, unitID in ipairs(myUnits) do
     local unitDefID = GetUnitDefID(unitID)
-    widget:UnitCreated(unitID, unitDefID, myTeamId)
+    widget:UnitFinished(unitID, unitDefID, myTeamId)
   end
 
   for unitDefID, unitDef in pairs(UnitDefs) do
@@ -269,7 +269,7 @@ local function isMetalMaker(unitDef)
   end
 end
 
-function widget:UnitCreated(unitID, unitDefID, unitTeam)
+function widget:UnitFinished(unitID, unitDefID, unitTeam)
   if unitTeam == myTeamId then
     local candidateBuilderDef = UnitDefs[unitDefID]
 
@@ -303,12 +303,12 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
+  widget:UnitFinished(unitID, unitDefID, unitTeam)
   widget:UnitDestroyed(unitID, nil, oldTeam)
 end
 
 function widget:UnitTaken(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
+  widget:UnitFinished(unitID, unitDefID, unitTeam)
   widget:UnitDestroyed(unitID, nil, oldTeam)
 end
 

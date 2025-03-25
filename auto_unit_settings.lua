@@ -93,20 +93,20 @@ function widget:UnitFromFactory(unitID, unitDefID, unitTeam)
   widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
+-- function widget:UnitFinished(unitID, unitDefID, unitTeam)
+--   if unitTeam ~= myTeamId then
+--     return
+--   end
+
+--   local def = UnitDefs[unitDefID]
+
+--   if not isFriendlyFiringDef(def) then
+--     Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { 2 }, 0)
+--     Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 0 }, 0)
+--   end
+-- end
+
 function widget:UnitFinished(unitID, unitDefID, unitTeam)
-  if unitTeam ~= myTeamId then
-    return
-  end
-
-  local def = UnitDefs[unitDefID]
-
-  if not isFriendlyFiringDef(def) then
-    Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { 2 }, 0)
-    Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 0 }, 0)
-  end
-end
-
-function widget:UnitCreated(unitID, unitDefID, unitTeam)
   if unitTeam ~= myTeamId then
     return
   end
@@ -162,11 +162,11 @@ function widget:UnitCreated(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
+  widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
 function widget:UnitTaken(unitID, unitDefID, unitTeam, oldTeam)
-  widget:UnitCreated(unitID, unitDefID, unitTeam)
+  widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
 function widget:GameFrame(gameFrame)
