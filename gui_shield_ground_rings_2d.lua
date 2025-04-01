@@ -112,6 +112,9 @@ local function median(numbers)
 
   local middle1 = numbers[length / 2]
   local middle2 = numbers[(length / 2) + 1]
+  if not middle1 and not middle2 then
+    return 10
+  end
   return ((middle1 or middle2) + (middle2 or middle1)) / 2
 end
 

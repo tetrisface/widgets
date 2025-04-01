@@ -916,8 +916,8 @@ end
 
 local function SortFactor(a, b)
   -- Convert boolean comparison to 1 or 0
-  local buildSpeedA = Interpolate(a.def.buildSpeed, 0, 1000, 0, 1)
-  local buildSpeedB = Interpolate(b.def.buildSpeed, 0, 1000, 0, 1)
+  local buildSpeedA = a.def.buildoptions and #a.def.buildoptions > 0 and 1.01 or Interpolate(a.def.buildSpeed, 0, 1000, 0, 1)
+  local buildSpeedB = a.def.buildoptions and #a.def.buildoptions > 0 and 1.01 or Interpolate(b.def.buildSpeed, 0, 1000, 0, 1)
   -- Calculate energy efficiency ratios
   local energyMakeDefA = EnergyMakeDef(a.def) / a.def.cost
   local energyMakeDefB = EnergyMakeDef(b.def) / b.def.cost
