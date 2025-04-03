@@ -125,6 +125,7 @@ local stageQueen = 2
 local guiPanel
 local updatePanel
 local hasRaptorEvent = false
+local bossToastTimer = Spring.GetTimer()
 
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
@@ -439,11 +440,14 @@ local function UpdateRules()
 end
 
 function RaptorEvent(raptorEventArgs)
-	if raptorEventArgs.type == 'firstWave' or raptorEventArgs.type == 'queen' then
+	if raptorEventArgs.type == 'firstWave' or (raptorEventArgs.type == 'queen' and Spring.DiffTimers(Spring.GetTimer(), bossToastTimer) > 20) then
 		showMarqueeMessage = true
 		refreshMarqueeMessage = true
 		messageArgs = raptorEventArgs
 		waveTime = Spring.GetTimer()
+		if raptorEventArgs.type == 'queen' then
+			bossToastTimer = Spring.GetTimer()
+		end
 	end
 
 	if raptorEventArgs.type == 'queenResistance' then
