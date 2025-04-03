@@ -4,13 +4,13 @@ end
 
 function widget:GetInfo()
 	return {
-		name = "Raptor Stats Panel With Eco Attraction",
-		desc = "Shows statistics and progress when fighting vs Raptors",
-		author = "quantum, TetrisCo",
-		date = "May 04, 2008",
-		license = "GNU GPL, v2 or later",
+		name = 'Raptor Stats Panel With Eco Attraction',
+		desc = 'Shows statistics and progress when fighting vs Raptors',
+		author = 'quantum, TetrisCo',
+		date = 'May 04, 2008',
+		license = 'GNU GPL, v2 or later',
 		layer = -9,
-		enabled = true
+		enabled = true,
 	}
 end
 
@@ -50,7 +50,7 @@ local function EcoValueDef(unitDef)
 		end
 
 		-- Decoy fusion support
-		if unitDef.customParams.decoyfor == "armfus" then
+		if unitDef.customParams.decoyfor == 'armfus' then
 			ecoValue = ecoValue + 1000
 		end
 
@@ -60,7 +60,7 @@ local function EcoValueDef(unitDef)
 		end
 
 		-- Anti-nuke - add value to force players to go T2 economy, rather than staying T1
-		if unitDef.customParams.unitgroup == "antinuke" or unitDef.customParams.unitgroup == "nuke" then
+		if unitDef.customParams.unitgroup == 'antinuke' or unitDef.customParams.unitgroup == 'nuke' then
 			ecoValue = 1000
 		end
 	end
@@ -76,69 +76,69 @@ for unitDefID, unitDef in pairs(UnitDefs) do
 	end
 end
 
-local useWaveMsg                 = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
+local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
 
-local I18N                       = Spring.I18N
+local I18N = Spring.I18N
 
-local customScale                = 1
-local widgetScale                = customScale
+local customScale = 1
+local widgetScale = customScale
 local font, font2
 local messageArgs, marqueeMessage
-local refreshMarqueeMessage      = false
-local showMarqueeMessage         = false
+local refreshMarqueeMessage = false
+local showMarqueeMessage = false
 
 local displayList
-local panelTexture               = ":n:LuaUI/Images/raptorpanel.tga"
+local panelTexture = ':n:LuaUI/Images/raptorpanel.tga'
 
-local panelFontSize              = 14
-local waveFontSize               = 36
+local panelFontSize = 14
+local waveFontSize = 36
 
-local vsx, vsy                   = Spring.GetViewGeometry()
-local fontfile2                  = "fonts/" .. Spring.GetConfigString("bar_font2", "Exo2-SemiBold.otf")
+local vsx, vsy = Spring.GetViewGeometry()
+local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
 
-local viewSizeX, viewSizeY       = 0, 0
-local w                          = 300
-local h                          = 210
-local x1                         = 0
-local y1                         = 0
-local panelMarginX               = 30
-local panelMarginY               = 40
-local panelSpacingY              = 5
-local waveSpacingY               = 7
+local viewSizeX, viewSizeY = 0, 0
+local w = 300
+local h = 210
+local x1 = 0
+local y1 = 0
+local panelMarginX = 30
+local panelMarginY = 40
+local panelSpacingY = 5
+local waveSpacingY = 7
 local moving
-local waveSpeed                  = 0.1
-local waveCount                  = 0
+local waveSpeed = 0.1
+local waveCount = 0
 local waveTime
-local gameInfo                   = {}
-local resistancesTable           = {}
-local currentlyResistantTo       = {}
-local currentlyResistantToNames  = {}
-local playerEcoAttractionsRaw    = {}
+local gameInfo = {}
+local resistancesTable = {}
+local currentlyResistantTo = {}
+local currentlyResistantToNames = {}
+local playerEcoAttractionsRaw = {}
 local playerEcoAttractionsRender = {}
-local teamIDs                    = {}
+local teamIDs = {}
 local raptorsTeamID
 local scavengersTeamID
-local stageGrace                 = 0
-local stageMain                  = 1
-local stageQueen                 = 2
+local stageGrace = 0
+local stageMain = 1
+local stageQueen = 2
 
 local guiPanel
 local updatePanel
-local hasRaptorEvent             = false
+local hasRaptorEvent = false
 
-local modOptions                 = Spring.GetModOptions()
-local nBosses                    = modOptions.raptor_queen_count
+local modOptions = Spring.GetModOptions()
+local nBosses = modOptions.raptor_queen_count
 
-local rules                      = {
-	"raptorDifficulty",
-	"raptorGracePeriod",
-	"raptorQueenAnger",
-	"RaptorQueenAngerGain_Aggression",
-	"RaptorQueenAngerGain_Base",
-	"RaptorQueenAngerGain_Eco",
-	"raptorQueenHealth",
-	"raptorQueenTime",
-	"raptorTechAnger",
+local rules = {
+	'raptorDifficulty',
+	'raptorGracePeriod',
+	'raptorQueenAnger',
+	'RaptorQueenAngerGain_Aggression',
+	'RaptorQueenAngerGain_Base',
+	'RaptorQueenAngerGain_Eco',
+	'raptorQueenHealth',
+	'raptorQueenTime',
+	'raptorTechAnger',
 }
 
 local function PlayerName(teamID)
@@ -150,18 +150,17 @@ local function PlayerName(teamID)
 	return playerName
 end
 
-
 local function PlayerEcoAttractionsAggregation()
-	local myTeamId             = Spring.GetMyTeamID()
+	local myTeamId = Spring.GetMyTeamID()
 	local playerEcoAttractions = {}
-	local sum                  = 0
-	local nPlayerAttractions   = 0
+	local sum = 0
+	local nPlayerAttractions = 0
 
 	for i = 1, #teamIDs do
 		local teamID = teamIDs[i]
 		local playerName = PlayerName(teamID)
 
-		if playerName and not (playerName:find("Raptors") or playerName:find("Scavengers")) then
+		if playerName and not (playerName:find('Raptors') or playerName:find('Scavengers')) then
 			local ecoAttractionValue = playerEcoAttractionsRaw[teamID] or 0
 			ecoAttractionValue = ecoAttractionValue > 0 and ecoAttractionValue or 0
 
@@ -205,7 +204,7 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 end
 
 local function UpdatePlayerEcoAttractionRender()
-	local maxRows                   = isRaptors and ((RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
+	local maxRows = isRaptors and ((RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
 	local playerEcoAttractions, sum = PlayerEcoAttractionsAggregation()
 
 	if sum == 0 then
@@ -215,9 +214,9 @@ local function UpdatePlayerEcoAttractionRender()
 	table.sort(playerEcoAttractions, SortValueDesc)
 
 	-- add string formatting, forced current player result and limit results
-	playerEcoAttractionsRender        = {}
+	playerEcoAttractionsRender = {}
 	local nPlayerEcoAttractionsRender = 0
-	local nPlayerEcoAttractions       = #playerEcoAttractions
+	local nPlayerEcoAttractions = #playerEcoAttractions
 	local playerEcoAttraction
 	for i = 1, nPlayerEcoAttractions do
 		playerEcoAttraction = playerEcoAttractions[i]
@@ -231,12 +230,12 @@ local function UpdatePlayerEcoAttractionRender()
 			if playerEcoAttraction.me and i > nPlayerEcoAttractionsRender + 1 then
 				playerEcoAttraction.forced = true
 			end
-			playerEcoAttraction.multiple       = nPlayerEcoAttractions * playerEcoAttraction.value / sum
-			playerEcoAttraction.fraction       = playerEcoAttraction.value * 100 / sum
-			playerEcoAttraction.multipleString = string.format("%.1fX", playerEcoAttraction.multiple)
-			playerEcoAttraction.fractionString = string.format(" (%.0f%%)", playerEcoAttraction.fraction)
-			local greenBlue                    = 1
-			local alpha                        = 1
+			playerEcoAttraction.multiple = nPlayerEcoAttractions * playerEcoAttraction.value / sum
+			playerEcoAttraction.fraction = playerEcoAttraction.value * 100 / sum
+			playerEcoAttraction.multipleString = string.format('%.1fX', playerEcoAttraction.multiple)
+			playerEcoAttraction.fractionString = string.format(' (%.0f%%)', playerEcoAttraction.fraction)
+			local greenBlue = 1
+			local alpha = 1
 			if playerEcoAttraction.multiple > 1.7 then
 				greenBlue = Interpolate(playerEcoAttraction.multiple, 1.7, 6, 0.5, 0.3)
 			elseif playerEcoAttraction.multiple > 1.2 then
@@ -311,7 +310,8 @@ local function CreatePanelDisplayList()
 			local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
 			font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1), panelFontSize)
 		elseif stage == stageMain then
-			local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', { anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)), techAnger = gameInfo.raptorTechAnger })
+			local hatchEvolutionString =
+				I18N('ui.raptors.queenAngerWithTech', { anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)), techAnger = gameInfo.raptorTechAnger })
 			font:Print(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
 
 			font:Print(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize)
@@ -340,7 +340,7 @@ local function CreatePanelDisplayList()
 	DrawPlayerAttractions(stage)
 
 	if isRaptors then
-		local endless = ""
+		local endless = ''
 		if modOptions.raptor_endless then
 			endless = ' (' .. I18N('ui.raptors.difficulty.endless') .. ')'
 		end
@@ -355,17 +355,17 @@ end
 
 local function getMarqueeMessage(raptorEventArgs)
 	local messages = {}
-	if raptorEventArgs.type == "firstWave" then
+	if raptorEventArgs.type == 'firstWave' then
 		messages[1] = I18N('ui.raptors.firstWave1')
 		messages[2] = I18N('ui.raptors.firstWave2')
-	elseif raptorEventArgs.type == "queen" then
+	elseif raptorEventArgs.type == 'queen' then
 		messages[1] = I18N('ui.raptors.queenIsAngry1', { count = nBosses })
 		messages[2] = I18N('ui.raptors.queenIsAngry2')
-	elseif raptorEventArgs.type == "airWave" then
+	elseif raptorEventArgs.type == 'airWave' then
 		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
 		messages[2] = I18N('ui.raptors.airWave1')
 		messages[3] = I18N('ui.raptors.airWave2', { unitCount = raptorEventArgs.number })
-	elseif raptorEventArgs.type == "wave" then
+	elseif raptorEventArgs.type == 'wave' then
 		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
 		messages[2] = I18N('ui.raptors.wave2', { unitCount = raptorEventArgs.number })
 	end
@@ -392,8 +392,8 @@ end
 
 function widget:DrawScreen()
 	if updatePanel then
-		if (guiPanel) then
-			gl.DeleteList(guiPanel);
+		if guiPanel then
+			gl.DeleteList(guiPanel)
 		end
 		guiPanel = gl.CreateList(CreatePanelDisplayList)
 		updatePanel = false
@@ -414,7 +414,7 @@ function widget:DrawScreen()
 
 			font2:Begin()
 			for i, message in ipairs(marqueeMessage) do
-				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, "co")
+				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, 'co')
 			end
 			font2:End()
 		else
@@ -439,14 +439,14 @@ local function UpdateRules()
 end
 
 function RaptorEvent(raptorEventArgs)
-	if raptorEventArgs.type == "firstWave" or raptorEventArgs.type == "queen" then
+	if raptorEventArgs.type == 'firstWave' or raptorEventArgs.type == 'queen' then
 		showMarqueeMessage = true
 		refreshMarqueeMessage = true
 		messageArgs = raptorEventArgs
 		waveTime = Spring.GetTimer()
 	end
 
-	if raptorEventArgs.type == "queenResistance" then
+	if raptorEventArgs.type == 'queenResistance' then
 		if raptorEventArgs.number then
 			if not currentlyResistantTo[raptorEventArgs.number] then
 				resistancesTable[#resistancesTable + 1] = raptorEventArgs.number
@@ -455,7 +455,7 @@ function RaptorEvent(raptorEventArgs)
 		end
 	end
 
-	if (raptorEventArgs.type == "wave" or raptorEventArgs.type == "airWave") and useWaveMsg and gameInfo.raptorQueenAnger <= 99 then
+	if (raptorEventArgs.type == 'wave' or raptorEventArgs.type == 'airWave') and useWaveMsg and gameInfo.raptorQueenAnger <= 99 then
 		waveCount = waveCount + 1
 		raptorEventArgs.waveCount = waveCount
 		showMarqueeMessage = true
@@ -501,7 +501,7 @@ function widget:Initialize()
 		gl.TexRect(0, 0, w, h)
 	end)
 
-	widgetHandler:RegisterGlobal("RaptorEvent", RaptorEvent)
+	widgetHandler:RegisterGlobal('RaptorEvent', RaptorEvent)
 	UpdateRules()
 	viewSizeX, viewSizeY = gl.GetViewSizes()
 	local x = math.abs(math.floor(viewSizeX - 320))
@@ -515,10 +515,10 @@ function widget:Initialize()
 		local teamID = tempTeamIDs[i]
 		local teamLuaAI = Spring.GetTeamLuaAI(teamID)
 		if teamLuaAI then
-			if string.find(teamLuaAI, "Raptors") then
+			if string.find(teamLuaAI, 'Raptors') then
 				raptorsTeamID = teamID
 				table.remove(teamIDs, i)
-			elseif string.find(teamLuaAI, "Scavengers") then
+			elseif string.find(teamLuaAI, 'Scavengers') then
 				scavengersTeamID = teamID
 				table.remove(teamIDs, i)
 			end
@@ -547,22 +547,22 @@ end
 
 function widget:Shutdown()
 	if hasRaptorEvent then
-		Spring.SendCommands({ "luarules HasRaptorEvent 0" })
+		Spring.SendCommands({ 'luarules HasRaptorEvent 0' })
 	end
 
 	if guiPanel then
-		gl.DeleteList(guiPanel);
+		gl.DeleteList(guiPanel)
 		guiPanel = nil
 	end
 
 	gl.DeleteList(displayList)
 	gl.DeleteTexture(panelTexture)
-	widgetHandler:DeregisterGlobal("RaptorEvent")
+	widgetHandler:DeregisterGlobal('RaptorEvent')
 end
 
 function widget:GameFrame(n)
 	if not hasRaptorEvent and n > 1 then
-		Spring.SendCommands({ "luarules HasRaptorEvent 1" })
+		Spring.SendCommands({ 'luarules HasRaptorEvent 1' })
 		hasRaptorEvent = true
 	end
 	if n % 30 == 0 then
@@ -578,9 +578,7 @@ function widget:MouseMove(x, y, dx, dy, button)
 end
 
 function widget:MousePress(x, y, button)
-	if x > x1 and x < x1 + (w * widgetScale) and
-			y > y1 and y < y1 + (h * widgetScale)
-	then
+	if x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale) then
 		moving = true
 	end
 	return moving
