@@ -15,7 +15,7 @@
   "luahelper.format.extra_sep_at_table_end": true,
   "luahelper.format.tab_width": 2,
   "[lua]": {
-    "editor.defaultFormatter": "sumneko.lua"
+    "editor.defaultFormatter": "JohnnyMorganz.stylua"
   },
   "Lua.completion.autoRequire": false
 }

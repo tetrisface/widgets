@@ -14,18 +14,16 @@ function widget:GetInfo()
 	}
 end
 
-local WallDefNames = {
-	armdrag  = true,
-	armfort  = true,
-	cordrag  = true,
-	corfort  = true,
-	scavdrag = true,
-	scavfort = true,
-}
+local isObject = {}
+for udefID, def in ipairs(UnitDefs) do
+	if def.modCategories['object'] or def.customParams.objectify then
+		isObject[udefID] = true
+	end
+end
 
 local isRaptors = Spring.Utilities.Gametype.IsRaptors()
 local function EcoValueDef(unitDef)
-	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or WallDefNames[unitDef.name] then
+	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or isObject[unitDef.name] then
 		return 0
 	end
 

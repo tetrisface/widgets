@@ -1,14 +1,14 @@
 function widget:GetInfo()
-  return {
-    name = 'Reload Widgets',
-    desc = '',
-    author = 'tetrisface',
-    version = '',
-    date = 'jan, 2024',
-    license = '',
-    layer = -99990,
-    enabled = false
-  }
+	return {
+		name = 'Reload Widgets',
+		desc = '',
+		author = 'tetrisface',
+		version = '',
+		date = 'jan, 2024',
+		license = '',
+		layer = -99990,
+		enabled = false,
+	}
 end
 
 VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
@@ -39,14 +39,14 @@ local GetMyAllyTeamID = Spring.GetMyAllyTeamID
 local GetTeamStatsHistory = Spring.GetTeamStatsHistory
 
 local function Interpolate(value, inMin, inMax, outMin, outMax)
-  -- Ensure the value is within the specified range
-  value = (value < inMin) and inMin or ((value > inMax) and inMax or value)
+	-- Ensure the value is within the specified range
+	value = (value < inMin) and inMin or ((value > inMax) and inMax or value)
 
-  -- Calculate the interpolation
-  local t = (value - inMin) / (inMax - inMin)
-  local result = outMin + t * (outMax - outMin)
+	-- Calculate the interpolation
+	local t = (value - inMin) / (inMax - inMin)
+	local result = outMin + t * (outMax - outMin)
 
-  return result
+	return result
 end
 
 -- function widget:MouseRelease(x, y, button)
@@ -127,46 +127,48 @@ end
 -- end
 
 function widget:KeyPress(key, mods, isRepeat)
-  -- log('key', key, mods)
-  if (key == KEYSYMS.R and mods['ctrl']) then
-    Spring.SendCommands('disablewidget Reload Widgets')
-    Spring.SendCommands('enablewidget Reload Widgets')
-    -- Spring.SendCommands("disablewidget Snap Mouse")
-    -- Spring.SendCommands("enablewidget Snap Mouse")
-    -- Spring.SendCommands("disablewidget GUI PVE Wave Info")
-    -- Spring.SendCommands("enablewidget GUI PVE Wave Info")
-    -- Spring.SendCommands('disablewidget Shield Ground Rings')
-    -- Spring.SendCommands('enablewidget Shield Ground Rings')
-    -- Spring.SendCommands('disablewidget Shield Ground Rings')
-    -- Spring.SendCommands('enablewidget Shield Ground Rings')
-    -- Spring.SendCommands('disablewidget Straight Lines')
-    -- Spring.SendCommands('enablewidget Straight Lines')
-    -- Spring.SendCommands("disablewidget Build Shortcuts")
-    -- Spring.SendCommands("enablewidget Build Shortcuts")
-    -- Spring.SendCommands('disablewidget Auto Unit Settings')
-    -- Spring.SendCommands('enablewidget Auto Unit Settings')
-    Spring.SendCommands('disablewidget eco cons')
-    Spring.SendCommands('enablewidget eco cons')
-    -- Spring.SendCommands('disablewidget Base Painter')
-    -- Spring.SendCommands('enablewidget Base Painter')
-    -- Spring.SendCommands('disablewidget Commands')
-    -- Spring.SendCommands('enablewidget Commands')
-    -- Spring.SendCommands("disablewidget Dont Stand in Fire")
-    -- Spring.SendCommands("enablewidget Dont Stand in Fire")
-    -- Spring.SendCommands("disablewidget CMD Build Spacing")
-    -- Spring.SendCommands("enablewidget CMD Build Spacing")
-    -- Spring.SendCommands("disablewidget History")
-    -- Spring.SendCommands("enablewidget History")
-    -- Spring.SendCommands("disablewidget CMD target time spread")
-    -- Spring.SendCommands("enablewidget CMD target time spread")
-    -- Spring.SendCommands("disablewidget Raptor Stats Panel With Eco Attraction")
-    -- Spring.SendCommands("enablewidget Raptor Stats Panel With Eco Attraction")
-    return false
-  end
-  -- if key == 113 and mods['ctrl'] then
-  --   local cmds = Spring.GetUnitCommands(17574, 5)
-  --   log('cmds', table.echo(cmds))
-  -- end
+	-- log('key', key, mods)
+	if key == KEYSYMS.R and mods['ctrl'] then
+		Spring.SendCommands('disablewidget Reload Widgets')
+		Spring.SendCommands('enablewidget Reload Widgets')
+		-- Spring.SendCommands("disablewidget Snap Mouse")
+		-- Spring.SendCommands("enablewidget Snap Mouse")
+		-- Spring.SendCommands("disablewidget GUI PVE Wave Info")
+		-- Spring.SendCommands("enablewidget GUI PVE Wave Info")
+		-- Spring.SendCommands('disablewidget Shield Ground Rings')
+		-- Spring.SendCommands('enablewidget Shield Ground Rings')
+		-- Spring.SendCommands('disablewidget Shield Ground Rings')
+		-- Spring.SendCommands('enablewidget Shield Ground Rings')
+		-- Spring.SendCommands('disablewidget Straight Lines')
+		-- Spring.SendCommands('enablewidget Straight Lines')
+		-- Spring.SendCommands("disablewidget Build Shortcuts")
+		-- Spring.SendCommands("enablewidget Build Shortcuts")
+		-- Spring.SendCommands('disablewidget Auto Unit Settings')
+		-- Spring.SendCommands('enablewidget Auto Unit Settings')
+		-- Spring.SendCommands('disablewidget eco cons')
+		-- Spring.SendCommands('enablewidget eco cons')
+		-- Spring.SendCommands('disablewidget Base Painter')
+		-- Spring.SendCommands('enablewidget Base Painter')
+		-- Spring.SendCommands('disablewidget Commands')
+		-- Spring.SendCommands('enablewidget Commands')
+		Spring.SendCommands('disablewidget Raptor Nuke Warning')
+		Spring.SendCommands('enablewidget Raptor Nuke Warning')
+		-- Spring.SendCommands("disablewidget Dont Stand in Fire")
+		-- Spring.SendCommands("enablewidget Dont Stand in Fire")
+		-- Spring.SendCommands("disablewidget CMD Build Spacing")
+		-- Spring.SendCommands("enablewidget CMD Build Spacing")
+		-- Spring.SendCommands("disablewidget History")
+		-- Spring.SendCommands("enablewidget History")
+		-- Spring.SendCommands("disablewidget CMD target time spread")
+		-- Spring.SendCommands("enablewidget CMD target time spread")
+		-- Spring.SendCommands("disablewidget Raptor Stats Panel With Eco Attraction")
+		-- Spring.SendCommands("enablewidget Raptor Stats Panel With Eco Attraction")
+		return false
+	end
+	-- if key == 113 and mods['ctrl'] then
+	--   local cmds = Spring.GetUnitCommands(17574, 5)
+	--   log('cmds', table.echo(cmds))
+	-- end
 end
 
 -- function getReclaimableFeature(x , z, radius)
