@@ -90,7 +90,7 @@ function widget:GameFrame(n)
 			showNukeWarning = not hasAnti
 				and n % 50 < 25
 				and techAnger ~= nil
-				and techAnger > 22
+				and techAnger > 65
 				and techAnger < 90
 				and select(4, Spring.GetTeamResources(myTeamId, 'energy')) > 1000
 				and Spring.GetTeamUnitCount(myTeamId) > 3
