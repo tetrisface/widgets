@@ -6,7 +6,7 @@ function widget:GetInfo()
 	return {
 		name = 'Raptor Stats Panel With Eco Attraction',
 		desc = 'Shows statistics and progress when fighting vs Raptors',
-		author = 'quantum, TetrisCo',
+		author = 'quantum, tetrisface',
 		date = 'May 04, 2008',
 		license = 'GNU GPL, v2 or later',
 		layer = -9,
