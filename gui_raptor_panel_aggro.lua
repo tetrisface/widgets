@@ -142,6 +142,10 @@ local rules = {
 	'raptorTechAnger',
 }
 
+local nilDefaultRules = {
+	['raptorQueensKilled'] = true,
+}
+
 local function PlayerName(teamID)
 	local playerList = Spring.GetPlayerList(teamID)
 	if playerList[1] then
@@ -276,7 +280,9 @@ local function CutStringAtPixelWidth(text, width)
 end
 
 local function DrawPlayerAttractions(stage)
-	local row = isRaptors and (stageMain == stage and 3 or 2) or 1
+	local isMultiBosses = nBosses > 1 and gameInfo.raptorQueensKilled
+	-- stageMain is with the anger and the timer (2 rows)
+	local row = isRaptors and ((stage == stageMain or (stage == stageQueen and isMultiBosses)) and 3 or 2) or 1
 	font:Print('Player Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
@@ -328,6 +334,10 @@ local function CreatePanelDisplayList()
 			font:Print(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
 			local healthText = tostring(gameInfo.raptorQueenHealth)
 			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize)
+
+			if nBosses > 1 then
+				font:Print(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2), panelFontSize, '')
+			end
 
 			for i = 1, #currentlyResistantToNames do
 				if i == 1 then
@@ -433,7 +443,7 @@ end
 local function UpdateRules()
 	for i = 1, #rules do
 		local rule = rules[i]
-		gameInfo[rule] = Spring.GetGameRulesParam(rule) or 0
+		gameInfo[rule] = Spring.GetGameRulesParam(rule) or (nilDefaultRules[rule] and nil or 0)
 	end
 
 	updatePanel = true
@@ -569,7 +579,7 @@ function widget:GameFrame(n)
 		Spring.SendCommands({ 'luarules HasRaptorEvent 1' })
 		hasRaptorEvent = true
 	end
-	if n % 30 == 0 then
+	if n % 30 == 17 then
 		UpdateRules()
 		UpdatePlayerEcoAttractionRender()
 	end
