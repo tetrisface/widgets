@@ -14,24 +14,27 @@ end
 
 -- stylua: ignore start
 local DiffTimers            = Spring.DiffTimers
+local GetTeamUnitsByDefs    = Spring.GetTeamUnitsByDefs
 local GetTimer              = Spring.GetTimer
+local GetUnitDefID          = Spring.GetUnitDefID
+local GetUnitHealth         = Spring.GetUnitHealth
 local UnitDefs              = UnitDefs
 local GL_KEEP               = 0x1E00
 
 -- Static
-local cyan                  = { 42 / 255, 161 / 255, 152 / 255, 152 / 255 }
-local orange                = { 203 / 255, 75 / 255, 22 / 255, 22 / 255 }
+local red                   = { 1.0, 0.0, 0.0 }  -- Color for low health
+local green                 = { 0.0, 1.0, 0.0 }  -- Color for full health
 
 -- Dynamic
 local drawCheckTimer        = GetTimer()
-local bookmarksUpdateTimer = GetTimer()
+local bookmarksUpdateTimer  = GetTimer()
 local bookmarks             = {}
 local nBookmarks            = 0
 local commanderDefIDs       = {}
-local updateCommandersMs    = 0
+local updateCommandersMs    = 100  -- Initial update rate in ms
 
-local windowPositionX = 500
-local windowPositionY = 200
+local windowPositionX = 100
+local windowPositionY = 100
 local windowWidth = 300
 local windowHeight = 40
 
@@ -45,6 +48,10 @@ local windowPositionXUniform
 local windowPositionYUniform
 local windowWidthUniform
 local windowHeightUniform
+local color0Uniform
+local color1Uniform
+local viewportSizeXUniform
+local viewportSizeYUniform
 
 local luaShaderDir = 'LuaUI/Include/'
 local LuaShader = VFS.Include(luaShaderDir .. 'LuaShader.lua')
@@ -53,46 +60,44 @@ local vsSrc = [[
 #version 420
 
 // ---- Inputs ----
-layout(location = 0) in vec3  unitPosition;  // unit space (x,y,z), e.g. (0,0)-(1,1)
-layout(location = 1) in float health;        // unit health ratio [0..1]
-layout(location = 2) in float activity;
+layout(location = 0) in vec3  position;     // quad position
+layout(location = 1) in float health;       // unit health ratio [0..1]
+layout(location = 2) in float activity;     // activity indicator
 
 // ---- Uniforms ----
-uniform int windowPositionX;           // bar origin in NDC or screen space (x)
-uniform int windowPositionY;           // bar origin (y)
-uniform int windowWidth;          // full width of the bar when health == 1
-uniform int windowHeight;         // height of the bar
-
-// Color stops (extend to more stops as needed)
-uniform vec3 color0;             // color at health=0.0
-uniform vec3 color1;             // color at health=1.0
+uniform int windowPositionX;         // bar origin in screen space (x)
+uniform int windowPositionY;         // bar origin (y)
+uniform int windowWidth;             // full width of the bar when health == 1
+uniform int windowHeight;            // height of the bar
+uniform int viewportSizeX;           // screen width
+uniform int viewportSizeY;           // screen height
+uniform vec3 color0;                 // color at health=0.0
+uniform vec3 color1;                 // color at health=1.0
 
 // ---- Outputs ----
-flat out vec3 vColor;            // flat: same color for all fragments of the bar
+flat out vec3 vColor;                // flat: same color for all fragments of the bar
 
 //__ENGINEUNIFORMBUFFERDEFS__
 
 // ---- Ramp function ----
-vec3 ramp( float h ) {
+vec3 ramp(float h) {
     // simple two stop linear ramp; clamp to [0,1]
     return mix(color0, color1, clamp(h, 0.0, 1.0));
 }
-int guViewSizeX = 800;
-int guViewSizeY = 800;
+
 void main() {
     // Map quad vertices to screen space (in pixels)
     vec2 screenPos = vec2(windowPositionX, windowPositionY)
-                   + unitPosition.xy * vec2(windowWidth, windowHeight);
+                   + position.xy * vec2(windowWidth * health, windowHeight);
 
     // Convert to normalized device coordinates (NDC: [-1,1])
-    vec2 resolution = vec2(guViewSizeX, guViewSizeY); // Engine provides this
+    vec2 resolution = vec2(viewportSizeX, viewportSizeY);
     vec2 ndc = (screenPos / resolution) * 2.0 - 1.0;
     ndc.y = -ndc.y; // Flip Y because screen Y goes down, NDC Y goes up
 
     gl_Position = vec4(ndc, 0.0, 1.0);
 
-    //vColor = ramp(health);
-		vColor = vec3(1.0, 0.0, 1.0); // hot pink
+    vColor = ramp(health);
 }
 ]]
 
@@ -107,29 +112,40 @@ void main() {
 }
 ]]
 
-local healthStripVBOSize = 5
-
 local function initGL4()
+	-- Create geometry VBO for the quad
 	local geometryVBO = gl.GetVBO(GL.ARRAY_BUFFER, false)
 	geometryVBO:Define(4, {
-		{ id = 0, name = 'unitPosition', size = 3 },
+		{ id = 0, name = 'position', size = 3 },
 	})
-	geometryVBO:Upload({ -0.5, -0.5, 0.0, 0.5, -0.5, 0.0, -0.5, 0.5, 0.0, 0.5, 0.5, 0.0 })
+	geometryVBO:Upload({
+		0.0,
+		0.0,
+		0.0, -- Bottom-left
+		1.0,
+		0.0,
+		0.0, -- Bottom-right
+		0.0,
+		1.0,
+		0.0, -- Top-left
+		1.0,
+		1.0,
+		0.0, -- Top-right
+	})
 
+	-- Create instance VBO for health and activity data
 	bookmarksVBOInstances = gl.GetVBO(GL.ARRAY_BUFFER, true)
-
-	local bookmarksInstanceVBOLayout = {
-		-- { id = 0, name = 'unitPosition', size = 3 }, -- position (x,y,z)
+	bookmarksVBOInstances:Define(1000, {
 		{ id = 1, name = 'health', size = 1 },
 		{ id = 2, name = 'activity', size = 1 },
-	}
+	})
 
-	bookmarksVBOInstances:Define(1000, bookmarksInstanceVBOLayout)
-
+	-- Create VAO and attach buffers
 	bookmarksVAO = gl.GetVAO()
 	bookmarksVAO:AttachVertexBuffer(geometryVBO)
 	bookmarksVAO:AttachInstanceBuffer(bookmarksVBOInstances)
 
+	-- Initialize shader
 	local engineUniformBufferDefs = LuaShader.GetEngineUniformBufferDefs()
 	vsSrc = vsSrc:gsub('//__ENGINEUNIFORMBUFFERDEFS__', engineUniformBufferDefs)
 
@@ -137,8 +153,16 @@ local function initGL4()
 		vertex = vsSrc,
 		fragment = fsSrc,
 		uniformInt = {
-			windowPositionX = 0,
-			windowPositionY = 0,
+			windowPositionX = windowPositionX,
+			windowPositionY = windowPositionY,
+			windowWidth = windowWidth,
+			windowHeight = windowHeight,
+			viewportSizeX = 1, -- Will be updated in Draw()
+			viewportSizeY = 1, -- Will be updated in Draw()
+		},
+		uniformFloat = {
+			color0 = red,
+			color1 = green,
 		},
 	}, 'BookmarksShader')
 
@@ -148,19 +172,30 @@ local function initGL4()
 		return false
 	end
 
+	-- Get uniform locations for dynamic updates
 	windowPositionXUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'windowPositionX')
 	windowPositionYUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'windowPositionY')
 	windowWidthUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'windowWidth')
 	windowHeightUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'windowHeight')
+	color0Uniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'color0')
+	color1Uniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'color1')
+	viewportSizeXUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'viewportSizeX')
+	viewportSizeYUniform = gl.GetUniformLocation(bookmarksShader.shaderObj, 'viewportSizeY')
 
 	return true
 end
 
 local function unitData(unitID)
 	local health, maxHealth = Spring.GetUnitHealth(unitID)
+	if not health or not maxHealth or maxHealth == 0 then
+		return {
+			health = 1.0,
+			activity = 1.0,
+		}
+	end
 	return {
-		unitPosition = { Spring.GetUnitPosition(unitID, true) },
 		health = health / maxHealth,
+		activity = 1.0,
 	}
 end
 
@@ -168,23 +203,41 @@ function widget:Initialize()
 	bookmarksUpdateTimer = GetTimer()
 	bookmarks = {}
 	nBookmarks = 0
-	bookmarks = {}
 
+	-- Find all commander defIDs
 	for id, unitDef in pairs(UnitDefs) do
-		if unitDef.customParams.iscommander then
+		if unitDef.customParams and unitDef.customParams.iscommander then
 			table.insert(commanderDefIDs, id)
 		end
 	end
 
-	local commanderIDs = Spring.GetTeamUnitsByDefs(Spring.GetMyTeamID(), commanderDefIDs)
-	Spring.Echo('commanderIDs', commanderIDs)
-	for i = 1, #commanderIDs do
-		local commanderID = commanderIDs[i]
-		bookmarks[commanderID] = unitData(commanderID)
-		nBookmarks = nBookmarks + 1
+	-- If no commanders found, add a test entry
+	if #commanderDefIDs == 0 then
+		bookmarks[1] = {
+			health = 0.75,
+			activity = 1.0,
+		}
+		nBookmarks = 1
+	else
+		-- Get all commanders for the player's team
+		local commanderIDs = GetTeamUnitsByDefs(Spring.GetMyTeamID(), commanderDefIDs)
+		if commanderIDs then
+			for i = 1, #commanderIDs do
+				local commanderID = commanderIDs[i]
+				bookmarks[i] = unitData(commanderID)
+				nBookmarks = nBookmarks + 1
+			end
+		end
 	end
 
-	Spring.Echo('bookmarks', bookmarks)
+	-- If still no bookmarks, add a test entry
+	if nBookmarks == 0 then
+		bookmarks[1] = {
+			health = 0.5,
+			activity = 1.0,
+		}
+		nBookmarks = 1
+	end
 
 	return initGL4()
 end
@@ -195,28 +248,43 @@ local function UpdateBookmarks()
 	end
 	bookmarksUpdateTimer = GetTimer()
 
-	for bookmarkUnitID, bookmark in pairs(bookmarks) do
-		bookmark = unitData(bookmarkUnitID)
+	-- Update commander health data
+	if #commanderDefIDs > 0 then
+		local commanderIDs = GetTeamUnitsByDefs(Spring.GetMyTeamID(), commanderDefIDs)
+		bookmarks = {}
+		nBookmarks = 0
+
+		if commanderIDs then
+			for i = 1, #commanderIDs do
+				local commanderID = commanderIDs[i]
+				bookmarks[i] = unitData(commanderID)
+				nBookmarks = nBookmarks + 1
+			end
+		end
 	end
 
-	Spring.Echo('bookmarks vbo', bookmarks)
-	local vbo = {}
-	local i = 0
-	for _, bookmark in pairs(bookmarks) do
-		i = i + 1
-		local vboOffset = (i - 1) * healthStripVBOSize
-		vbo[vboOffset + 1] = bookmark.unitPosition[1]
-		vbo[vboOffset + 2] = bookmark.unitPosition[2]
-		vbo[vboOffset + 3] = bookmark.unitPosition[3]
-		vbo[vboOffset + 4] = bookmark.health
-		vbo[vboOffset + 5] = 1234.1234
+	-- If no bookmarks, add test data
+	if nBookmarks == 0 then
+		bookmarks[1] = {
+			health = math.abs(math.sin(Spring.GetGameFrame() / 300)), -- Animate health for testing
+			activity = 1.0,
+		}
+		nBookmarks = 1
 	end
 
-	Spring.Echo('vbo', vbo)
-	if bookmarksVBOInstances and nBookmarks > 0 and #vbo > 0 then
-		bookmarksVBOInstances:Upload(vbo)
+	-- Prepare VBO data
+	local vboData = {}
+	for i, bookmark in pairs(bookmarks) do
+		vboData[#vboData + 1] = bookmark.health
+		vboData[#vboData + 1] = bookmark.activity
 	end
 
+	-- Upload data to GPU
+	if bookmarksVBOInstances and nBookmarks > 0 and #vboData > 0 then
+		bookmarksVBOInstances:Upload(vboData)
+	end
+
+	-- Adjust update rate based on the number of bookmarks
 	updateCommandersMs = math.max(100, 100 + nBookmarks * 2)
 end
 
@@ -226,25 +294,45 @@ function widget:Draw()
 		return
 	end
 
+	-- Get current viewport size
+	local vsx, vsy = Spring.GetViewSizes()
+
+	-- Activate shader
 	bookmarksShader:Activate()
 
+	-- Set rendering state
 	gl.Culling(false)
 	gl.DepthTest(false)
 	gl.DepthMask(false)
+	gl.Blending(true)
 
+	-- Update uniforms
 	gl.UniformInt(windowPositionXUniform, windowPositionX)
 	gl.UniformInt(windowPositionYUniform, windowPositionY)
 	gl.UniformInt(windowWidthUniform, windowWidth)
 	gl.UniformInt(windowHeightUniform, windowHeight)
+	gl.UniformInt(viewportSizeXUniform, vsx)
+	gl.UniformInt(viewportSizeYUniform, vsy)
+	gl.UniformFloat(color0Uniform, red[1], red[2], red[3])
+	gl.UniformFloat(color1Uniform, green[1], green[2], green[3])
 
+	-- Draw the health bars
 	bookmarksVAO:DrawArrays(GL.TRIANGLE_STRIP, 0, 4, nBookmarks, 0)
 
+	-- Deactivate shader
 	bookmarksShader:Deactivate()
+
+	-- Reset state
+	gl.Blending(false)
 end
 
 function widget:Shutdown()
-	if bookmarksVBOInstances and bookmarksVBOInstances.VAO then
-		bookmarksVBOInstances.VAO:Delete()
+	if bookmarksVAO then
+		bookmarksVAO:Delete()
+	end
+
+	if bookmarksVBOInstances then
+		bookmarksVBOInstances:Delete()
 	end
 
 	if bookmarksShader then
