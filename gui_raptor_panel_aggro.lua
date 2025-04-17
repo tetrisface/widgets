@@ -138,6 +138,7 @@ local rules = {
 	'RaptorQueenAngerGain_Base',
 	'RaptorQueenAngerGain_Eco',
 	'raptorQueenHealth',
+	'raptorQueensKilled',
 	'raptorQueenTime',
 	'raptorTechAnger',
 }
@@ -209,7 +210,7 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 end
 
 local function UpdatePlayerEcoAttractionRender()
-	local maxRows = isRaptors and ((RaptorStage() == stageMain and 3 or 4) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
+	local maxRows = isRaptors and ((RaptorStage() == stageGrace and 4 or 3) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
 	local playerEcoAttractions, sum = PlayerEcoAttractionsAggregation()
 
 	if sum == 0 then
@@ -322,8 +323,10 @@ local function CreatePanelDisplayList()
 			local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
 			font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1), panelFontSize)
 		elseif stage == stageMain then
-			local hatchEvolutionString =
-				I18N('ui.raptors.queenAngerWithTech', { anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)), techAnger = gameInfo.raptorTechAnger })
+			local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', {
+				anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)),
+				techAnger = gameInfo.raptorTechAnger,
+			})
 			font:Print(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
 
 			font:Print(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize)

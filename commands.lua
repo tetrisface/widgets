@@ -57,9 +57,6 @@ local splitBuilderWatch = {}
 function widget:Initialize()
 	Spring.SendCommands('bind Shift+Alt+sc_q buildfacing inc')
 	Spring.SendCommands('bind Shift+Alt+sc_e buildfacing dec')
-	if Spring.GetSpectatingState() or Spring.IsReplay() then
-		widgetHandler:RemoveWidget()
-	end
 
 	for unitDefId, unitDef in pairs(UnitDefs) do
 		if unitDef.isBuilding and unitDef.hasShield then
@@ -481,13 +478,11 @@ local function calculateDistance(x1, z1, x2, z2)
 	return math.sqrt((x2 - x1) ^ 2 + (z2 - z1) ^ 2)
 end
 
-function widget:KeyPress(key, mods)
-	if key == KEYSYMS.T and mods['ctrl'] then
-		Spring.SendCommands('say you need to update your widget')
-	end
-end
-
 function widget:KeyPress(key, mods, isRepeat)
+	if key == KEYSYMS.d and mods['ctrl'] and mods['alt'] and mods['shift'] then
+		Spring.SendCommands('say If noticing issues with aggro panel try updating at https://discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096')
+		return
+	end
 	if key == KEYSYMS.W and mods['ctrl'] and mods['alt'] and mods['shift'] then
 		--  --[[
 		Spring.SendCommands('give 1 armbanth')
