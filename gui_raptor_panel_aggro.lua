@@ -248,7 +248,12 @@ local function UpdatePlayerEcoAttractionRender()
 			elseif playerEcoAttraction.multiple < 0.8 then
 				alpha = 0.8
 			end
-			playerEcoAttraction.color = { red = 1, green = greenBlue, blue = greenBlue, alpha = playerEcoAttraction.forced and 0.6 or alpha }
+			playerEcoAttraction.color = {
+				red = 1,
+				green = greenBlue,
+				blue = greenBlue,
+				alpha = playerEcoAttraction.forced and 0.6 or alpha,
+			}
 			nPlayerEcoAttractionsRender = nPlayerEcoAttractionsRender + 1
 			playerEcoAttractionsRender[nPlayerEcoAttractionsRender] = playerEcoAttraction
 		end
