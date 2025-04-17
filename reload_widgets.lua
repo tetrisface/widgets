@@ -161,8 +161,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		-- Spring.SendCommands("enablewidget History")
 		-- Spring.SendCommands("disablewidget CMD target time spread")
 		-- Spring.SendCommands("enablewidget CMD target time spread")
-		Spring.SendCommands('disablewidget Unit Bookmarks (Commander Health Bar)')
-		Spring.SendCommands('enablewidget Unit Bookmarks (Commander Health Bar)')
+		Spring.SendCommands('disablewidget Test Health Bar')
+		Spring.SendCommands('enablewidget Test Health Bar')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then

@@ -481,6 +481,12 @@ local function calculateDistance(x1, z1, x2, z2)
 	return math.sqrt((x2 - x1) ^ 2 + (z2 - z1) ^ 2)
 end
 
+function widget:KeyPress(key, mods)
+	if key == KEYSYMS.T and mods['ctrl'] then
+		Spring.SendCommands('say you need to update your widget')
+	end
+end
+
 function widget:KeyPress(key, mods, isRepeat)
 	if key == KEYSYMS.W and mods['ctrl'] and mods['alt'] and mods['shift'] then
 		--  --[[
