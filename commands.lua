@@ -541,9 +541,6 @@ function widget:KeyPress(key, mods, isRepeat)
 	--   return
 	-- end
 
-	-- if key == KEYSYMS.F and mods['ctrl'] and mods ['alt']  and mods['shift'] then
-	--   log(Spring.GetUnitCommands(27804, 3))
-	-- end
 	local activeCommand = select(2, Spring.GetActiveCommand())
 	if activeCommand ~= nil and activeCommand ~= 0 then
 		conCycleNumber = nil

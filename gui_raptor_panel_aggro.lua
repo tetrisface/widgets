@@ -335,7 +335,7 @@ local function CreatePanelDisplayList()
 			local healthText = tostring(gameInfo.raptorQueenHealth)
 			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize)
 
-			if nBosses > 1 then
+			if nBosses > 1 and gameInfo.raptorQueensKilled then
 				font:Print(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2), panelFontSize, '')
 			end
 
