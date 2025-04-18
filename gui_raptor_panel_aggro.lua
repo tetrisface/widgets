@@ -87,7 +87,7 @@ local I18N = Spring.I18N
 
 local customScale = 1
 local widgetScale = customScale
-local font, font2
+local font, font2, font3
 local messageArgs, marqueeMessage
 local refreshMarqueeMessage = false
 local showMarqueeMessage = false
@@ -181,6 +181,8 @@ local colors = {
 	{ 0.164706, 0.631373, 0.596078 }, -- cyan
 	{ 0.521569, 0.600000, 0.000000 }, -- green
 }
+
+local recentlyKilledQueens = {}
 
 local function PlayerName(teamID)
 	local playerList = Spring.GetPlayerList(teamID)
@@ -341,6 +343,23 @@ local function DrawPlayerAttractions(stage)
 	font:SetTextColor(1, 1, 1, 1)
 end
 
+local function printPanel(text, x, y, size)
+	if not size then
+		size = panelFontSize
+	end
+	font:Print(text, x, y, size)
+end
+
+local function printResistances(text, x, y, size, option)
+	if not size then
+		size = panelFontSize
+	end
+	if not option then
+		option = 'o'
+	end
+	font:Print(text, x, y, size, option)
+end
+
 local function CreatePanelDisplayList()
 	gl.PushMatrix()
 	gl.Translate(x1, y1, 0)
@@ -348,80 +367,84 @@ local function CreatePanelDisplayList()
 	gl.CallList(displayList)
 	font:Begin()
 	font:SetTextColor(1, 1, 1, 1)
-	font:SetOutlineColor(0, 0, 0, 1)
+
 	local currentTime = Spring.GetGameSeconds()
 	local stage = RaptorStage(currentTime)
 
 	if isRaptors then
 		if stage == stageGrace then
-			font:Print(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1), panelFontSize)
+			printPanel(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1))
 			local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
-			font:Print(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1), panelFontSize)
+			printPanel(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1))
 		elseif stage == stageMain then
 			local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', {
 				anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)),
 				techAnger = gameInfo.raptorTechAnger,
 			})
-			font:Print(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
+			printPanel(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
 
-			font:Print(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2), panelFontSize)
+			printPanel(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2))
 			local gain = gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
 			local time = string.formatTime((100 - gameInfo.raptorQueenAnger) / gain)
-			font:Print(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2), panelFontSize)
+			printPanel(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2))
 
 			if #currentlyResistantToNames > 0 then
 				currentlyResistantToNames = {}
 				currentlyResistantTo = {}
 			end
 		elseif stage == stageQueen then
-			font:Print(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1), panelFontSize)
+			printPanel(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1))
 			local healthText = tostring(gameInfo.raptorQueenHealth)
-			font:Print(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1), panelFontSize)
+			printPanel(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1))
 
 			if nBosses > 1 and gameInfo.raptorQueensKilled then
-				font:Print(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2), panelFontSize, '')
+				printPanel(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2))
 			end
 
 			if bossInfo then
 				local bossInfoMarginX = panelMarginX - 15
-				font:Print(I18N('ui.raptors.queenResistantToList', { count = nBosses }), bossInfoMarginX, PanelRow(11), panelFontSize)
+				printResistances(I18N('ui.raptors.queenResistantToList', { count = nBosses }), bossInfoMarginX, PanelRow(11))
 				local row = 11
 				for i, resistance in ipairs(bossInfo.resistances) do
-					font:Print(resistance.name, bossInfoMarginX + 10, PanelRow(row + i), panelFontSize)
-					font:Print(
+					printResistances(resistance.name, bossInfoMarginX + 10, PanelRow(row + i))
+					printResistances(
 						resistance.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - font:GetTextWidth(resistance.string:gsub('%%', '')) * panelFontSize,
 						PanelRow(row + i),
-						panelFontSize
+						nil,
+						'o'
 					)
 				end
 
 				row = row + #bossInfo.resistances + 1
 
-				font:Print('Player Queen Damage:', bossInfoMarginX, PanelRow(row), panelFontSize)
+				printResistances('Player Queen Damage:', bossInfoMarginX, PanelRow(row))
 				for i, damage in ipairs(bossInfo.playerDamages) do
-					font:Print(damage.name, bossInfoMarginX + 10, PanelRow(row + i), panelFontSize)
-					font:Print(
+					printResistances(damage.name, bossInfoMarginX + 10, PanelRow(row + i))
+					printResistances(
 						damage.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(damage.string) - font:GetTextWidth('%')) * panelFontSize,
 						PanelRow(row + i),
-						panelFontSize
+						nil,
+						'o'
 					)
 				end
 
 				row = row + #bossInfo.playerDamages + 1
 
-				font:Print('Healths:', bossInfoMarginX, PanelRow(row), panelFontSize)
+				printResistances('Healths:', bossInfoMarginX, PanelRow(row))
 				for i, health in ipairs(bossInfo.healths) do
-					font:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
-					font:Print(
+					font3:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
+					font3:Print(
 						health.string,
-						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(health.string) - font:GetTextWidth('%')) * panelFontSize,
+						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font3:GetTextWidth(health.string) - font3:GetTextWidth('%')) * panelFontSize,
 						PanelRow(row + i),
-						panelFontSize
+						panelFontSize+0.4,
+						'o'
 					)
-					font:SetTextColor(1, 1, 1, 1)
-				end -- draw queen info
+
+					font3:SetTextColor(1, 1, 1, 1)
+				end
 			end
 		end
 	end
@@ -721,38 +744,47 @@ function widget:GameFrame(n)
 end
 
 function widget:IsAbove(x, y)
-	local isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > y1 - 600
-	if isAboveBossInfo and bossInfo then
+	if not bossInfo then
+		return
+	end
+
+	local nBossInfoRows = #bossInfo.resistances + #bossInfo.playerDamages
+	local bottomY = y1-(h + -PanelRow(nBossInfoRows+3) + (#bossInfo.healths+1) * (panelFontSize+0.4 + panelSpacingY))
+	local isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
+
+	if isAboveBossInfo then
 		for _, health in ipairs(bossInfo.healths) do
-			if not health.isDead then
+			if not health.isDead and not recentlyKilledQueens[health.id] then
 				WG['ObjectSpotlight'].addSpotlight('unit', 'me', health.id, { health.color[1], health.color[2], health.color[3], 1 }, { duration = 3 })
 			end
 		end
 	end
 end
 
-function widget:MouseMove(x, y, dx, dy, button)
+function widget:MouseMove(_, _, dx, dy)
 	if isMovingWindow then
 		updatePos(x1 + dx, y1 + dy)
 	end
 end
 
-function widget:MousePress(x, y, button)
+function widget:MousePress(x, y)
 	if x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale) then
 		isMovingWindow = true
 	end
 	return isMovingWindow
 end
 
-function widget:MouseRelease(x, y, button)
+function widget:MouseRelease()
 	isMovingWindow = nil
 end
 
 function widget:ViewResize()
 	vsx, vsy = Spring.GetViewGeometry()
 
-	font = WG['fonts'].getFont()
+	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
 	font2 = WG['fonts'].getFont(fontfile2)
+	-- font3 = WG['fonts'].getFont(nil, nil, 0.22, 1.86)
+	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
 	x1 = math.floor(x1 - viewSizeX)
 	y1 = math.floor(y1 - viewSizeY)
@@ -765,4 +797,15 @@ end
 function widget:LanguageChanged()
 	refreshMarqueeMessage = true
 	updatePanel = true
+end
+
+function widget:UnitDestroyed(unitID)
+	if bossInfo then
+		for _, health in ipairs(bossInfo.healths) do
+			if health.id == unitID then
+				recentlyKilledQueens[unitID] = true
+				WG['ObjectSpotlight'].removeSpotlight('unit', 'me', unitID)
+			end
+		end
+	end
 end
