@@ -110,7 +110,7 @@ local panelMarginX = 30
 local panelMarginY = 40
 local panelSpacingY = 5
 local waveSpacingY = 7
-local moving
+local isMovingWindow
 local waveSpeed = 0.1
 local waveCount = 0
 local waveTime
@@ -134,6 +134,7 @@ local bossToastTimer = Spring.GetTimer()
 
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
+local bossInfo
 
 local rules = {
 	'raptorDifficulty',
@@ -153,6 +154,24 @@ local nilDefaultRules = {
 }
 
 local colors = {
+	{ 1.000000, 0.783599, 0.109804 }, -- yellow_light
+	{ 0.929830, 0.521569, 0.352523 }, -- orange_light
+	{ 0.920358, 0.533527, 0.526701 }, -- red_light
+	{ 0.899288, 0.539928, 0.713886 }, -- magenta_light
+	{ 0.708966, 0.718865, 0.883190 }, -- violet_light
+	{ 0.468691, 0.724225, 0.903858 }, -- blue_light
+	{ 0.362407, 0.833672, 0.798029 }, -- cyan_light
+	{ 0.869282, 1.000000, 0.000000 }, -- green_light
+
+	{ 0.309804, 0.234493, 0.000000 }, -- yellow_dark
+	{ 0.435189, 0.160785, 0.047164 }, -- orange_dark
+	{ 0.553861, 0.101186, 0.093198 }, -- red_dark
+	{ 0.524418, 0.114798, 0.313085 }, -- magenta_dark
+	{ 0.226880, 0.246107, 0.565276 }, -- violet_dark
+	{ 0.087730, 0.320904, 0.484819 }, -- blue_dark
+	{ 0.081947, 0.314132, 0.296571 }, -- cyan_dark
+	{ 0.173856, 0.200000, 0.000000 }, -- green_dark
+
 	{ 0.709804, 0.537255, 0.000000 }, -- yellow
 	{ 0.796078, 0.294118, 0.086275 }, -- orange
 	{ 0.862745, 0.196078, 0.184314 }, -- red
@@ -363,72 +382,46 @@ local function CreatePanelDisplayList()
 				font:Print(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2), panelFontSize, '')
 			end
 
-			font:Print(I18N('ui.raptors.queenResistantToList', { count = nBosses }), panelMarginX, PanelRow(11), panelFontSize)
-
-			if Spring.GetGameRulesParam('pveBossInfo') then
-				local pveBossInfo = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
-
-				local sorted = {}
-				local maxLength = 0
-				for defID, resistance in pairs(pveBossInfo.resistances) do
-					local name = UnitDefs[tonumber(defID)].translatedHumanName
-					if font:GetTextWidth(name) * panelFontSize > maxLength then
-						maxLength = font:GetTextWidth(name) * panelFontSize
-					end
-					table.insert(sorted, { name = name, resistance = resistance.percent })
-				end
-				table.sort(sorted, function(a, b)
-					return a.resistance > b.resistance
-				end)
-				local row = 12
-				for i, resistance in ipairs(sorted) do
-					if i < 20 then
-						row = row + 1
-						font:Print(resistance.name, panelMarginX + 10, PanelRow(11 + i), panelFontSize)
-						local percentString = string.format('%.0f', resistance.resistance * 100)
-						font:Print(percentString .. '%', panelMarginX + 27 + maxLength - font:GetTextWidth(percentString) * panelFontSize, PanelRow(11 + i), panelFontSize)
-					end
-				end
-
-				font:Print('Player Queen Damage:', panelMarginX, PanelRow(row), panelFontSize)
-				sorted = {}
-				for teamID, damage in pairs(pveBossInfo.playerDamages) do
-					local name = PlayerName(teamID)
-					if font:GetTextWidth(name) * panelFontSize > maxLength then
-						maxLength = font:GetTextWidth(name) * panelFontSize
-					end
-					table.insert(sorted, { name = name, damage = damage })
-				end
-				table.sort(sorted, function(a, b)
-					return a.damage > b.damage
-				end)
-
-				for i, resistance in ipairs(sorted) do
-					font:Print(resistance.name, panelMarginX + 10, PanelRow(row + i), panelFontSize)
-					local percentString = string.formatSI(resistance.damage)
+			if bossInfo then
+				local bossInfoMarginX = panelMarginX - 15
+				font:Print(I18N('ui.raptors.queenResistantToList', { count = nBosses }), bossInfoMarginX, PanelRow(11), panelFontSize)
+				local row = 11
+				for i, resistance in ipairs(bossInfo.resistances) do
+					font:Print(resistance.name, bossInfoMarginX + 10, PanelRow(row + i), panelFontSize)
 					font:Print(
-						percentString,
-						panelMarginX + 27 + maxLength - (font:GetTextWidth(percentString) - font:GetTextWidth('%')) * panelFontSize,
+						resistance.string,
+						bossInfoMarginX + 35 + bossInfo.labelMaxLength - font:GetTextWidth(resistance.string:gsub('%%', '')) * panelFontSize,
 						PanelRow(row + i),
 						panelFontSize
 					)
 				end
 
-				row = row + #sorted + 1
-				font:Print('Healths:', panelMarginX, PanelRow(row), panelFontSize)
-				sorted = {}
-				for queenID, status in pairs(pveBossInfo.statuses) do
-					if not status.isDead then
-						table.insert(sorted, { id = tonumber(queenID), health = status.health / status.maxHealth })
-					end
-				end
-				table.sort(sorted, function(a, b)
-					return a.health > b.health
-				end)
+				row = row + #bossInfo.resistances + 1
 
-				for i, status in ipairs(sorted) do
-					font:Print(string.format('%.0f%%', status.health * 100), panelMarginX + 20, PanelRow(row + i), panelFontSize)
+				font:Print('Player Queen Damage:', bossInfoMarginX, PanelRow(row), panelFontSize)
+				for i, damage in ipairs(bossInfo.playerDamages) do
+					font:Print(damage.name, bossInfoMarginX + 10, PanelRow(row + i), panelFontSize)
+					font:Print(
+						damage.string,
+						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(damage.string) - font:GetTextWidth('%')) * panelFontSize,
+						PanelRow(row + i),
+						panelFontSize
+					)
 				end
+
+				row = row + #bossInfo.playerDamages + 1
+
+				font:Print('Healths:', bossInfoMarginX, PanelRow(row), panelFontSize)
+				for i, health in ipairs(bossInfo.healths) do
+					font:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
+					font:Print(
+						health.string,
+						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(health.string) - font:GetTextWidth('%')) * panelFontSize,
+						PanelRow(row + i),
+						panelFontSize
+					)
+					font:SetTextColor(1, 1, 1, 1)
+				end -- draw queen info
 			end
 		end
 	end
@@ -659,6 +652,62 @@ function widget:Shutdown()
 	widgetHandler:DeregisterGlobal('RaptorEvent')
 end
 
+local function sortRawDesc(a, b)
+	return a.raw > b.raw
+end
+
+local function UpdateBossInfo()
+	local bossInfoRaw = Spring.GetGameRulesParam('pveBossInfo')
+	if not bossInfoRaw then
+		return
+	end
+	local bossInfoRaw = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
+	bossInfo = { resistances = {}, playerDamages = {}, healths = {}, meta = { maxLengths = {} }, labelMaxLength = 0 }
+	local i = 0
+	for defID, resistance in pairs(bossInfoRaw.resistances) do
+		i = i + 1
+		if i < 20 and resistance.percent >= 0.005 then
+			local name = UnitDefs[tonumber(defID)].translatedHumanName
+			if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
+				bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
+			end
+			table.insert(bossInfo.resistances, { name = name, raw = resistance.percent, string = string.format('%.0f%%', resistance.percent * 100) })
+		end
+	end
+	table.sort(bossInfo.resistances, sortRawDesc)
+
+	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
+		local name = PlayerName(teamID)
+		if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
+			bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
+		end
+		table.insert(bossInfo.playerDamages, { name = name, raw = damage, string = string.formatSI(damage) })
+	end
+	table.sort(bossInfo.playerDamages, sortRawDesc)
+
+	for queenID, status in pairs(bossInfoRaw.statuses) do
+		table.insert(bossInfo.healths, {
+			id = tonumber(queenID),
+			raw = status.health / status.maxHealth,
+			string = string.format('%.0f%%', (status.health / status.maxHealth) * 100),
+			isDead = status.isDead,
+		})
+	end
+	table.sort(bossInfo.healths, function(a, b)
+		return a.id < b.id
+	end)
+
+	local colorsTemp = table.copy(colors)
+	for _, health in ipairs(bossInfo.healths) do
+		if #colorsTemp == 0 then
+			colorsTemp = table.copy(colors)
+		end
+		health.color = table.remove(colorsTemp, 1)
+	end
+
+	table.sort(bossInfo.healths, sortRawDesc)
+end
+
 function widget:GameFrame(n)
 	if not hasRaptorEvent and n > 1 then
 		Spring.SendCommands({ 'luarules HasRaptorEvent 1' })
@@ -667,24 +716,36 @@ function widget:GameFrame(n)
 	if n % 30 == 17 then
 		UpdateRules()
 		UpdatePlayerEcoAttractionRender()
+		UpdateBossInfo()
+	end
+end
+
+function widget:IsAbove(x, y)
+	local isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > y1 - 600
+	if isAboveBossInfo and bossInfo then
+		for _, health in ipairs(bossInfo.healths) do
+			if not health.isDead then
+				WG['ObjectSpotlight'].addSpotlight('unit', 'me', health.id, { health.color[1], health.color[2], health.color[3], 1 }, { duration = 3 })
+			end
+		end
 	end
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
-	if moving then
+	if isMovingWindow then
 		updatePos(x1 + dx, y1 + dy)
 	end
 end
 
 function widget:MousePress(x, y, button)
 	if x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale) then
-		moving = true
+		isMovingWindow = true
 	end
-	return moving
+	return isMovingWindow
 end
 
 function widget:MouseRelease(x, y, button)
-	moving = nil
+	isMovingWindow = nil
 end
 
 function widget:ViewResize()
