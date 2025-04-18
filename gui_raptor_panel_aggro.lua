@@ -1,3 +1,6 @@
+-- Discord: https://discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096
+-- Gist: https://gist.github.com/tetrisface/2f99f5a5b179e3ac42e7e63825880713
+
 if not Spring.Utilities.Gametype.IsRaptors() and not Spring.Utilities.Gametype.IsScavengers() then
 	return false
 end
@@ -11,6 +14,8 @@ function widget:GetInfo()
 		license = 'GNU GPL, v2 or later',
 		layer = -9,
 		enabled = true,
+		gist = 'https://gist.githubusercontent.com/tetrisface/2f99f5a5b179e3ac42e7e63825880713/raw/gui_raptor_panel_aggro.lua',
+		version = 2,
 	}
 end
 
@@ -349,65 +354,70 @@ local function CreatePanelDisplayList()
 
 			font:Print(I18N('ui.raptors.queenResistantToList', { count = nBosses }), panelMarginX, PanelRow(11), panelFontSize)
 
-			local pveBossInfo = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
+			if Spring.GetGameRulesParam('pveBossInfo') then
+				local pveBossInfo = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
 
-			local sorted = {}
-			local maxLength = 0
-			for defID, resistance in pairs(pveBossInfo.resistances) do
-				local name = UnitDefs[tonumber(defID)].translatedHumanName
-				if font:GetTextWidth(name) * panelFontSize > maxLength then
-					maxLength = font:GetTextWidth(name) * panelFontSize
+				local sorted = {}
+				local maxLength = 0
+				for defID, resistance in pairs(pveBossInfo.resistances) do
+					local name = UnitDefs[tonumber(defID)].translatedHumanName
+					if font:GetTextWidth(name) * panelFontSize > maxLength then
+						maxLength = font:GetTextWidth(name) * panelFontSize
+					end
+					table.insert(sorted, { name = name, resistance = resistance.percent })
 				end
-				table.insert(sorted, { name = name, resistance = resistance.percent })
-			end
-			table.sort(sorted, function(a, b)
-				return a.resistance > b.resistance
-			end)
-			for i, resistance in ipairs(sorted) do
-				font:Print(resistance.name, panelMarginX + 20, PanelRow(11 + i), panelFontSize)
-				local percentString = string.format('%.0f', resistance.resistance * 100)
-				font:Print(percentString .. '%', panelMarginX + 35 + maxLength - font:GetTextWidth(percentString) * panelFontSize, PanelRow(11 + i), panelFontSize)
-			end
-
-			local row = #sorted + 12
-			font:Print('Player Queen Damage:', panelMarginX, PanelRow(row), panelFontSize)
-			sorted = {}
-			for teamID, damage in pairs(pveBossInfo.playerDamages) do
-				local name = PlayerName(teamID)
-				if font:GetTextWidth(name) * panelFontSize > maxLength then
-					maxLength = font:GetTextWidth(name) * panelFontSize
+				table.sort(sorted, function(a, b)
+					return a.resistance > b.resistance
+				end)
+				local row = 12
+				for i, resistance in ipairs(sorted) do
+					if i < 20 then
+						row = row + 1
+						font:Print(resistance.name, panelMarginX + 10, PanelRow(11 + i), panelFontSize)
+						local percentString = string.format('%.0f', resistance.resistance * 100)
+						font:Print(percentString .. '%', panelMarginX + 27 + maxLength - font:GetTextWidth(percentString) * panelFontSize, PanelRow(11 + i), panelFontSize)
+					end
 				end
-				table.insert(sorted, { name = name, damage = damage })
-			end
-			table.sort(sorted, function(a, b)
-				return a.damage > b.damage
-			end)
 
-			for i, resistance in ipairs(sorted) do
-				font:Print(resistance.name, panelMarginX + 20, PanelRow(row + i), panelFontSize)
-				local percentString = string.formatSI(resistance.damage)
-				font:Print(
-					percentString,
-					panelMarginX + 35 + maxLength - (font:GetTextWidth(percentString) - font:GetTextWidth('%')) * panelFontSize,
-					PanelRow(row + i),
-					panelFontSize
-				)
-			end
-
-			local row = #sorted + row + 1
-			font:Print('Healths:', panelMarginX, PanelRow(row), panelFontSize)
-			sorted = {}
-			for queenID, status in pairs(pveBossInfo.statuses) do
-				if not status.isDead then
-					table.insert(sorted, { id = tonumber(queenID), health = status.health / status.maxHealth })
+				font:Print('Player Queen Damage:', panelMarginX, PanelRow(row), panelFontSize)
+				sorted = {}
+				for teamID, damage in pairs(pveBossInfo.playerDamages) do
+					local name = PlayerName(teamID)
+					if font:GetTextWidth(name) * panelFontSize > maxLength then
+						maxLength = font:GetTextWidth(name) * panelFontSize
+					end
+					table.insert(sorted, { name = name, damage = damage })
 				end
-			end
-			table.sort(sorted, function(a, b)
-				return a.health > b.health
-			end)
+				table.sort(sorted, function(a, b)
+					return a.damage > b.damage
+				end)
 
-			for i, status in ipairs(sorted) do
-				font:Print(string.format('%.0f%%', status.health * 100), panelMarginX + 20, PanelRow(row + i), panelFontSize)
+				for i, resistance in ipairs(sorted) do
+					font:Print(resistance.name, panelMarginX + 10, PanelRow(row + i), panelFontSize)
+					local percentString = string.formatSI(resistance.damage)
+					font:Print(
+						percentString,
+						panelMarginX + 27 + maxLength - (font:GetTextWidth(percentString) - font:GetTextWidth('%')) * panelFontSize,
+						PanelRow(row + i),
+						panelFontSize
+					)
+				end
+
+				row = row + #sorted + 1
+				font:Print('Healths:', panelMarginX, PanelRow(row), panelFontSize)
+				sorted = {}
+				for queenID, status in pairs(pveBossInfo.statuses) do
+					if not status.isDead then
+						table.insert(sorted, { id = tonumber(queenID), health = status.health / status.maxHealth })
+					end
+				end
+				table.sort(sorted, function(a, b)
+					return a.health > b.health
+				end)
+
+				for i, status in ipairs(sorted) do
+					font:Print(string.format('%.0f%%', status.health * 100), panelMarginX + 20, PanelRow(row + i), panelFontSize)
+				end
 			end
 		end
 	end

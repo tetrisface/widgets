@@ -59,6 +59,13 @@ local LuaShader = VFS.Include(luaShaderDir .. 'LuaShader.lua')
 local vsSrc = [[
 #version 420
 
+
+// per vertex attributes
+layout (location = 0) in vec4 xyuv; // each vertex of the rectVBO, range [0,1]
+layout (location = 1) in vec4 tilingvector; // TODO: binary vector of tiling factors?
+
+// per instance attributes, hmm, 32 floats per instance....
+
 // ---- Inputs ----
 layout(location = 0) in vec3  position;     // quad position
 layout(location = 1) in float health;       // unit health ratio [0..1]
