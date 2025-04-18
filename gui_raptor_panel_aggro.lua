@@ -783,7 +783,6 @@ function widget:ViewResize()
 
 	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
 	font2 = WG['fonts'].getFont(fontfile2)
-	-- font3 = WG['fonts'].getFont(nil, nil, 0.22, 1.86)
 	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
 	x1 = math.floor(x1 - viewSizeX)
