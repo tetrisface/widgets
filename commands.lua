@@ -479,8 +479,10 @@ local function calculateDistance(x1, z1, x2, z2)
 end
 
 function widget:KeyPress(key, mods, isRepeat)
-	if key == KEYSYMS.d and mods['ctrl'] and mods['alt'] and mods['shift'] then
-		Spring.SendCommands('say If noticing issues with aggro panel try updating at https://discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096')
+	if key == KEYSYMS.D and mods['ctrl'] and mods['alt'] and mods['shift'] then
+		Spring.SendCommands(
+			'Say If noticing issues with aggro widget try updating at https:\\/\\/discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096'
+		)
 		return
 	end
 	if key == KEYSYMS.W and mods['ctrl'] and mods['alt'] and mods['shift'] then
@@ -689,7 +691,7 @@ function widget:KeyPress(key, mods, isRepeat)
 			}
 			if command.params[1] and command.params[3] then
 				for j = 1, #allImmobileBuilders do
-					log('cmp dist', Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]))
+					-- log('cmp dist', Distance(allImmobileBuilders[j].x, allImmobileBuilders[j].z, command.params[1], command.params[3]))
 					local builder = allImmobileBuilders[j]
 					if builder.buildDistance and Distance(builder.x, builder.z, command.params[1], command.params[3]) < builder.buildDistance then
 						local buildSpeed = unitIdBuildSpeeds:get(allImmobileBuilders[j].id)
