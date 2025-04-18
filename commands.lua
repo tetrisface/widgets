@@ -479,6 +479,10 @@ local function calculateDistance(x1, z1, x2, z2)
 end
 
 function widget:KeyPress(key, mods, isRepeat)
+	if isRepeat then
+		return false
+	end
+
 	if key == KEYSYMS.D and mods['ctrl'] and mods['alt'] and mods['shift'] then
 		Spring.SendCommands(
 			'Say If noticing issues with aggro widget try updating at https:\\/\\/discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096'

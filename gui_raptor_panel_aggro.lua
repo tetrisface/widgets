@@ -152,6 +152,17 @@ local nilDefaultRules = {
 	['raptorQueensKilled'] = true,
 }
 
+local colors = {
+	{ 0.709804, 0.537255, 0.000000 }, -- yellow
+	{ 0.796078, 0.294118, 0.086275 }, -- orange
+	{ 0.862745, 0.196078, 0.184314 }, -- red
+	{ 0.827451, 0.211765, 0.509804 }, -- magenta
+	{ 0.423529, 0.443137, 0.768627 }, -- violet
+	{ 0.149020, 0.545098, 0.823529 }, -- blue
+	{ 0.164706, 0.631373, 0.596078 }, -- cyan
+	{ 0.521569, 0.600000, 0.000000 }, -- green
+}
+
 local function PlayerName(teamID)
 	local playerList = Spring.GetPlayerList(teamID)
 	if playerList[1] then
