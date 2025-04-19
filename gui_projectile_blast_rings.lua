@@ -37,6 +37,7 @@ local Spring_GetProjectilesInRectangle = Spring.GetProjectilesInRectangle
 local ARTILLERY_TYPE = 1
 local ROCKET_TYPE = 2
 
+-- unit + weapon name
 local weaponNameTypes = {
   ['armart_tawf113_weapon'] = ARTILLERY_TYPE,
 
@@ -70,6 +71,10 @@ local weaponNameTypes = {
   ['raptor_turret_emp_t3_v1_raptorparalyzerbig'] = ARTILLERY_TYPE,
   ['raptor_turret_emp_t4_v1_raptorparalyzerbig'] = ARTILLERY_TYPE,
   ['raptor_worm_green_acidspit'] = ARTILLERY_TYPE,
+
+  ['raptor_turret_meteor_t4_v1_METEORLAUNCHER'] = ARTILLERY_TYPE,
+  ['raptor_turret_meteor_t4_v1_meteorlauncher'] = ARTILLERY_TYPE,
+
 
 }
 

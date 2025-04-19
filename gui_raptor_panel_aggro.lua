@@ -357,7 +357,7 @@ local function printResistances(text, x, y, size, option)
 	if not option then
 		option = 'o'
 	end
-	font:Print(text, x, y, size, option)
+	font:Print(text or '', x, y, size, option)
 end
 
 local function CreatePanelDisplayList()
@@ -701,7 +701,7 @@ local function UpdateBossInfo()
 
 	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
 		local name = PlayerName(teamID)
-		if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
+		if font:GetTextWidth(name or '') * panelFontSize > bossInfo.labelMaxLength then
 			bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
 		end
 		table.insert(bossInfo.playerDamages, { name = name, raw = damage, string = string.formatSI(damage) })
