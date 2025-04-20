@@ -125,7 +125,7 @@ local raptorsTeamID
 local scavengersTeamID
 local stageGrace = 0
 local stageMain = 1
-local stageQueen = 2
+local stageBoss = 2
 
 local guiPanel
 local updatePanel
@@ -139,6 +139,7 @@ local bossInfo
 local rules = {
 	'raptorDifficulty',
 	'raptorGracePeriod',
+	'scavBossAnger',
 	'raptorQueenAnger',
 	'RaptorQueenAngerGain_Aggression',
 	'RaptorQueenAngerGain_Base',
@@ -184,12 +185,32 @@ local colors = {
 
 local recentlyKilledQueens = {}
 
+local cachedPlayerNames
+if not cachedPlayerNames then
+	cachedPlayerNames = {}
+end
+
 local function PlayerName(teamID)
+	local playerName = ''
+
 	local playerList = Spring.GetPlayerList(teamID)
-	if playerList[1] then
-		return Spring.GetPlayerInfo(playerList[1])
+	if (not playerList or #playerList == 0) and cachedPlayerNames[teamID] then
+		playerName = cachedPlayerNames[teamID]
+	elseif #playerList > 1 then
+		for _, player in ipairs(playerList) do
+			playerName = playerName .. ' & '.. select(Spring.GetPlayerInfo(player), 1)
+		end
+	elseif #playerList == 1 then
+		playerName = select(1,Spring.GetPlayerInfo(playerList[1]))
+	else
+		_, playerName = Spring.GetAIInfo(teamID)
+
 	end
-	local _, playerName = Spring.GetAIInfo(teamID)
+
+	if playerName and playerName ~= '' then
+		cachedPlayerNames[teamID] = playerName
+	end
+
 	return playerName
 end
 
@@ -224,10 +245,10 @@ end
 local function RaptorStage(currentTime)
 	local stage = stageGrace
 	if (currentTime and currentTime or Spring.GetGameSeconds()) > gameInfo.raptorGracePeriod then
-		if gameInfo.raptorQueenAnger < 100 then
+		if (isRaptors and (gameInfo.raptorQueenAnger < 100)) or (not isRaptors and (gameInfo.scavBossAnger < 100)) then
 			stage = stageMain
 		else
-			stage = stageQueen
+			stage = stageBoss
 		end
 	end
 	return stage
@@ -324,8 +345,8 @@ end
 
 local function DrawPlayerAttractions(stage)
 	local isMultiBosses = nBosses > 1 and gameInfo.raptorQueensKilled
-	-- stageMain is with the anger and the timer (2 rows)
-	local row = isRaptors and ((stage == stageMain or (stage == stageQueen and isMultiBosses)) and 3 or 2) or 1
+	-- stageMain is with the two angers % and the timer (2 rows)
+	local row = isRaptors and ((stage == stageMain or (stage == stageBoss and isMultiBosses)) and 3 or 2) or 1
 	font:Print('Player Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
@@ -350,7 +371,7 @@ local function printPanel(text, x, y, size)
 	font:Print(text, x, y, size)
 end
 
-local function printResistances(text, x, y, size, option)
+local function printBossInfo(text, x, y, size, option)
 	if not size then
 		size = panelFontSize
 	end
@@ -371,12 +392,11 @@ local function CreatePanelDisplayList()
 	local currentTime = Spring.GetGameSeconds()
 	local stage = RaptorStage(currentTime)
 
-	if isRaptors then
-		if stage == stageGrace then
+		if stage == stageGrace and isRaptors then
 			printPanel(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1))
 			local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
 			printPanel(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1))
-		elseif stage == stageMain then
+		elseif stage == stageMain and isRaptors then
 			local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', {
 				anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)),
 				techAnger = gameInfo.raptorTechAnger,
@@ -392,22 +412,24 @@ local function CreatePanelDisplayList()
 				currentlyResistantToNames = {}
 				currentlyResistantTo = {}
 			end
-		elseif stage == stageQueen then
-			printPanel(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1))
-			local healthText = tostring(gameInfo.raptorQueenHealth)
-			printPanel(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1))
+		elseif stage == stageBoss then
+			if isRaptors then
+				printPanel(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1))
+				local healthText = tostring(gameInfo.raptorQueenHealth)
+				printPanel(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1))
 
-			if nBosses > 1 and gameInfo.raptorQueensKilled then
-				printPanel(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2))
+				if nBosses > 1 and gameInfo.raptorQueensKilled then
+					printPanel(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2))
+				end
 			end
 
 			if bossInfo then
 				local bossInfoMarginX = panelMarginX - 15
-				printResistances(I18N('ui.raptors.queenResistantToList', { count = nBosses }), bossInfoMarginX, PanelRow(11))
+				printBossInfo(I18N('ui.raptors.queenResistantToList', { count = nBosses }):gsub((isRaptors and 'asdf' or 'Queen'), 'Boss'), bossInfoMarginX, PanelRow(11))
 				local row = 11
 				for i, resistance in ipairs(bossInfo.resistances) do
-					printResistances(resistance.name, bossInfoMarginX + 10, PanelRow(row + i))
-					printResistances(
+					printBossInfo(resistance.name, bossInfoMarginX + 10, PanelRow(row + i))
+					printBossInfo(
 						resistance.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - font:GetTextWidth(resistance.string:gsub('%%', '')) * panelFontSize,
 						PanelRow(row + i),
@@ -418,10 +440,10 @@ local function CreatePanelDisplayList()
 
 				row = row + #bossInfo.resistances + 1
 
-				printResistances('Player Queen Damage:', bossInfoMarginX, PanelRow(row))
+				printBossInfo('Player '.. (isRaptors and 'Queen' or 'Boss') .. ' Damage:', bossInfoMarginX, PanelRow(row))
 				for i, damage in ipairs(bossInfo.playerDamages) do
-					printResistances(damage.name, bossInfoMarginX + 10, PanelRow(row + i))
-					printResistances(
+					printBossInfo(damage.name, bossInfoMarginX + 10, PanelRow(row + i))
+					printBossInfo(
 						damage.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(damage.string) - font:GetTextWidth('%')) * panelFontSize,
 						PanelRow(row + i),
@@ -432,7 +454,7 @@ local function CreatePanelDisplayList()
 
 				row = row + #bossInfo.playerDamages + 1
 
-				printResistances('Healths:', bossInfoMarginX, PanelRow(row))
+				printBossInfo('Healths:', bossInfoMarginX, PanelRow(row))
 				for i, health in ipairs(bossInfo.healths) do
 					font3:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
 					font3:Print(
@@ -447,7 +469,6 @@ local function CreatePanelDisplayList()
 				end
 			end
 		end
-	end
 
 	DrawPlayerAttractions(stage)
 
@@ -684,12 +705,13 @@ local function UpdateBossInfo()
 	if not bossInfoRaw then
 		return
 	end
-	local bossInfoRaw = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
+	bossInfoRaw = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
 	bossInfo = { resistances = {}, playerDamages = {}, healths = {}, meta = { maxLengths = {} }, labelMaxLength = 0 }
+
 	local i = 0
 	for defID, resistance in pairs(bossInfoRaw.resistances) do
 		i = i + 1
-		if i < 20 and resistance.percent >= 0.005 then
+		if resistance.percent >= 0.2 then
 			local name = UnitDefs[tonumber(defID)].translatedHumanName
 			if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
 				bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
@@ -698,15 +720,17 @@ local function UpdateBossInfo()
 		end
 	end
 	table.sort(bossInfo.resistances, sortRawDesc)
+	while #bossInfo.resistances > 20 do table.remove(bossInfo.resistances) end
 
 	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
 		local name = PlayerName(teamID)
-		if font:GetTextWidth(name or '') * panelFontSize > bossInfo.labelMaxLength then
-			bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
+		if font:GetTextWidth((name or '')..'XX') * panelFontSize > bossInfo.labelMaxLength then
+			bossInfo.labelMaxLength = font:GetTextWidth((name or '')..'XX') * panelFontSize
 		end
 		table.insert(bossInfo.playerDamages, { name = name, raw = damage, string = string.formatSI(damage) })
 	end
 	table.sort(bossInfo.playerDamages, sortRawDesc)
+	while #bossInfo.playerDamages > 5 do table.remove(bossInfo.playerDamages) end
 
 	for queenID, status in pairs(bossInfoRaw.statuses) do
 		table.insert(bossInfo.healths, {
@@ -728,6 +752,12 @@ local function UpdateBossInfo()
 		health.color = table.remove(colorsTemp, 1)
 	end
 
+	for n = #bossInfo.healths, 1, -1 do
+		local status = bossInfo.healths[n]
+		if status and (status.isDead or status.raw == 0 or recentlyKilledQueens[status.id]) then
+			table.remove(bossInfo.healths, n)
+		end
+	end
 	table.sort(bossInfo.healths, sortRawDesc)
 end
 

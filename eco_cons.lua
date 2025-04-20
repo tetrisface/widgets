@@ -41,6 +41,9 @@ local tidalStrength = Game.tidal
 local windMax = Game.windMax
 local windMin = Game.windMin
 
+local waitGameFramesDefault = 30
+local frameStaggeringModuloMultiplier = 3
+
 local myTeamId = Spring.GetMyTeamID()
 local busyCommands = {
   [CMD.GUARD] = true,
@@ -131,7 +134,7 @@ end
 
 local function AllowBuilderOrder(builderId, currentGameFrame, waitGameFrames)
   currentGameFrame = currentGameFrame or Spring.GetGameFrame()
-  waitGameFrames = waitGameFrames or 15
+  waitGameFrames = waitGameFrames or waitGameFramesDefault
   local builder = BuilderById(builderId)
   if not builder then
     return
@@ -1594,11 +1597,11 @@ local function GameFrameModulo()
   local nBuilderUnitIds = builderUnitIds.count
   return math.floor(
     0.5 +
-    (nBuilderUnitIds > 200 and Interpolate(nBuilderUnitIds, 201, 300, 40, 90) or
+    ((nBuilderUnitIds > 200 and Interpolate(nBuilderUnitIds, 201, 300, 40, 90) or
       nBuilderUnitIds > 100 and Interpolate(nBuilderUnitIds, 101, 200, 21, 40) or
       nBuilderUnitIds > 50 and Interpolate(nBuilderUnitIds, 51, 100, 11, 20) or
       nBuilderUnitIds > 15 and Interpolate(nBuilderUnitIds, 15, 50, 2, 15) or
-      1)
+      1) * frameStaggeringModuloMultiplier)
   )
 end
 
@@ -1610,7 +1613,7 @@ local function BuildersJitterModulo()
         nBuilderUnitIds > 30 and Interpolate(nBuilderUnitIds, 30, 100, 2, 3) or
         -- nBuilderUnitIds > 10 and Interpolate(nBuilderUnitIds, 10, 30, 1, 3) or
         1)
-  modulo = math.floor(0.5 + modulo)
+  modulo = math.floor(0.5 + (modulo * frameStaggeringModuloMultiplier))
   return modulo > 1 and math.random(modulo - 1, modulo + 1) or 1
 end
 

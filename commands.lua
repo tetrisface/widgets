@@ -13,39 +13,37 @@ end
 VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
-local myTeamId = Spring.GetMyTeamID()
 
 -- local selectSplitKeys = {
---   [KEYSYMS.Q] = 2,
---   [KEYSYMS.W] = 3,
---   [KEYSYMS.E] = 4,
--- }
-local immobileBuilderDefIds = {
-	UnitDefNames['armnanotc'].id,
-	UnitDefNames['armnanotc2plat'].id,
-	UnitDefNames['armnanotcplat'].id,
-	UnitDefNames['armnanotct2'].id,
-	UnitDefNames['armrespawn'].id,
-	UnitDefNames['cornanotc'].id,
-	UnitDefNames['cornanotc2plat'].id,
-	UnitDefNames['cornanotcplat'].id,
-	UnitDefNames['cornanotct2'].id,
-	UnitDefNames['correspawn'].id,
-	UnitDefNames['legnanotc'] and UnitDefNames['legnanotc'].id or nil,
-	UnitDefNames['legnanotcbase'] and UnitDefNames['legnanotcbase'].id or nil,
-	UnitDefNames['legnanotcplat'] and UnitDefNames['legnanotcplat'].id or nil,
-	UnitDefNames['legnanotct2'] and UnitDefNames['legnanotct2'].id or nil,
-	UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil,
-}
+	--   [KEYSYMS.Q] = 2,
+	--   [KEYSYMS.W] = 3,
+	--   [KEYSYMS.E] = 4,
+	-- }
 
-local selectPrios = { 'ack', 'aca', 'acv', 'ca', 'ck', 'cv' }
-local factionPrios = { 'arm', 'cor', 'leg' }
+
+	local selectPrios = { 'ack', 'aca', 'acv', 'ca', 'ck', 'cv' }
+	local factionPrios = { 'arm', 'cor', 'leg' }
+	local immobileBuilderDefIds = {
+		UnitDefNames['armnanotc'].id,
+		UnitDefNames['armnanotc2plat'].id,
+		UnitDefNames['armnanotcplat'].id,
+		UnitDefNames['armnanotct2'].id,
+		UnitDefNames['armrespawn'].id,
+		UnitDefNames['cornanotc'].id,
+		UnitDefNames['cornanotc2plat'].id,
+		UnitDefNames['cornanotcplat'].id,
+		UnitDefNames['cornanotct2'].id,
+		UnitDefNames['correspawn'].id,
+		UnitDefNames['legnanotc'] and UnitDefNames['legnanotc'].id or nil,
+		UnitDefNames['legnanotcbase'] and UnitDefNames['legnanotcbase'].id or nil,
+		UnitDefNames['legnanotcplat'] and UnitDefNames['legnanotcplat'].id or nil,
+		UnitDefNames['legnanotct2'] and UnitDefNames['legnanotct2'].id or nil,
+		UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil,
+	}
+local myTeamId = Spring.GetMyTeamID()
+
 
 local immobileBuilderDefs = {}
-for _, immobileBuilderDefId in ipairs(immobileBuilderDefIds) do
-	immobileBuilderDefs[immobileBuilderDefId] = UnitDefs[immobileBuilderDefId].buildDistance + 96
-end
-
 local selectedPos = {}
 local unitIdBuildSpeeds = LRUCache:new(100)
 local isShieldDefId = {}
@@ -58,11 +56,22 @@ function widget:Initialize()
 	Spring.SendCommands('bind Shift+Alt+sc_q buildfacing inc')
 	Spring.SendCommands('bind Shift+Alt+sc_e buildfacing dec')
 
+
+
+	for _, immobileBuilderDefId in ipairs(immobileBuilderDefIds) do
+		immobileBuilderDefs[immobileBuilderDefId] = UnitDefs[immobileBuilderDefId].buildDistance + 96
+	end
+
+
 	for unitDefId, unitDef in pairs(UnitDefs) do
 		if unitDef.isBuilding and unitDef.hasShield then
 			isShieldDefId[unitDefId] = unitDef.customParams and unitDef.customParams.shield_radius and 1 or 0
 		end
+		if unitDef.isBuilder and unitDef.isBuilding and unitDef.canAssist and not table.contains(immobileBuilderDefIds, unitDefId) then
+			immobileBuilderDefIds[unitDefId] = unitDef.buildDistance + 96
+		end
 	end
+	Spring.Echo('Immobile builder def ids:', immobileBuilderDefIds)
 end
 
 local function SelectSubset(selected_units, nPartitions)
