@@ -603,7 +603,13 @@ end
 
 local function RegisterUnit(unitDefID, unitTeamID)
 	if playerEcoAttractionsRaw[unitTeamID] then
-		playerEcoAttractionsRaw[unitTeamID] = playerEcoAttractionsRaw[unitTeamID] + (defIDsEcoValues[unitDefID] or 0)
+		local ecoValue = defIDsEcoValues[unitDefID]
+		if ecoValue and ecoValue > 0 then
+			if PlayerName(unitTeamID) == 'Nervensaege' then
+				Spring.Echo('Registering ecovalue', ecoValue, PlayerName(unitTeamID), UnitDefs[unitDefID].translatedHumanName)
+			end
+			playerEcoAttractionsRaw[unitTeamID] = playerEcoAttractionsRaw[unitTeamID] + ecoValue
+		end
 	end
 end
 
@@ -622,11 +628,21 @@ function widget:UnitGiven(_, unitDefID, unitTeam, oldTeam)
 	DeregisterUnit(unitDefID, oldTeam)
 end
 
-function widget:UnitDestroyed(_, unitDefID, unitTeam)
+function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
 	DeregisterUnit(unitDefID, unitTeam)
+
+	if bossInfo then
+		for _, health in ipairs(bossInfo.healths) do
+			if health.id == unitID then
+				recentlyKilledQueens[unitID] = true
+				WG['ObjectSpotlight'].removeSpotlight('unit', 'me', unitID)
+			end
+		end
+	end
 end
 
 function widget:Initialize()
+	playerEcoAttractionsRaw = {}
 	Spring.SendCommands('disablewidget Raptor Stats Panel')
 	widget:ViewResize()
 
@@ -826,15 +842,4 @@ end
 function widget:LanguageChanged()
 	refreshMarqueeMessage = true
 	updatePanel = true
-end
-
-function widget:UnitDestroyed(unitID)
-	if bossInfo then
-		for _, health in ipairs(bossInfo.healths) do
-			if health.id == unitID then
-				recentlyKilledQueens[unitID] = true
-				WG['ObjectSpotlight'].removeSpotlight('unit', 'me', unitID)
-			end
-		end
-	end
 end
