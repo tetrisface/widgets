@@ -19,6 +19,122 @@ function widget:GetInfo()
 	}
 end
 
+VFS.Include('luaui/Headers/keysym.h.lua')
+local panelTexture = ':n:LuaUI/Images/raptorpanel.tga'
+local I18N = Spring.I18N
+
+local isRaptors = Spring.Utilities.Gametype.IsRaptors()
+local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
+local modOptions = Spring.GetModOptions()
+local nBosses = modOptions.raptor_queen_count
+local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
+
+local panelFontSize = 14
+local waveFontSize = 36
+local customScale = 1
+local widgetScale = customScale
+local w = 300
+local h = 210
+local panelMarginX = 30
+local panelMarginY = 40
+local panelSpacingY = 5
+local stageGrace = 0
+local stageMain = 1
+local stageBoss = 2
+local waveSpacingY = 7
+local waveSpeed = 0.1
+
+
+local font, font2, font3
+local messageArgs, marqueeMessage
+local refreshMarqueeMessage = false
+local showMarqueeMessage = false
+local displayList
+local guiPanel
+local updatePanel
+local hasRaptorEvent = false
+local bossToastTimer = Spring.GetTimer()
+
+local vsx, vsy = Spring.GetViewGeometry()
+local viewSizeX, viewSizeY = 0, 0
+local x1 = 0
+local y1 = 0
+local isMovingWindow
+
+local waveCount = 0
+local waveTime
+local gameInfo = {}
+local resistancesTable = {}
+local currentlyResistantTo = {}
+local currentlyResistantToNames = {}
+local playerEcoAttractionsRaw = {}
+local playerEcoAttractionsRender = {}
+local teamIDs = {}
+local raptorsTeamID
+local scavengersTeamID
+local isTooltip = true
+local isExpanded = false
+local nPanelRows
+
+
+
+local bossInfo
+
+local rules = {
+	'raptorDifficulty',
+	'raptorGracePeriod',
+	'scavBossAnger',
+	'raptorQueenAnger',
+	'RaptorQueenAngerGain_Aggression',
+	'RaptorQueenAngerGain_Base',
+	'RaptorQueenAngerGain_Eco',
+	'raptorQueenHealth',
+	'raptorQueensKilled',
+	'raptorQueenTime',
+	'raptorTechAnger',
+}
+
+local nilDefaultRules = {
+	['raptorQueensKilled'] = true,
+}
+
+local colors = {
+	{ 1.000000, 0.783599, 0.109804 }, -- yellow_light
+	{ 0.929830, 0.521569, 0.352523 }, -- orange_light
+	{ 0.920358, 0.533527, 0.526701 }, -- red_light
+	{ 0.899288, 0.539928, 0.713886 }, -- magenta_light
+	{ 0.708966, 0.718865, 0.883190 }, -- violet_light
+	{ 0.468691, 0.724225, 0.903858 }, -- blue_light
+	{ 0.362407, 0.833672, 0.798029 }, -- cyan_light
+	{ 0.869282, 1.000000, 0.000000 }, -- green_light
+	{ 0.435189, 0.160785, 0.047164 }, -- orange_dark
+	{ 0.553861, 0.101186, 0.093198 }, -- red_dark
+	{ 0.087730, 0.320904, 0.484819 }, -- blue_dark
+	{ 0.419, 0.294, 0.580 }, -- lavender_dark
+	{ 0.180, 0.360, 0.278 }, -- forest_dark
+	{ 0.549, 0.270, 0.160 }, -- clay_dark
+	{ 0.208, 0.380, 0.388 }, -- steel_dark
+	{ 0.470, 0.360, 0.470 }, -- mauve_dark
+	{ 0.388, 0.321, 0.156 }, -- brass_dark
+
+	{ 0.709804, 0.537255, 0.000000 }, -- yellow
+	{ 0.796078, 0.294118, 0.086275 }, -- orange
+	{ 0.862745, 0.196078, 0.184314 }, -- red
+	{ 0.827451, 0.211765, 0.509804 }, -- magenta
+	{ 0.423529, 0.443137, 0.768627 }, -- violet
+	{ 0.149020, 0.545098, 0.823529 }, -- blue
+	{ 0.164706, 0.631373, 0.596078 }, -- cyan
+	{ 0.521569, 0.600000, 0.000000 }, -- green
+
+}
+
+local recentlyKilledQueens = {}
+
+local cachedPlayerNames
+if not cachedPlayerNames then
+	cachedPlayerNames = {}
+end
+
 local isObject = {}
 for udefID, def in ipairs(UnitDefs) do
 	if def.modCategories['object'] or def.customParams.objectify then
@@ -26,7 +142,6 @@ for udefID, def in ipairs(UnitDefs) do
 	end
 end
 
-local isRaptors = Spring.Utilities.Gametype.IsRaptors()
 local function EcoValueDef(unitDef)
 	if (unitDef.canMove and not (unitDef.customParams and unitDef.customParams.iscommander)) or isObject[unitDef.name] then
 		return 0
@@ -79,115 +194,6 @@ for unitDefID, unitDef in pairs(UnitDefs) do
 	if ecoValue > 0 then
 		defIDsEcoValues[unitDefID] = ecoValue
 	end
-end
-
-local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
-
-local I18N = Spring.I18N
-
-local customScale = 1
-local widgetScale = customScale
-local font, font2, font3
-local messageArgs, marqueeMessage
-local refreshMarqueeMessage = false
-local showMarqueeMessage = false
-
-local displayList
-local panelTexture = ':n:LuaUI/Images/raptorpanel.tga'
-
-local panelFontSize = 14
-local waveFontSize = 36
-
-local vsx, vsy = Spring.GetViewGeometry()
-local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
-
-local viewSizeX, viewSizeY = 0, 0
-local w = 300
-local h = 210
-local x1 = 0
-local y1 = 0
-local panelMarginX = 30
-local panelMarginY = 40
-local panelSpacingY = 5
-local waveSpacingY = 7
-local isMovingWindow
-local waveSpeed = 0.1
-local waveCount = 0
-local waveTime
-local gameInfo = {}
-local resistancesTable = {}
-local currentlyResistantTo = {}
-local currentlyResistantToNames = {}
-local playerEcoAttractionsRaw = {}
-local playerEcoAttractionsRender = {}
-local teamIDs = {}
-local raptorsTeamID
-local scavengersTeamID
-local stageGrace = 0
-local stageMain = 1
-local stageBoss = 2
-
-local guiPanel
-local updatePanel
-local hasRaptorEvent = false
-local bossToastTimer = Spring.GetTimer()
-
-local modOptions = Spring.GetModOptions()
-local nBosses = modOptions.raptor_queen_count
-local bossInfo
-
-local rules = {
-	'raptorDifficulty',
-	'raptorGracePeriod',
-	'scavBossAnger',
-	'raptorQueenAnger',
-	'RaptorQueenAngerGain_Aggression',
-	'RaptorQueenAngerGain_Base',
-	'RaptorQueenAngerGain_Eco',
-	'raptorQueenHealth',
-	'raptorQueensKilled',
-	'raptorQueenTime',
-	'raptorTechAnger',
-}
-
-local nilDefaultRules = {
-	['raptorQueensKilled'] = true,
-}
-
-local colors = {
-	{ 1.000000, 0.783599, 0.109804 }, -- yellow_light
-	{ 0.929830, 0.521569, 0.352523 }, -- orange_light
-	{ 0.920358, 0.533527, 0.526701 }, -- red_light
-	{ 0.899288, 0.539928, 0.713886 }, -- magenta_light
-	{ 0.708966, 0.718865, 0.883190 }, -- violet_light
-	{ 0.468691, 0.724225, 0.903858 }, -- blue_light
-	{ 0.362407, 0.833672, 0.798029 }, -- cyan_light
-	{ 0.869282, 1.000000, 0.000000 }, -- green_light
-
-	{ 0.309804, 0.234493, 0.000000 }, -- yellow_dark
-	{ 0.435189, 0.160785, 0.047164 }, -- orange_dark
-	{ 0.553861, 0.101186, 0.093198 }, -- red_dark
-	{ 0.524418, 0.114798, 0.313085 }, -- magenta_dark
-	{ 0.226880, 0.246107, 0.565276 }, -- violet_dark
-	{ 0.087730, 0.320904, 0.484819 }, -- blue_dark
-	{ 0.081947, 0.314132, 0.296571 }, -- cyan_dark
-	{ 0.173856, 0.200000, 0.000000 }, -- green_dark
-
-	{ 0.709804, 0.537255, 0.000000 }, -- yellow
-	{ 0.796078, 0.294118, 0.086275 }, -- orange
-	{ 0.862745, 0.196078, 0.184314 }, -- red
-	{ 0.827451, 0.211765, 0.509804 }, -- magenta
-	{ 0.423529, 0.443137, 0.768627 }, -- violet
-	{ 0.149020, 0.545098, 0.823529 }, -- blue
-	{ 0.164706, 0.631373, 0.596078 }, -- cyan
-	{ 0.521569, 0.600000, 0.000000 }, -- green
-}
-
-local recentlyKilledQueens = {}
-
-local cachedPlayerNames
-if not cachedPlayerNames then
-	cachedPlayerNames = {}
 end
 
 local function PlayerName(teamID)
@@ -425,48 +431,66 @@ local function CreatePanelDisplayList()
 
 			if bossInfo then
 				local bossInfoMarginX = panelMarginX - 15
-				printBossInfo(I18N('ui.raptors.queenResistantToList', { count = nBosses }):gsub((isRaptors and 'asdf' or 'Queen'), 'Boss'), bossInfoMarginX, PanelRow(11))
+				printBossInfo((isRaptors and 'Queen' or 'Boss') .. ' Restistances:' .. (isTooltip and ' (Ctrl+B Expand)' or ''), bossInfoMarginX, PanelRow(11))
 				local row = 11
 				for i, resistance in ipairs(bossInfo.resistances) do
-					printBossInfo(resistance.name, bossInfoMarginX + 10, PanelRow(row + i))
+					row = row + 1
+					printBossInfo(resistance.name, bossInfoMarginX + 10, PanelRow(row))
 					printBossInfo(
 						resistance.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - font:GetTextWidth(resistance.string:gsub('%%', '')) * panelFontSize,
-						PanelRow(row + i),
+						PanelRow(row),
 						nil,
 						'o'
 					)
+					if not isExpanded and i > 3 then
+						break
+					end
 				end
 
-				row = row + #bossInfo.resistances + 1
+				row = row + 1
 
 				printBossInfo('Player '.. (isRaptors and 'Queen' or 'Boss') .. ' Damage:', bossInfoMarginX, PanelRow(row))
 				for i, damage in ipairs(bossInfo.playerDamages) do
-					printBossInfo(damage.name, bossInfoMarginX + 10, PanelRow(row + i))
+					row = row + 1
+					printBossInfo(damage.name, bossInfoMarginX + 10, PanelRow(row))
 					printBossInfo(
 						damage.string,
 						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font:GetTextWidth(damage.string) - font:GetTextWidth('%')) * panelFontSize,
-						PanelRow(row + i),
+						PanelRow(row),
 						nil,
 						'o'
 					)
+					if not isExpanded and i > 5 then
+						break
+					end
 				end
 
-				row = row + #bossInfo.playerDamages + 1
+				row = row + 1
 
 				printBossInfo('Healths:', bossInfoMarginX, PanelRow(row))
-				for i, health in ipairs(bossInfo.healths) do
+				row = row + 1
+				local rowWidthPixels = bossInfoMarginX + 10
+				local maxRowWidthPixels = w*widgetScale - 50
+				local healthH = panelFontSize+0.4
+				for _, health in ipairs(bossInfo.healths) do
+					local newRowWidthPixels = rowWidthPixels + font3:GetTextWidth(health.string) * panelFontSize
+					if newRowWidthPixels > maxRowWidthPixels then
+						row = row + 1
+						rowWidthPixels = bossInfoMarginX + 10
+					end
 					font3:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
 					font3:Print(
 						health.string,
-						bossInfoMarginX + 35 + bossInfo.labelMaxLength - (font3:GetTextWidth(health.string) - font3:GetTextWidth('%')) * panelFontSize,
-						PanelRow(row + i),
-						panelFontSize+0.4,
+						rowWidthPixels,
+						PanelRow(row),
+						healthH,
 						'o'
 					)
-
-					font3:SetTextColor(1, 1, 1, 1)
+					rowWidthPixels = rowWidthPixels + font3:GetTextWidth('XXX   ')* panelFontSize
 				end
+				font3:SetTextColor(1, 1, 1, 1)
+				nPanelRows = row
 			end
 		end
 
@@ -605,9 +629,6 @@ local function RegisterUnit(unitDefID, unitTeamID)
 	if playerEcoAttractionsRaw[unitTeamID] then
 		local ecoValue = defIDsEcoValues[unitDefID]
 		if ecoValue and ecoValue > 0 then
-			if PlayerName(unitTeamID) == 'Nervensaege' then
-				Spring.Echo('Registering ecovalue', ecoValue, PlayerName(unitTeamID), UnitDefs[unitDefID].translatedHumanName)
-			end
 			playerEcoAttractionsRaw[unitTeamID] = playerEcoAttractionsRaw[unitTeamID] + ecoValue
 		end
 	end
@@ -736,7 +757,6 @@ local function UpdateBossInfo()
 		end
 	end
 	table.sort(bossInfo.resistances, sortRawDesc)
-	while #bossInfo.resistances > 20 do table.remove(bossInfo.resistances) end
 
 	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
 		local name = PlayerName(teamID)
@@ -746,7 +766,6 @@ local function UpdateBossInfo()
 		table.insert(bossInfo.playerDamages, { name = name, raw = damage, string = string.formatSI(damage) })
 	end
 	table.sort(bossInfo.playerDamages, sortRawDesc)
-	while #bossInfo.playerDamages > 5 do table.remove(bossInfo.playerDamages) end
 
 	for queenID, status in pairs(bossInfoRaw.statuses) do
 		table.insert(bossInfo.healths, {
@@ -790,12 +809,11 @@ function widget:GameFrame(n)
 end
 
 function widget:IsAbove(x, y)
-	if not bossInfo then
+	if not bossInfo or RaptorStage() ~= stageBoss or not nPanelRows then
 		return
 	end
 
-	local nBossInfoRows = #bossInfo.resistances + #bossInfo.playerDamages
-	local bottomY = y1-(h + -PanelRow(nBossInfoRows+3) + (#bossInfo.healths+1) * (panelFontSize+0.4 + panelSpacingY))
+	local bottomY = y1+PanelRow(nPanelRows+1)
 	local isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
 
 	if isAboveBossInfo then
@@ -842,4 +860,16 @@ end
 function widget:LanguageChanged()
 	refreshMarqueeMessage = true
 	updatePanel = true
+end
+
+function widget:KeyPress(key, mods, isRepeat)
+	if isRepeat then
+		return
+	end
+	if key == KEYSYMS.B and mods.ctrl and not mods.shift and not mods.alt then
+		isTooltip = false
+		isExpanded = not isExpanded
+		updatePanel = true
+		return
+	end
 end
