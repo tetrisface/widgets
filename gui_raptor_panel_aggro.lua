@@ -860,6 +860,7 @@ function widget:ViewResize()
 	widgetScale = (0.75 + (viewSizeX * viewSizeY / 10000000)) * customScale
 	x1 = viewSizeX + x1 + ((x1 / 2) * (widgetScale - 1))
 	y1 = viewSizeY + y1 + ((y1 / 2) * (widgetScale - 1))
+	updatePanel = true
 end
 
 function widget:LanguageChanged()
