@@ -204,7 +204,7 @@ local function PlayerName(teamID)
 	if (not playerList or #playerList == 0) and cachedPlayerNames[teamID] then
 		playerName = cachedPlayerNames[teamID]
 	elseif #playerList > 1 then
-		for i, player in ipairs(playerList) do
+		for _, player in ipairs(playerList) do
 			if player then
 				playerName = playerName .. (#playerName > 0 and ' & ' or '') .. select(1, Spring.GetPlayerInfo(player))
 			end
