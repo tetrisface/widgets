@@ -750,7 +750,7 @@ local function UpdateBossInfo()
 	local i = 0
 	for defID, resistance in pairs(bossInfoRaw.resistances) do
 		i = i + 1
-		if resistance.percent >= 0.2 then
+		if resistance.percent >= 0.1 then
 			local name = UnitDefs[tonumber(defID)].translatedHumanName
 			if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
 				bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
