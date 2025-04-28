@@ -22,64 +22,13 @@ end
 VFS.Include('luaui/Headers/keysym.h.lua')
 local panelTexture = ':n:LuaUI/Images/raptorpanel.tga'
 local I18N = Spring.I18N
-
 local isRaptors = Spring.Utilities.Gametype.IsRaptors()
 local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
 local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
-
-local panelFontSize = 14
-local waveFontSize = 36
-local customScale = 1
-local widgetScale = customScale
-local w = 300
-local h = 210
-local panelMarginX = 30
-local bossInfoMarginX = panelMarginX - 15
-local bossInfoSubLabelMarginX = bossInfoMarginX + 35
-local panelMarginY = 40
-local panelSpacingY = 5
-local stageGrace = 0
-local stageMain = 1
-local stageBoss = 2
-local waveSpacingY = 7
-local waveSpeed = 0.1
-
-
-local font, font2, font3
-local messageArgs, marqueeMessage
-local refreshMarqueeMessage = false
-local showMarqueeMessage = false
-local displayList
-local guiPanel
-local updatePanel
-local hasRaptorEvent = false
-local bossToastTimer = Spring.GetTimer()
-
-local vsx, vsy = Spring.GetViewGeometry()
-local viewSizeX, viewSizeY = 0, 0
-local x1 = 0
-local y1 = 0
-local isMovingWindow
-
-local waveCount = 0
-local waveTime
-local gameInfo = {}
-local resistancesTable = {}
-local currentlyResistantTo = {}
-local currentlyResistantToNames = {}
-local playerEcoAttractionsRaw = {}
-local playerEcoAttractionsRender = {}
-local teamIDs = {}
-local raptorsTeamID
-local scavengersTeamID
-local isExpanded = false
-local nPanelRows
-
-
-
-local bossInfo
+local bossDefName = isRaptors and ('raptor_queen_' .. modOptions.raptor_difficulty ) or ('scavengerbossv4_'.. scav_difficulty ..'_scav')
+local totalBossHealth = UnitDefNames[bossDefName] and UnitDefs[UnitDefNames[bossDefName].id] and UnitDefs[UnitDefNames[bossDefName].id].health or (1250000 * 1.5)
 
 local rules = {
 	'raptorDifficulty',
@@ -126,9 +75,56 @@ local colors = {
 	{ 0.149020, 0.545098, 0.823529 }, -- blue
 	{ 0.164706, 0.631373, 0.596078 }, -- cyan
 	{ 0.521569, 0.600000, 0.000000 }, -- green
-
 }
 
+local panelFontSize = 14
+local waveFontSize = 36
+local customScale = 1
+local widgetScale = customScale
+local w = 300
+local h = 210
+local panelMarginX = 30
+local bossInfoMarginX = panelMarginX - 15
+local bossInfoSubLabelMarginX = bossInfoMarginX + 35
+local panelMarginY = 40
+local panelSpacingY = 5
+local stageGrace = 0
+local stageMain = 1
+local stageBoss = 2
+local waveSpacingY = 7
+local waveSpeed = 0.1
+
+local font, font2, font3
+local messageArgs, marqueeMessage
+local refreshMarqueeMessage = false
+local showMarqueeMessage = false
+local displayList
+local guiPanel
+local updatePanel
+local hasRaptorEvent = false
+local bossToastTimer = Spring.GetTimer()
+
+local vsx, vsy = Spring.GetViewGeometry()
+local viewSizeX, viewSizeY = 0, 0
+local x1 = 0
+local y1 = 0
+local isMovingWindow
+local isAboveBossInfo = false
+
+local waveCount = 0
+local waveTime
+local gameInfo = {}
+local resistancesTable = {}
+local currentlyResistantTo = {}
+local currentlyResistantToNames = {}
+local playerEcoAttractionsRaw = {}
+local playerEcoAttractionsRender = {}
+local teamIDs = {}
+local raptorsTeamID
+local scavengersTeamID
+local isExpanded = false
+local nPanelRows
+local bossInfo
 local recentlyKilledQueens = {}
 
 local cachedPlayerNames
@@ -433,7 +429,7 @@ local function CreatePanelDisplayList()
 		end
 
 		if bossInfo then
-			printBossInfo((isRaptors and 'Queen' or 'Boss') .. ' Restistances: (Ctrl+B Expands)', bossInfoMarginX, PanelRow(11))
+			printBossInfo((isRaptors and 'Queen' or 'Boss') .. ' resistances: (Ctrl+B Expands)', bossInfoMarginX, PanelRow(11))
 			local row = 11
 			for i, resistance in ipairs(bossInfo.resistances) do
 				row = row + 1
@@ -452,13 +448,14 @@ local function CreatePanelDisplayList()
 
 			row = row + 1
 
-			printBossInfo('Player '.. (isRaptors and 'Queen' or 'Boss') .. ' Damage:', bossInfoMarginX, PanelRow(row))
+			printBossInfo('Player '.. (isRaptors and 'Queen' or 'Boss') .. ' Damage: ('.. (isAboveBossInfo and 'absolute' or 'relative') .. ')', bossInfoMarginX, PanelRow(row))
 			for i, damage in ipairs(bossInfo.playerDamages) do
 				row = row + 1
 				printBossInfo(damage.name, bossInfoMarginX + 10, PanelRow(row))
+				local damageString = isAboveBossInfo and damage.stringAbsolute or damage.stringRelative
 				printBossInfo(
-					damage.string,
-					bossInfoSubLabelMarginX + bossInfo.labelMaxLength - (font:GetTextWidth(damage.string) - font:GetTextWidth('%')) * panelFontSize,
+					damageString,
+					bossInfoSubLabelMarginX + bossInfo.labelMaxLength - (font:GetTextWidth(damageString) - font:GetTextWidth('%')) * panelFontSize,
 					PanelRow(row),
 					nil,
 					'o'
@@ -765,7 +762,8 @@ local function UpdateBossInfo()
 		if font:GetTextWidth((name or '')..'XX') * panelFontSize > bossInfo.labelMaxLength then
 			bossInfo.labelMaxLength = font:GetTextWidth((name or '')..'XX') * panelFontSize
 		end
-		table.insert(bossInfo.playerDamages, { name = name, raw = damage, string = string.formatSI(damage) })
+		damage = math.max(damage, 1)
+		table.insert(bossInfo.playerDamages, { name = name, raw = damage, stringAbsolute = string.formatSI(damage), stringRelative = string.format('%.1fX', damage / totalBossHealth)})
 	end
 	table.sort(bossInfo.playerDamages, sortRawDesc)
 
@@ -819,13 +817,17 @@ function widget:IsAbove(x, y)
 	end
 
 	local bottomY = y1+PanelRow(nPanelRows+1)
-	local isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
+	local wasAboveBossInfo = isAboveBossInfo
+	isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
 
 	if isAboveBossInfo then
 		for _, health in ipairs(bossInfo.healths) do
 			if not health.isDead and not recentlyKilledQueens[health.id] then
 				WG['ObjectSpotlight'].addSpotlight('unit', 'me', health.id, { health.color[1], health.color[2], health.color[3], 1 }, { duration = 3 })
 			end
+		end
+		if wasAboveBossInfo then
+			updatePanel = true
 		end
 	end
 end
