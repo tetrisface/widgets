@@ -27,7 +27,7 @@ local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
 local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
-local bossDefName = isRaptors and ('raptor_queen_' .. modOptions.raptor_difficulty ) or ('scavengerbossv4_'.. scav_difficulty ..'_scav')
+local bossDefName = isRaptors and ('raptor_queen_' .. modOptions.raptor_difficulty ) or ('scavengerbossv4_'.. modOptions.scav_difficulty ..'_scav')
 local totalBossHealth = UnitDefNames[bossDefName] and UnitDefs[UnitDefNames[bossDefName].id] and UnitDefs[UnitDefNames[bossDefName].id].health or (1250000 * 1.5)
 
 local rules = {

@@ -266,7 +266,7 @@ local function ShieldsUpdate()
       shields[nShields] = {
         x = x,
         z = z,
-        online = shieldState > 400 and select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE,
+        online = shieldState and shieldState > 400 and (select(5, GetUnitHealth(id)) == 1 and ENUM_ONLINE or ENUM_OFFLINE),
         radius = defIdRadius[GetUnitDefID(id)]
       }
     end

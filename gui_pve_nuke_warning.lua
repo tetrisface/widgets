@@ -86,7 +86,7 @@ function widget:GameFrame(n)
 			end
 		end
 		if n % 25 == 0 then
-			techAnger = math.max(Spring.GetGameRulesParam('raptorTechAnger') or 0, Spring.GetGameRulesParam('scavTechAnger') or 0)
+			techAnger = math.max(Spring.GetGameRulesParam('raptorTechAnger') or 0, Spring.GetGameRulesParam('scavTechAnger')+10 or 0)
 			showNukeWarning = not hasAnti
 				and n % 50 < 25
 				and techAnger ~= nil
