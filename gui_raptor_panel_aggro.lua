@@ -733,6 +733,9 @@ function widget:Shutdown()
 end
 
 local function sortRawDesc(a, b)
+	if a.raw == b.raw then
+		return a.name < b.name
+	end
 	return a.raw > b.raw
 end
 
