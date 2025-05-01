@@ -352,7 +352,7 @@ local function DrawPlayerAttractions(stage)
 	local isMultiBosses = nBosses > 1 and gameInfo.raptorQueensKilled
 	-- stageMain is with the two angers % and the timer (2 rows)
 	local row = isRaptors and ((stage == stageMain or (stage == stageBoss and isMultiBosses)) and 3 or 2) or 1
-	font:Print('Player Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
+	font:Print((isRaptors and 'Player' or 'Raptor') ..' Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
 		font:SetTextColor(playerEcoAttraction.color.red, playerEcoAttraction.color.green, playerEcoAttraction.color.blue, playerEcoAttraction.color.alpha)

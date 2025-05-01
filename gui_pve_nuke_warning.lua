@@ -15,6 +15,7 @@ end
 -- Discord https://discord.com/channels/549281623154229250/1206703169585811456
 
 local nukes = not Spring.GetModOptions().unit_restrictions_nonukes
+local isScavengers = Spring.Utilities.Gametype.IsScavengers()
 local font
 
 local nukeList
@@ -86,12 +87,12 @@ function widget:GameFrame(n)
 			end
 		end
 		if n % 25 == 0 then
-			techAnger = math.max(Spring.GetGameRulesParam('raptorTechAnger') or 0, Spring.GetGameRulesParam('scavTechAnger')+10 or 0)
+			techAnger = math.max(Spring.GetGameRulesParam('raptorTechAnger') or 0, Spring.GetGameRulesParam('scavTechAnger') or 0)
 			showNukeWarning = not hasAnti
 				and n % 50 < 25
 				and techAnger ~= nil
-				and techAnger > 65
-				and techAnger < 90
+				and techAnger > (isScavengers and 50 or 65)
+				and techAnger < (isScavengers and 85 or 90)
 				and select(4, Spring.GetTeamResources(myTeamId, 'energy')) > 1000
 				and Spring.GetTeamUnitCount(myTeamId) > 3
 		end
