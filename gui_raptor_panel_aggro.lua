@@ -434,9 +434,10 @@ local function CreatePanelDisplayList()
 			for i, resistance in ipairs(bossInfo.resistances) do
 				row = row + 1
 				printBossInfo(resistance.name, bossInfoMarginX + 10, PanelRow(row))
+				local resistanceString = isAboveBossInfo and resistance.stringAbsolute or resistance.stringPercent
 				printBossInfo(
-					resistance.string,
-					bossInfoSubLabelMarginX + bossInfo.labelMaxLength - font:GetTextWidth(resistance.string:gsub('%%', '')) * panelFontSize,
+					resistanceString,
+					bossInfoSubLabelMarginX + bossInfo.labelMaxLength + 40 - font:GetTextWidth(resistanceString) * panelFontSize,
 					PanelRow(row),
 					nil,
 					'o'
@@ -455,7 +456,7 @@ local function CreatePanelDisplayList()
 				local damageString = isAboveBossInfo and damage.stringAbsolute or damage.stringRelative
 				printBossInfo(
 					damageString,
-					bossInfoSubLabelMarginX + bossInfo.labelMaxLength - (font:GetTextWidth(damageString) - font:GetTextWidth('%')) * panelFontSize,
+					bossInfoSubLabelMarginX + bossInfo.labelMaxLength + 40 - font:GetTextWidth(damageString) * panelFontSize,
 					PanelRow(row),
 					nil,
 					'o'
@@ -732,9 +733,15 @@ function widget:Shutdown()
 	widgetHandler:DeregisterGlobal('RaptorEvent')
 end
 
-local function sortRawDesc(a, b)
-	if a.raw == b.raw then
-		return a.name < b.name
+local function sortRawDamageDescNameAsc(a, b)
+	if not a or not b then
+		return false
+	end
+	if a.percent == b.percent and a.damage and b.damage then
+		if a.damage == b.damage then
+			return a.name < b.name
+		end
+		return a.damage > b.damage
 	end
 	return a.raw > b.raw
 end
@@ -755,10 +762,10 @@ local function UpdateBossInfo()
 			if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
 				bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
 			end
-			table.insert(bossInfo.resistances, { name = name, raw = resistance.percent, string = string.format('%.0f%%', resistance.percent * 100) })
+			table.insert(bossInfo.resistances, { name = name, raw = resistance.percent, damage = resistance.damage, stringPercent = string.format('%.0f%%', resistance.percent * 100), stringAbsolute = string.formatSI(resistance.damage) })
 		end
 	end
-	table.sort(bossInfo.resistances, sortRawDesc)
+	table.sort(bossInfo.resistances, sortRawDamageDescNameAsc)
 
 	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
 		local name = PlayerName(teamID)
@@ -768,7 +775,7 @@ local function UpdateBossInfo()
 		damage = math.max(damage, 1)
 		table.insert(bossInfo.playerDamages, { name = name, raw = damage, stringAbsolute = string.formatSI(damage), stringRelative = string.format('%.1fX', damage / totalBossHealth)})
 	end
-	table.sort(bossInfo.playerDamages, sortRawDesc)
+	table.sort(bossInfo.playerDamages, sortRawDamageDescNameAsc)
 
 	local screenOverflowX = x1 + bossInfo.labelMaxLength + bossInfoSubLabelMarginX + 36 - vsx
 	x1 = screenOverflowX > 0 and x1 - screenOverflowX or x1
@@ -799,7 +806,7 @@ local function UpdateBossInfo()
 			table.remove(bossInfo.healths, n)
 		end
 	end
-	table.sort(bossInfo.healths, sortRawDesc)
+	table.sort(bossInfo.healths, sortRawDamageDescNameAsc)
 end
 
 function widget:GameFrame(n)
