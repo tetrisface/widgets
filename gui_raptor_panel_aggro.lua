@@ -737,7 +737,7 @@ local function sortRawDamageDescNameAsc(a, b)
 	if not a or not b then
 		return false
 	end
-	if a.percent == b.percent and a.damage and b.damage then
+	if a.percent and b.percent and a.percent == b.percent and a.damage and b.damage then
 		if a.damage == b.damage then
 			return a.name < b.name
 		end
