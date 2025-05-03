@@ -570,6 +570,7 @@ function widget:DrawScreen()
 			end
 
 			font2:Begin()
+			font2:SetTextColor(1, 1, 1, 1)
 			for i, message in ipairs(marqueeMessage) do
 				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, 'co')
 			end
@@ -762,18 +763,30 @@ local function UpdateBossInfo()
 			if font:GetTextWidth(name) * panelFontSize > bossInfo.labelMaxLength then
 				bossInfo.labelMaxLength = font:GetTextWidth(name) * panelFontSize
 			end
-			table.insert(bossInfo.resistances, { name = name, raw = resistance.percent, damage = resistance.damage, stringPercent = string.format('%.0f%%', resistance.percent * 100), stringAbsolute = string.formatSI(resistance.damage) })
+			table.insert(
+				bossInfo.resistances,
+				{
+					name = name,
+					raw = resistance.percent,
+					damage = resistance.damage,
+					stringPercent = string.format('%.0f%%', resistance.percent * 100),
+					stringAbsolute = string.formatSI(resistance.damage),
+				}
+			)
 		end
 	end
 	table.sort(bossInfo.resistances, sortRawDamageDescNameAsc)
 
 	for teamID, damage in pairs(bossInfoRaw.playerDamages) do
 		local name = PlayerName(teamID)
-		if font:GetTextWidth((name or '')..'XX') * panelFontSize > bossInfo.labelMaxLength then
-			bossInfo.labelMaxLength = font:GetTextWidth((name or '')..'XX') * panelFontSize
+		if font:GetTextWidth((name or '') .. 'XX') * panelFontSize > bossInfo.labelMaxLength then
+			bossInfo.labelMaxLength = font:GetTextWidth((name or '') .. 'XX') * panelFontSize
 		end
 		damage = math.max(damage, 1)
-		table.insert(bossInfo.playerDamages, { name = name, raw = damage, stringAbsolute = string.formatSI(damage), stringRelative = string.format('%.1fX', damage / totalBossHealth)})
+		table.insert(
+			bossInfo.playerDamages,
+			{ name = name, raw = damage, stringAbsolute = string.formatSI(damage), stringRelative = string.format('%.1fX', damage / totalBossHealth) }
+		)
 	end
 	table.sort(bossInfo.playerDamages, sortRawDamageDescNameAsc)
 
@@ -827,7 +840,7 @@ function widget:IsAbove(x, y)
 		return
 	end
 
-	local bottomY = y1+PanelRow(nPanelRows+1)
+	local bottomY = y1 + PanelRow(nPanelRows + 1)
 	local wasAboveBossInfo = isAboveBossInfo
 	isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
 
@@ -865,6 +878,7 @@ function widget:ViewResize()
 
 	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
 	font2 = WG['fonts'].getFont(fontfile2)
+	font2:SetTextColor(1, 1, 1, 1)
 	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
 	x1 = math.floor(x1 - viewSizeX)
