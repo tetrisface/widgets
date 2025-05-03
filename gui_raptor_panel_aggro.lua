@@ -387,16 +387,15 @@ local function printBossInfo(text, x, y, size, option)
 end
 
 local function CreatePanelDisplayList()
+	local currentTime = Spring.GetGameSeconds()
+	local stage = RaptorStage(currentTime)
+
 	gl.PushMatrix()
 	gl.Translate(x1, y1, 0)
 	gl.Scale(widgetScale, widgetScale, 1)
 	gl.CallList(displayList)
 	font:Begin()
 	font:SetTextColor(1, 1, 1, 1)
-
-	local currentTime = Spring.GetGameSeconds()
-	local stage = RaptorStage(currentTime)
-
 	if stage == stageGrace and isRaptors then
 		printPanel(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1))
 		local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
