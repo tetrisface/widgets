@@ -783,6 +783,7 @@ local function UpdateBossInfo()
 	for queenID, status in pairs(bossInfoRaw.statuses) do
 		table.insert(bossInfo.healths, {
 			id = tonumber(queenID),
+			name = tonumber(queenID),
 			raw = status.health / status.maxHealth,
 			string = string.format('%.0f%%', (status.health / status.maxHealth) * 100),
 			isDead = status.isDead,
