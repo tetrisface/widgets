@@ -1634,16 +1634,16 @@ function widget:GameFrame(gameFrame)
   if gameFrame % gameFrameModulo == 0 then
     buildersJitterModulo = BuildersJitterModulo()
 
-    log(
-      string.format('gameframe mod %s (%.1fs) builders mod %s (%s/%s) - - - p %.0f e %.0f m %.0f',
-        gameFrameModulo,
-        gameFrameModulo / 30,
-        buildersJitterModulo,
-        math.floor(builderUnitIds.count / buildersJitterModulo),
-        builderUnitIds.count,
-        powerNeed * 100, energyNeed * 100, mMMNeed * 100
-      )
-    )
+    -- log(
+    --   'gameframe mod %s (%.1fs) builders mod %s (%s/%s) - - - p %.0f e %.0f m %.0f',
+    --     gameFrameModulo,
+    --     gameFrameModulo / 30,
+    --     buildersJitterModulo,
+    --     math.floor(builderUnitIds.count / buildersJitterModulo),
+    --     builderUnitIds.count,
+    --     powerNeed * 100, energyNeed * 100, mMMNeed * 100
+    --   )
+    -- )
 
     Builders(gameFrame)
   end

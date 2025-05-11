@@ -849,9 +849,9 @@ function widget:IsAbove(x, y)
 				WG['ObjectSpotlight'].addSpotlight('unit', 'me', health.id, { health.color[1], health.color[2], health.color[3], 1 }, { duration = 3 })
 			end
 		end
-		if wasAboveBossInfo then
-			updatePanel = true
-		end
+	end
+	if isAboveBossInfo ~= wasAboveBossInfo then
+		updatePanel = true
 	end
 end
 
