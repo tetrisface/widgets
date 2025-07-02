@@ -42,7 +42,7 @@ local windMax = Game.windMax
 local windMin = Game.windMin
 
 local waitGameFramesDefault = 30
-local frameStaggeringModuloMultiplier = 3
+local frameStaggeringModuloMultiplier = 1
 
 local myTeamId = Spring.GetMyTeamID()
 local busyCommands = {

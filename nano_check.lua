@@ -87,7 +87,25 @@ end
 -- Should be bigger than`COMMAND_LIMIT/expected number of nanos`. Default is 15.
 -- NOTE: There is no "overflow" protection. Setting DELAY to low will cause stacks to fill up constantly.
 local DELAY = 15
-local TURRETS = {'armnanotc', 'cornanotc', 'armnanotct2', 'cornanotct2'} -- names of nano turrets names
+local TURRETS = {
+    'armnanotc',
+    'cornanotc',
+    'armnanotct2',
+    'cornanotct2',
+    'armnanotc_scav',
+    'cornanotc_scav',
+    'armnanotct2_scav',
+    'cornanotct2_scav',
+    'legmohoconct',
+    'legmohoconct_scav',
+    'armnanotct3_scav',
+    'cornanotct3_scav',
+    'legnanotct3_scav',
+    'armnanotct3',
+    'cornanotct3',
+    'legnanotct3'
+}
+ -- names of nano turrets names
 local COMMAND_LIMIT = 20 -- Maximum number of commands to be processed in a single frame, blocking
 local is_play = false
 local counter = 0
