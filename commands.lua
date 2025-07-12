@@ -519,7 +519,7 @@ local function SortMouseDistance(a, b)
 end
 
 -- Handles Alt+A/S/D for command queue editing and builder cycling
-local function handleAltASDKey(key, selectedUnitIds, mods)
+local function conQueueSliceCommand(key, selectedUnitIds, mods)
 	if mods.shift and not mods.ctrl then
 		return false
 	end
@@ -661,6 +661,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {}, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, commands)
 	elseif mods['shift'] and not mods['alt'] then
+
 		local builders = {}
 		for i = 1, #selectedUnitIds do
 			local unitId = selectedUnitIds[i]
@@ -676,6 +677,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			table.sort(cluster, SortbuildSpeedDistance)
 			snakeSortedClusters[i] = snake_sort_with_lookahead(cluster, lookahead_steps)
 		end
+
 		local builderAssignments, assignedClusters = {}, {}
 		for i, builder in ipairs(builders) do
 			local minDistance, closestCluster, closestClusterIndex = math.huge, nil, nil
@@ -697,11 +699,20 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 				assignedClusters[closestClusterIndex] = true
 			end
 		end
+
 		for i, builder in ipairs(builders) do
-			local builderCommands = deepcopy(builderAssignments[i] or {})
-			for j, clusterCommands in ipairs(snakeSortedClusters) do
+			local builderCommands = table.copy(builderAssignments[i] or {})
+			for _, clusterCommands in ipairs(snakeSortedClusters) do
 				if builderAssignments[i] ~= clusterCommands then
-					for k = 1, #clusterCommands do
+					-- Toggle between forward and backwards looping based on whether i is even or odd
+					local loopStart, loopEnd, loopStep
+					if i % 2 == 1 then
+						loopStart, loopEnd, loopStep = #clusterCommands, 1, -1
+					else
+						loopStart, loopEnd, loopStep = 1, #clusterCommands, 1
+					end
+
+					for k = loopStart, loopEnd, loopStep do
 						local clusterCommand = clusterCommands[k]
 						if table.contains(builder.def.buildOptions, -clusterCommand.id) then
 							table.insert(builderCommands, clusterCommand)
@@ -720,8 +731,16 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 				end
 			end
 			Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
+			local maxNCommands = 510
+			if #builderCommands > maxNCommands then
+				-- Truncate the table to maxNCommands elements
+				for k = #builderCommands, maxNCommands + 1, -1 do
+					builderCommands[k] = nil
+				end
+			end
 			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
 		end
+
 	end
 end
 
@@ -770,7 +789,7 @@ function widget:KeyPress(key, mods, isRepeat)
 	local selectedUnitIds = Spring.GetSelectedUnits()
 
 	if (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] then
-		return handleAltASDKey(key, selectedUnitIds, mods)
+		return conQueueSliceCommand(key, selectedUnitIds, mods)
 	elseif (key == KEYSYMS.F) and mods['ctrl'] then
 		handleCtrlFKey(selectedUnitIds, mods)
 	elseif key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then

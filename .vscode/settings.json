@@ -18,5 +18,6 @@
     "editor.defaultFormatter": "trixnz.vscode-lua"
   },
   "Lua.completion.autoRequire": false,
-  "stylua.targetReleaseVersion": "latest"
+  "stylua.targetReleaseVersion": "latest",
+  "editor.formatOnSaveMode": "modificationsIfAvailable"
 }

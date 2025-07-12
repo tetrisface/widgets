@@ -1,12 +1,12 @@
 function widget:GetInfo()
     return {
-        name    = "Holo Place",
-        desc    = "Start next holo if assisted and force guarding nano turrets to assist",
-        author  = "manshanko",
-        date    = "2025-04-14",
-        layer   = 2,
+        name = 'Holo Place',
+        desc = 'Start next holo if assisted and force guarding nano turrets to assist',
+        author = 'manshanko',
+        date = '2025-04-14',
+        layer = 2,
         enabled = false,
-        handler = true,
+        handler = true
     }
 end
 
@@ -32,18 +32,18 @@ local CMD_HOLO_PLACE = 28339
 local CMD_HOLO_PLACE_DESCRIPTION = {
     id = CMD_HOLO_PLACE,
     type = CMDTYPE.ICON_MODE,
-    name = "Holo Place",
+    name = 'Holo Place',
     cursor = nil,
-    action = "holo_place",
-    params = { 0, "holo_place_off", "holo_place_ins", "holo_place_30", "holo_place_60", "holo_place_90" }
+    action = 'holo_place',
+    params = {4, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
 }
 
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.params[2], "Holo Place off")
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.params[3], "Holo Place Ins")
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.params[4], "Holo Place 30") -- don't use % sign, it breaks the UI for some reason
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.params[5], "Holo Place 60")
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.params[6], "Holo Place 90")
-i18n.set("en.ui.orderMenu." .. CMD_HOLO_PLACE_DESCRIPTION.action .. "_tooltip", "Start next building if assisted")
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[2], 'Holo Place off')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[3], 'Holo Place Ins')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[4], 'Holo Place 30') -- don't use % sign, it breaks the UI for some reason
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[5], 'Holo Place 60')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[6], 'Holo Place 90')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.action .. '_tooltip', 'Start next building if assisted')
 
 local BUILDER_DEFS = {}
 local NANO_DEFS = {}
@@ -82,11 +82,11 @@ local function ntNearUnit(target_unit_id)
 end
 
 local HOLO_THRESHOLDS = {
-    [0] = nil,   -- off
-    [1] = 0,     -- instant
-    [2] = 0.3,   -- 30%
-    [3] = 0.6,   -- 60%
-    [4] = 0.9,   -- 90%
+    [0] = nil, -- off
+    [1] = 0, -- instant
+    [2] = 0.3, -- 30%
+    [3] = 0.6, -- 60%
+    [4] = 0.9 -- 90%
 }
 
 local function checkUnits(update)
@@ -95,7 +95,7 @@ local function checkUnits(update)
     local num_builders = 0
 
     local ids = GetSelectedUnits()
-    for i=1, #ids do
+    for i = 1, #ids do
         local def_id = GetUnitDefID(ids[i])
 
         if HOLO_PLACERS[ids[i]] then
@@ -110,7 +110,7 @@ local function checkUnits(update)
     if num_builders > 0 then
         if update then
             local mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
-            for i=1, #ids do
+            for i = 1, #ids do
                 if mode == 0 then
                     HOLO_PLACERS[ids[i]] = nil
                 else
@@ -136,7 +136,7 @@ widget.UnitTaken = ForgetUnit
 
 function widget:CommandsChanged()
     local ids = GetSelectedUnits()
-    local found_mode = 0
+    local found_mode = 4  -- Default to 90% instead of off
     for i = 1, #ids do
         local placer = HOLO_PLACERS[ids[i]]
         if placer and placer.threshold then
@@ -159,7 +159,14 @@ end
 function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
     if cmd_id == CMD_HOLO_PLACE then
         local mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
-        mode = (mode + 1) % 5 -- 5 options (0 to 4)
+
+        -- Check for right-click
+        if cmd_options and cmd_options.shift then
+            mode = (mode - 1 + 5) % 5
+        else
+            mode = (mode + 1) % 5 -- 5 options (0 to 4)
+        end
+
         CMD_HOLO_PLACE_DESCRIPTION.params[1] = mode
         checkUnits(true)
         return true
@@ -198,14 +205,11 @@ function widget:GameFrame()
                 builder.tick = builder.tick + 1
             end
         elseif target_id and target_id ~= builder.building_id then
-
             local nt_ids = ntNearUnit(target_id)
-            for i=1, #nt_ids do
+            for i = 1, #nt_ids do
                 local nt_id = nt_ids[i]
                 local cmds = GetUnitCommands(nt_id, 2)
-                if (cmds[2] and cmds[2].id == CMD_FIGHT)
-                    or (cmds[1] and cmds[1].id == CMD_FIGHT)
-                then
+                if (cmds[2] and cmds[2].id == CMD_FIGHT) or (cmds[1] and cmds[1].id == CMD_FIGHT) then
                     -- Check wait status and if nano is already building before issuing order
                     if not unitHasWait(nt_id) and not unitHasWait(unit_id) and not GetUnitIsBuilding(nt_id) then
                         local _, _, tag = GetUnitCurrentCommand(unit_id)
@@ -226,9 +230,9 @@ function widget:GameFrame()
 end
 
 function widget:Initialize()
-    widgetHandler.actionHandler:AddAction(self, "holo_place", handleHoloPlace, nil, "p")
+    widgetHandler.actionHandler:AddAction(self, 'holo_place', handleHoloPlace, nil, 'p')
 end
 
 function widget:Shutdown()
-    widgetHandler.actionHandler:RemoveAction(self, "holo_place", "p")
+    widgetHandler.actionHandler:RemoveAction(self, 'holo_place', 'p')
 end

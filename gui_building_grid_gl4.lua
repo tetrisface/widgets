@@ -1,8 +1,8 @@
 function widget:GetInfo()
 	return {
-		name = 'Building Grid GL4',
+		name = 'Building Grid GL4 custom',
 		desc = 'Draw a configurable grid to assist build spacing',
-		author = 'Hobo Joe, Beherith, LSR',
+		author = 'Hobo Joe, Beherith, LSR, tetrisface',
 		date = 'June 2023',
 		license = 'GNU GPL, v2 or later',
 		version = 0.2,
