@@ -1,13 +1,13 @@
 function widget:GetInfo()
 	return {
-		name = 'Building Grid GL4 custom',
+		name = 'Building Grid GL4',
 		desc = 'Draw a configurable grid to assist build spacing',
-		author = 'Hobo Joe, Beherith, LSR, tetrisface',
+		author = 'Hobo Joe, Beherith, LSR, myriari, tetrisface',
 		date = 'June 2023',
 		license = 'GNU GPL, v2 or later',
 		version = 0.2,
 		layer = -1,
-		enabled = false,
+		enabled = false
 	}
 end
 
@@ -21,7 +21,7 @@ local config = {
 	gridRadius = 90, -- how far from the cursor the grid should show. Same units as gridSize
 	gridRadiusFalloff = 2.5, -- how sharply the grid should get cut off at max distance
 	maxViewDistance = 3000.0, -- distance at which the grid no longer renders
-	lineColor = { 0.70, 1.0, 0.70 }, -- color of the lines
+	lineColor = {0.70, 1.0, 0.70} -- color of the lines
 }
 
 local waterLevel = Spring.GetModOptions().map_waterlevel
@@ -31,17 +31,16 @@ local gridVAO = nil -- the vertex array object, a way of collecting buffer objec
 local gridShader = nil -- the shader itself
 local spacing = config.gridSize * 16 -- the repeat rate of the grid
 
-local shaderConfig = { -- These will be replaced in the shader using #defines's
+local shaderConfig = {
+	-- These will be replaced in the shader using #defines's
 	LINECOLOR = 'vec3(' .. config.lineColor[1] .. ', ' .. config.lineColor[2] .. ', ' .. config.lineColor[3] .. ')',
 	GRIDRADIUS = config.gridRadius,
 	RADIUSFALLOFF = config.gridRadiusFalloff,
-	MAXVIEWDIST = config.maxViewDistance,
+	MAXVIEWDIST = config.maxViewDistance
 }
 
-local luaShaderDir = 'LuaUI/Include/'
-local LuaShader = VFS.Include(luaShaderDir .. 'LuaShader.lua')
-
-local vsSrc = [[
+local vsSrc =
+	[[
 #version 420
 #extension GL_ARB_uniform_buffer_object : require
 #extension GL_ARB_shader_storage_buffer_object : require
@@ -76,7 +75,8 @@ void main(){
 }
 ]]
 
-local fsSrc = [[
+local fsSrc =
+	[[
 #version 420
 #extension GL_ARB_uniform_buffer_object : require
 #extension GL_ARB_shading_language_420pack: require
@@ -112,21 +112,25 @@ local mousePosUniform
 local waterSurfaceModeUniform
 
 function initShader()
-	local engineUniformBufferDefs = LuaShader.GetEngineUniformBufferDefs() -- all the camera and other lovely stuff
+	local engineUniformBufferDefs = gl.LuaShader.GetEngineUniformBufferDefs() -- all the camera and other lovely stuff
 	vsSrc = vsSrc:gsub('//__ENGINEUNIFORMBUFFERDEFS__', engineUniformBufferDefs)
 	fsSrc = fsSrc:gsub('//__ENGINEUNIFORMBUFFERDEFS__', engineUniformBufferDefs)
-	gridShader = LuaShader({
-		vertex = vsSrc:gsub('//__DEFINES__', LuaShader.CreateShaderDefinesString(shaderConfig)),
-		fragment = fsSrc:gsub('//__DEFINES__', LuaShader.CreateShaderDefinesString(shaderConfig)),
-		uniformInt = {
-			heightmapTex = 0, -- the index of the texture uniform sampler2D
-			waterSurfaceMode = 0,
+	gridShader =
+		gl.LuaShader(
+		{
+			vertex = vsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
+			fragment = fsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
+			uniformInt = {
+				heightmapTex = 0, -- the index of the texture uniform sampler2D
+				waterSurfaceMode = 0
+			},
+			uniformFloat = {
+				waterLevel = waterLevel,
+				mousePos = {0.0, 0.0, 0.0}
+			}
 		},
-		uniformFloat = {
-			waterLevel = waterLevel,
-			mousePos = { 0.0, 0.0, 0.0 },
-		},
-	}, 'gridShader')
+		'gridShader'
+	)
 	local shaderCompiled = gridShader:Initialize()
 	if not shaderCompiled then
 		goodbye('Failed to compile gridshader GL4 ')
@@ -146,7 +150,13 @@ function widget:Initialize()
 		opacity = value
 		-- widget needs reloading wholly
 	end
-	WG['buildinggrid'].setForceShow = function(reason, enabled, unitDefID) end
+	-- WG['buildinggrid'].setForceShow = function(reason, enabled, unitDefID)
+	-- 	if enabled then
+	-- 		forceShow[reason] = unitDefID
+	-- 	else
+	-- 		forceShow[reason] = nil
+	-- 	end
+	-- end
 
 	initShader()
 
@@ -158,7 +168,8 @@ function widget:Initialize()
 	for row = 0, Game.mapSizeX, spacing do
 		for col = 0, Game.mapSizeZ, spacing do
 			if row ~= Game.mapSizeX then -- skip last
-				local strength = ((col / spacing) % config.strongLineSpacing == 0 and config.strongLineOpacity or config.weakLineOpacity) * opacity
+				local strength =
+					((col / spacing) % config.strongLineSpacing == 0 and config.strongLineOpacity or config.weakLineOpacity) * opacity
 				-- vertical lines
 				VBOData[#VBOData + 1] = row
 				VBOData[#VBOData + 1] = col
@@ -169,7 +180,8 @@ function widget:Initialize()
 			end
 
 			if col ~= Game.mapSizeZ then -- skip last
-				local strength = ((row / spacing) % config.strongLineSpacing == 0 and config.strongLineOpacity or config.weakLineOpacity) * opacity
+				local strength =
+					((row / spacing) % config.strongLineSpacing == 0 and config.strongLineOpacity or config.weakLineOpacity) * opacity
 				-- horizonal lines
 				VBOData[#VBOData + 1] = row
 				VBOData[#VBOData + 1] = col
@@ -183,14 +195,114 @@ function widget:Initialize()
 
 	gridVBO = gl.GetVBO(GL.ARRAY_BUFFER, false)
 	-- this is 2d position + opacity
-	gridVBO:Define(#VBOData / 3, { {
-		id = 0,
-		name = 'position',
-		size = 3,
-	} }) -- number of elements (vertices), size is 2 for the vec2 position
+	gridVBO:Define(
+		#VBOData / 3,
+		{
+			{
+				id = 0,
+				name = 'position',
+				size = 3
+			}
+		}
+	) -- number of elements (vertices), size is 2 for the vec2 position
 	gridVBO:Upload(VBOData)
 	gridVAO = gl.GetVAO()
 	gridVAO:AttachVertexBuffer(gridVBO)
+end
+
+function widget:DrawWorld()
+	local mx, my = Spring.GetMouseState()
+	local _, pos = Spring.TraceScreenRay(mx, my, true)
+	if not pos then
+		return
+	end
+
+	local gridSize = spacing
+	local xStep = gridSize * config.strongLineSpacing
+	local radius = 2000
+	local fontSize = gridSize * 0.5
+
+	local startX = math.max(0, math.floor((pos[1] - radius) / xStep) * xStep)
+	local endX = math.min(Game.mapSizeX, math.ceil((pos[1] + radius) / xStep) * xStep)
+	local startZ = math.max(0, math.floor((pos[3] - radius) / xStep) * xStep)
+	local endZ = math.min(Game.mapSizeZ, math.ceil((pos[3] + radius) / xStep) * xStep)
+
+	-- Get camera direction for proper label rotation
+	local camDirX, _, camDirZ = Spring.GetCameraDirection()
+	local camYaw = math.atan2(camDirX, camDirZ) * 180 / math.pi
+	-- Snap to 90-degree steps
+	local camYawSnapped = math.floor((camYaw + 45) / 90) * 90
+
+	gl.PushMatrix()
+	gl.DepthTest(GL.LEQUAL)
+
+	for x = startX, endX - xStep, xStep do
+		for z = startZ, endZ - xStep, xStep do
+			local y = Spring.GetGroundHeight(x, z)
+
+			-- distance-based fade
+			local centerX = x + xStep / 2
+			local centerZ = z + xStep / 2
+			local dx = centerX - pos[1]
+			local dz = centerZ - pos[3]
+			local dist = math.sqrt(dx * dx + dz * dz)*0.6
+			local fade = math.max(0, 1.0 - (dist / radius))
+			local alpha = fade ^ 2 * 0.85
+
+			-- Only show labels in cross pattern (horizontal and vertical lines through mouse position)
+			local mouseGridX = math.floor(pos[1] / xStep) * xStep
+			local mouseGridZ = math.floor(pos[3] / xStep) * xStep
+			local gridX = math.floor(centerX / xStep) * xStep
+			local gridZ = math.floor(centerZ / xStep) * xStep
+
+			local inCrossPattern = (gridX == mouseGridX) or (gridZ == mouseGridZ)
+			local isUnderCursor = (gridX == mouseGridX) and (gridZ == mouseGridZ)
+
+			if alpha >= 0.01 and inCrossPattern and not isUnderCursor then
+				-- Calculate grid number from map edges
+				local gridNumX = math.floor(centerX / xStep) -- grid count from left edge
+				local gridNumZ = math.floor(centerZ / xStep) -- grid count from bottom edge
+
+				-- Calculate distances to each edge (1-based)
+				local distToLeft = gridNumX + 1
+				local distToRight = math.floor(Game.mapSizeX / xStep) - gridNumX
+				local distToBottom = gridNumZ + 1
+				local distToTop = math.floor(Game.mapSizeZ / xStep) - gridNumZ
+
+				-- Determine which direction this label is from the cursor
+				local mouseGridNumX = math.floor(pos[1] / xStep)
+				local mouseGridNumZ = math.floor(pos[3] / xStep)
+
+				local label
+				if gridNumX < mouseGridNumX then
+					-- Label is to the left of cursor
+					label = tostring(distToLeft)
+				elseif gridNumX > mouseGridNumX then
+					-- Label is to the right of cursor
+					label = tostring(distToRight)
+				elseif gridNumZ < mouseGridNumZ then
+					-- Label is below cursor
+					label = tostring(distToBottom)
+				else
+					-- Label is above cursor
+					label = tostring(distToTop)
+				end
+
+				-- draw label
+				gl.Color(1, 1, 1, alpha)
+				gl.PushMatrix()
+				gl.Translate(centerX, y, centerZ)
+				gl.Rotate(-90, 1, 0, 0) -- lay flat
+				gl.Rotate(camYawSnapped+180, 0, 0, 1) -- rotate to face camera but always within the plane of the map
+				gl.Scale(1, 1, 1) -- no mirroring
+				gl.Text(label, -#label*fontSize/4, -8, fontSize, 'o')
+				gl.PopMatrix()
+			end
+		end
+	end
+
+	gl.PopMatrix()
+	gl.DepthTest(false)
 end
 
 function widget:DrawWorldPreUnit()
@@ -208,22 +320,22 @@ function widget:DrawWorldPreUnit()
 	gl.DepthTest(GL.ALWAYS) -- so that it wont be drawn behind terrain
 	gl.DepthMask(false) -- so that we dont write the depth of the drawn pixels
 	gl.Texture(0, '$heightmap') -- bind engine heightmap texture to sampler 0
-	gridShader:Activate()
-	gl.UniformInt(waterSurfaceModeUniform, waterSurfaceMode and 1 or 0)
-	gl.Uniform(mousePosUniform, unpack(mousePos, 1, 3))
-	gridVAO:DrawArrays(GL.LINES) -- draw the lines
-	gridShader:Deactivate()
+	if gridShader then
+		gridShader:Activate()
+		gl.UniformInt(waterSurfaceModeUniform, waterSurfaceMode and 1 or 0)
+		gl.Uniform(mousePosUniform, unpack(mousePos, 1, 3))
+		if gridVAO then
+			gridVAO:DrawArrays(GL.LINES) -- draw the lines
+		end
+		gridShader:Deactivate()
+	end
 	gl.Texture(0, false)
 	gl.DepthTest(false)
 end
 
-function widget:GameStart()
-	isPregame = false
-end
-
 function widget:GetConfigData(data)
 	return {
-		opacity = opacity,
+		opacity = opacity
 	}
 end
 
