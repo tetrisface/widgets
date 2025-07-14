@@ -504,9 +504,12 @@ local function handleCheatGiveUnits()
 	-- Spring.SendCommands('give 1 legjav')
 	-- Spring.SendCommands('give 1 legkeres')
 
-	Spring.SendCommands('give 1 armca')
-	Spring.SendCommands('give 1 corca')
-	Spring.SendCommands('give 1 legca')
+	-- Spring.SendCommands('give 1 armca')
+	-- Spring.SendCommands('give 1 corca')
+	-- Spring.SendCommands('give 1 legca')
+
+	Spring.SendCommands('give 1 corjugg 2')
+
 end
 
 local function SortMouseDistance(a, b)
