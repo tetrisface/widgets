@@ -212,20 +212,20 @@ local function processCommanderAutoDgun(commanderID)
   end
 
   -- For "always" mode, check if d-gun is empty and clean up
-  if mode == AUTO_DGUN_ALWAYS and commanderData.hasDgunOrder then
-    if isDgunEmpty(commanderID, commanderDefID) then
-      -- Remove d-gun order and restore repeat state
-      local commands = Spring.GetUnitCommands(commanderID, 10)
-      for _, cmd in ipairs(commands) do
-        if cmd.id == CMD_DGUN then
-          GiveOrderToUnit(commanderID, CMD_REMOVE, {cmd.tag}, 0)
-          break
-        end
-      end
-      restoreOriginalRepeatState(commanderID)
-      commanderData.hasDgunOrder = false
-    end
-  end
+  -- if mode == AUTO_DGUN_ALWAYS and commanderData.hasDgunOrder then
+  --   if isDgunEmpty(commanderID, commanderDefID) then
+  --     -- Remove d-gun order and restore repeat state
+  --     local commands = Spring.GetUnitCommands(commanderID, 10)
+  --     for _, cmd in ipairs(commands) do
+  --       if cmd.id == CMD_DGUN then
+  --         GiveOrderToUnit(commanderID, CMD_REMOVE, {cmd.tag}, 0)
+  --         break
+  --       end
+  --     end
+  --     restoreOriginalRepeatState(commanderID)
+  --     commanderData.hasDgunOrder = false
+  --   end
+  -- end
 
   -- Check if we can fire
   if not canFireDgun(commanderID, commanderDefID, mode) then
@@ -256,14 +256,14 @@ local function processCommanderAutoDgun(commanderID)
     commanderData.restoreRepeatFrame = Spring.GetGameFrame() + 30 -- 1 second delay
   elseif mode == AUTO_DGUN_ALWAYS then
     -- Save original repeat state and turn on repeat
-    saveOriginalRepeatState(commanderID)
-    GiveOrderToUnit(commanderID, CMD_REPEAT, {1}, 0)
+    -- saveOriginalRepeatState(commanderID)
+    -- GiveOrderToUnit(commanderID, CMD_REPEAT, {1}, 0)
 
     -- Give dgun order
     -- GiveOrderToUnit(commanderID, CMD_DGUN, {target.unitID}, 0)
     -- insert at beginning of queue?
     GiveOrderToUnit(commanderID, CMD.INSERT, { 0, CMD.DGUN, CMD.OPT_CTRL, target.unitID }, { 'alt' })
-    commanderData.hasDgunOrder = true
+    -- commanderData.hasDgunOrder = true
   end
 end
 
@@ -286,7 +286,7 @@ local function checkSelectedUnits(updateMode)
         if mode == AUTO_DGUN_OFF then
           -- Clean up any existing orders/states
           restoreOriginalRepeatState(unitID)
-          commanderUnits[unitID].hasDgunOrder = false
+          -- commanderUnits[unitID].hasDgunOrder = false
           commanderUnits[unitID].restoreRepeatFrame = nil
         end
       else
