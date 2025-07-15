@@ -203,13 +203,15 @@ local function getEnemyTargetsInRange(commanderID, range)
       -- Spring.Echo('unitTeam', unitTeam, myTeamID, AreTeamsAllied(myTeamID, unitTeam))
       local unitDefID = GetUnitDefID(unitID)
       local unitDef = UnitDefs[unitDefID]
-      table.insert(
-        enemies,
-        {
-          unitID = unitID,
-          unitDefMaxHealth = unitDef.health
-        }
-      )
+      if unitDef then
+        table.insert(
+          enemies,
+          {
+            unitID = unitID,
+            unitDefMaxHealth = unitDef.health
+          }
+        )
+      end
     end
   end
 
