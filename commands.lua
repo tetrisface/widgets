@@ -6,18 +6,31 @@ function widget:GetInfo()
 		date = 'dec, 2016',
 		license = 'GNU GPL, v3 or later',
 		layer = 99,
-		enabled = true,
+		enabled = true
 	}
 end
 
 VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
-local selectPrios = {'ack_scav', 'ack','aca_scav', 'aca', 'acv_scav','acv', 'ca_scav','ca', 'ck_scav','ck', 'cv', 'cv_scav' }
-local selectPriosAir = { 'aca_scav', 'aca', 'ca'}
-local selectPriosNonScav = { 'ack', 'aca', 'acv', 'ca', 'ck', 'cv' }
-local selectPriosAirNonScav = { 'aca', 'ca' }
-local factionPrios = { 'arm', 'cor', 'leg' }
+local selectPrios = {
+	'ack_scav',
+	'ack',
+	'aca_scav',
+	'aca',
+	'acv_scav',
+	'acv',
+	'ca_scav',
+	'ca',
+	'ck_scav',
+	'ck',
+	'cv',
+	'cv_scav'
+}
+local selectPriosAir = {'aca_scav', 'aca', 'ca'}
+local selectPriosNonScav = {'ack', 'aca', 'acv', 'ca', 'ck', 'cv'}
+local selectPriosAirNonScav = {'aca', 'ca'}
+local factionPrios = {'arm', 'cor', 'leg'}
 local immobileBuilderDefIds = {
 	UnitDefNames['armnanotc'].id,
 	UnitDefNames['armnanotc2plat'].id,
@@ -33,7 +46,7 @@ local immobileBuilderDefIds = {
 	UnitDefNames['legnanotcbase'] and UnitDefNames['legnanotcbase'].id or nil,
 	UnitDefNames['legnanotcplat'] and UnitDefNames['legnanotcplat'].id or nil,
 	UnitDefNames['legnanotct2'] and UnitDefNames['legnanotct2'].id or nil,
-	UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil,
+	UnitDefNames['legnanotct2plat'] and UnitDefNames['legnanotct2plat'].id or nil
 }
 
 local spamUnitNames = {
@@ -82,7 +95,7 @@ local spamUnitNames = {
 	'legfortt4',
 	'legfortt4_scav',
 	'legfortt4_scav',
-	'legfortt4_scav',
+	'legfortt4_scav'
 }
 
 local spamUnits = {}
@@ -92,14 +105,14 @@ for _, unitName in ipairs(spamUnitNames) do
 	end
 end
 table.insert(spamUnits, {CMD.REPEAT, 1})
-table.insert(spamUnits, {34570,0})
-table.insert(spamUnits, {34569,0})
+table.insert(spamUnits, {34570, 0})
+table.insert(spamUnits, {34569, 0})
 
 local replacementMap = {}
-local mousePos = {0,0,0}
+local mousePos = {0, 0, 0}
 
 -- Fill replacementMap: for each unitdef, strip faction prefix and find all faction alternatives
-local factionPrefixes = { 'arm', 'cor', 'leg' }
+local factionPrefixes = {'arm', 'cor', 'leg'}
 local function stripFaction(name)
 	for _, prefix in ipairs(factionPrefixes) do
 		if name:sub(1, #prefix) == prefix then
@@ -140,6 +153,8 @@ local selectedPos = {}
 local unitIdBuildSpeeds = LRUCache:new(100)
 local isShieldDefId = {}
 local conCycleNumber
+local transposeMode = nil -- will be auto-detected on first use, then toggles between 'row_first' and 'col_first'
+local cornerRotation = 0 -- 0=closest corner, 1=next clockwise, 2=opposite, 3=next counter-clockwise
 function widget:Initialize()
 	Spring.SendCommands('bind Shift+Alt+sc_q buildfacing inc')
 	Spring.SendCommands('bind Shift+Alt+sc_e buildfacing dec')
@@ -152,7 +167,10 @@ function widget:Initialize()
 		if unitDef.isBuilding and unitDef.hasShield then
 			isShieldDefId[unitDefId] = unitDef.customParams and unitDef.customParams.shield_radius and 1 or 0
 		end
-		if unitDef.isBuilder and unitDef.isBuilding and unitDef.canAssist and not table.contains(immobileBuilderDefIds, unitDefId) then
+		if
+			unitDef.isBuilder and unitDef.isBuilding and unitDef.canAssist and
+				not table.contains(immobileBuilderDefIds, unitDefId)
+		 then
 			immobileBuilderDefIds[unitDefId] = unitDef.buildDistance + 96
 		end
 	end
@@ -172,18 +190,18 @@ end
 local function removeFirstCommand(unit_id)
 	local cmd_queue = Spring.GetUnitCommands(unit_id, 4)
 	if #cmd_queue > 1 and cmd_queue[2]['id'] == 70 then
-		Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[2].tag }, { nil })
+		Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[2].tag}, {nil})
 	end
-	Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[1].tag }, { nil })
+	Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[1].tag}, {nil})
 end
 
 local function removeLastCommand(unit_id)
 	local cmd_queue = Spring.GetUnitCommands(unit_id, 5000)
 	local remove_cmd = cmd_queue[#cmd_queue]
 	if remove_cmd['id'] == 0 then
-		Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue - 1].tag }, { nil })
+		Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue - 1].tag}, {nil})
 	end
-	Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, { cmd_queue[#cmd_queue].tag }, { nil })
+	Spring.GiveOrderToUnit(unit_id, CMD.REMOVE, {cmd_queue[#cmd_queue].tag}, {nil})
 end
 
 local function unitDef(unitId)
@@ -192,7 +210,7 @@ end
 
 local function reverseQueue(unit_id)
 	local queue = Spring.GetCommandQueue(unit_id, 10000)
-	Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { 'alt' })
+	Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
 	if queue then
 		for i = #queue, 1, -1 do
 			local v = queue[i]
@@ -236,7 +254,7 @@ local function KeyUnits(key, mods)
 		for i = 1, #selectList do
 			local unitName = (j == 0 and faction or factionPrios[j]) .. selectList[i]
 			if UnitDefNames[unitName] then
-				builders = Spring.GetTeamUnitsByDefs(myTeamId, { UnitDefNames[unitName].id })
+				builders = Spring.GetTeamUnitsByDefs(myTeamId, {UnitDefNames[unitName].id})
 				if builders and #builders > 0 then
 					break
 				end
@@ -250,10 +268,9 @@ local function KeyUnits(key, mods)
 end
 
 local function median(temp)
-
 	if #temp == 0 then
 		return 0
-	elseif #temp==2 then
+	elseif #temp == 2 then
 		return (temp[1] + temp[2]) / 2
 	end
 
@@ -305,9 +322,11 @@ local function SortbuildSpeedDistance(a, b)
 		return false
 	end
 
-	local aDistanceToSelected = (a.x - selectedPos.x) * (a.x - selectedPos.x) + (a.z - selectedPos.z) * (a.z - selectedPos.z)
+	local aDistanceToSelected =
+		(a.x - selectedPos.x) * (a.x - selectedPos.x) + (a.z - selectedPos.z) * (a.z - selectedPos.z)
 
-	local bDistanceToSelected = (b.x - selectedPos.x) * (b.x - selectedPos.x) + (b.z - selectedPos.z) * (b.z - selectedPos.z)
+	local bDistanceToSelected =
+		(b.x - selectedPos.x) * (b.x - selectedPos.x) + (b.z - selectedPos.z) * (b.z - selectedPos.z)
 	return aDistanceToSelected < bDistanceToSelected
 end
 
@@ -362,7 +381,7 @@ local function snake_sort_with_lookahead(commands, _lookahead_steps)
 		local best_path_buildings = nil
 		local highest_buildSpeed = -math.huge
 
-		for _, direction in ipairs({ 'horizontal', 'vertical' }) do
+		for _, direction in ipairs({'horizontal', 'vertical'}) do
 			local total_buildSpeed, path_commands = evaluate_path(current_building, commands, direction, _lookahead_steps)
 
 			if total_buildSpeed > highest_buildSpeed then
@@ -378,7 +397,7 @@ local function snake_sort_with_lookahead(commands, _lookahead_steps)
 				local dist = distance(current_building, building)
 				if dist < closest_distance then
 					closest_distance = dist
-					best_path_buildings = { building }
+					best_path_buildings = {building}
 				end
 			end
 		end
@@ -416,7 +435,7 @@ local function calculate_centroid(cluster)
 			sum_z = sum_z + point.z
 		end
 	end
-	return { x = sum_x / #cluster, z = sum_z / #cluster }
+	return {x = sum_x / #cluster, z = sum_z / #cluster}
 end
 
 local function kmeans(commands, k, max_iterations)
@@ -530,7 +549,6 @@ local function handleCheatGiveUnits()
 	-- Spring.SendCommands('give 1 cort3airaide')
 	-- Spring.SendCommands('give 1 legt3aide')
 	-- Spring.SendCommands('give 1 legt3airaide')
-
 end
 
 local function SortMouseDistance(a, b)
@@ -561,7 +579,7 @@ local function conQueueSliceCommand(key, selectedUnitIds, mods)
 					removeLastCommand(unit_id)
 				end
 				if #cmd_queue == 2 then
-					Spring.GiveOrderToUnit(unit_id, CMD.INSERT, { -1, CMD.STOP, CMD.OPT_SHIFT }, { 'alt' })
+					Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
 				end
 			end
 		end
@@ -581,7 +599,7 @@ local function conQueueSliceCommand(key, selectedUnitIds, mods)
 			for i = 1, #builderIds do
 				local unit_id = builderIds[i]
 				local x, _, z = Spring.GetUnitPosition(unit_id)
-				builders[i] = { id = unit_id, x = x, z = z }
+				builders[i] = {id = unit_id, x = x, z = z}
 			end
 			local mouseX, mouseY = Spring.GetMouseState()
 			_, mousePos = Spring.TraceScreenRay(mouseX, mouseY, true)
@@ -605,13 +623,11 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 		for j = 1, #commands do
 			local command = commands[j]
 			if command.id < 1 then
-				local commandString = tostring(commands[j].id)
-					.. ' '
-					.. tostring(commands[j].params[1])
-					.. ' '
-					.. tostring(commands[j].params[2])
-					.. ' '
-					.. tostring(commands[j].params[3])
+				local commandString =
+					tostring(commands[j].id) ..
+					' ' ..
+						tostring(commands[j].params[1]) ..
+							' ' .. tostring(commands[j].params[2]) .. ' ' .. tostring(commands[j].params[3])
 				if mergedCommands[commandString] == nil then
 					mergedCommands[commandString] = command
 				end
@@ -629,7 +645,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			table.insert(zPositions, z)
 		end
 	end
-	selectedPos = { x = median(xPositions), z = median(zPositions) }
+	selectedPos = {x = median(xPositions), z = median(zPositions)}
 	local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds)
 	for i = 1, #allImmobileBuilders do
 		local x, _, z = Spring.GetUnitPosition(allImmobileBuilders[i])
@@ -638,7 +654,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 				id = allImmobileBuilders[i],
 				x = x,
 				z = z,
-				buildDistance = immobileBuilderDefs[Spring.GetUnitDefID(allImmobileBuilders[i])],
+				buildDistance = immobileBuilderDefs[Spring.GetUnitDefID(allImmobileBuilders[i])]
 			}
 		end
 	end
@@ -656,12 +672,15 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			assistersBuildSpeeds = {},
 			isShield = isShieldDefId[-command.id],
 			x = command.params and command.params[1],
-			z = command.params and command.params[3],
+			z = command.params and command.params[3]
 		}
 		if command.params[1] and command.params[3] then
 			for j = 1, #allImmobileBuilders do
 				local builder = allImmobileBuilders[j]
-				if builder.buildDistance and Distance(builder.x, builder.z, command.params[1], command.params[3]) < builder.buildDistance then
+				if
+					builder.buildDistance and
+						Distance(builder.x, builder.z, command.params[1], command.params[3]) < builder.buildDistance
+				 then
 					local buildSpeed = unitIdBuildSpeeds:get(allImmobileBuilders[j].id)
 					if buildSpeed == nil then
 						buildSpeed = UnitDefs[Spring.GetUnitDefID(allImmobileBuilders[j].id)].buildSpeed
@@ -685,14 +704,13 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {}, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, commands)
 	elseif mods['shift'] and not mods['alt'] then
-
 		local builders = {}
 		for i = 1, #selectedUnitIds do
 			local unitId = selectedUnitIds[i]
 			local x, _, z = Spring.GetUnitPosition(unitId)
 			local def = UnitDefs[Spring.GetUnitDefID(unitId)]
 			if def and def.buildOptions and #def.buildOptions > 0 then
-				table.insert(builders, { id = unitId, x = x, z = z, buildSpeed = 1, def = def })
+				table.insert(builders, {id = unitId, x = x, z = z, buildSpeed = 1, def = def})
 			end
 		end
 		local clusters = kmeans(commands, #builders, 100)
@@ -764,7 +782,321 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			end
 			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
 		end
+			elseif mods['alt'] and not mods['shift'] then
+		-- Ctrl+Alt+F: Auto-detect mode on first use, then toggle
+		if transposeMode == nil then
+			-- First use: auto-detect current mode and use the OPPOSITE as starting mode
+			local detectedMode = 'row_first' -- default fallback
 
+			-- Analyze current queue to detect traversal pattern
+			if #commands >= 3 then
+				local firstThree = {commands[1], commands[2], commands[3]}
+				local isRowFirst = true
+				local isColFirst = true
+
+				-- Check if first 3 commands follow row-first pattern (same Z, different X)
+				if firstThree[1].z and firstThree[2].z and firstThree[3].z and
+				   firstThree[1].x and firstThree[2].x and firstThree[3].x then
+					if not (math.abs(firstThree[1].z - firstThree[2].z) < 1 and
+					        math.abs(firstThree[2].z - firstThree[3].z) < 1) then
+						isRowFirst = false
+					end
+					if not (math.abs(firstThree[1].x - firstThree[2].x) < 1 and
+					        math.abs(firstThree[2].x - firstThree[3].x) < 1) then
+						isColFirst = false
+					end
+				end
+
+				if isRowFirst and not isColFirst then
+					detectedMode = 'row_first'
+				elseif isColFirst and not isRowFirst then
+					detectedMode = 'col_first'
+				end
+			end
+
+			-- Set to OPPOSITE of detected mode (so first press gives you the transposed version)
+			transposeMode = (detectedMode == 'row_first') and 'col_first' or 'row_first'
+		else
+			-- Subsequent uses: just toggle
+			transposeMode = (transposeMode == 'row_first') and 'col_first' or 'row_first'
+		end
+
+		local builders = {}
+		for i = 1, #selectedUnitIds do
+			local unitId = selectedUnitIds[i]
+			local x, _, z = Spring.GetUnitPosition(unitId)
+			local def = UnitDefs[Spring.GetUnitDefID(unitId)]
+			if def and def.buildOptions and #def.buildOptions > 0 then
+				table.insert(builders, {id = unitId, x = x, z = z, def = def})
+			end
+		end
+
+		if #builders == 0 or #commands == 0 then
+			return
+		end
+
+		-- Analyze spatial positions to determine grid structure
+		local uniqueX, uniqueZ = {}, {}
+		for _, command in ipairs(commands) do
+			if command.x and command.z then
+				uniqueX[command.x] = true
+				uniqueZ[command.z] = true
+			end
+		end
+
+		local xPositions, zPositions = {}, {}
+		for x in pairs(uniqueX) do
+			table.insert(xPositions, x)
+		end
+		for z in pairs(uniqueZ) do
+			table.insert(zPositions, z)
+		end
+		table.sort(xPositions)
+		table.sort(zPositions)
+
+		local numCols, numRows = #xPositions, #zPositions
+		if numCols == 0 or numRows == 0 then
+			return
+		end
+
+		-- Create spatial matrix: map each command to its grid position
+		local spatialMatrix = {}
+		for row = 1, numRows do
+			spatialMatrix[row] = {}
+		end
+
+		for _, command in ipairs(commands) do
+			if command.x and command.z then
+				local col, row = nil, nil
+				for i, x in ipairs(xPositions) do
+					if math.abs(command.x - x) < 1 then
+						col = i
+						break
+					end
+				end
+				for i, z in ipairs(zPositions) do
+					if math.abs(command.z - z) < 1 then
+						row = i
+						break
+					end
+				end
+				if col and row then
+					spatialMatrix[row][col] = command
+				end
+			end
+		end
+
+		-- Find the starting corner based on builder positions
+		local builderCentroid = {x = selectedPos.x or 0, z = selectedPos.z or 0}
+		local corners = {
+			{row = 1, col = 1, x = xPositions[1], z = zPositions[1]}, -- bottom-left
+			{row = 1, col = numCols, x = xPositions[numCols], z = zPositions[1]}, -- bottom-right
+			{row = numRows, col = 1, x = xPositions[1], z = zPositions[numRows]}, -- top-left
+			{row = numRows, col = numCols, x = xPositions[numCols], z = zPositions[numRows]} -- top-right
+		}
+
+		-- Find closest corner to builder centroid
+		local startCorner = corners[1]
+		local minDistance = math.huge
+		for _, corner in ipairs(corners) do
+			local dist = (corner.x - builderCentroid.x) ^ 2 + (corner.z - builderCentroid.z) ^ 2
+			if dist < minDistance then
+				minDistance = dist
+				startCorner = corner
+			end
+		end
+
+				-- Snake traversal based on mode and starting corner
+		local orderedCommands = {}
+		if transposeMode == 'row_first' then
+			-- Snake row-first: alternate column direction for each row
+			local rowStep = (startCorner.row == 1) and 1 or -1
+			local baseColStep = (startCorner.col == 1) and 1 or -1
+
+			for r = 0, numRows - 1 do
+				local row = startCorner.row + (r * rowStep)
+				if row < 1 then row = numRows + row end
+				if row > numRows then row = row - numRows end
+
+				-- Alternate column direction for snake pattern
+				local colStep = (r % 2 == 0) and baseColStep or -baseColStep
+				local colStart = (colStep == 1) and 1 or numCols
+				local colEnd = (colStep == 1) and numCols or 1
+
+				for c = colStart, colEnd, colStep do
+					if spatialMatrix[row] and spatialMatrix[row][c] then
+						table.insert(orderedCommands, spatialMatrix[row][c])
+					end
+				end
+			end
+		else
+			-- Snake column-first: alternate row direction for each column
+			local colStep = (startCorner.col == 1) and 1 or -1
+			local baseRowStep = (startCorner.row == 1) and 1 or -1
+
+			for c = 0, numCols - 1 do
+				local col = startCorner.col + (c * colStep)
+				if col < 1 then col = numCols + col end
+				if col > numCols then col = col - numCols end
+
+				-- Alternate row direction for snake pattern
+				local rowStep = (c % 2 == 0) and baseRowStep or -baseRowStep
+				local rowStart = (rowStep == 1) and 1 or numRows
+				local rowEnd = (rowStep == 1) and numRows or 1
+
+				for r = rowStart, rowEnd, rowStep do
+					if spatialMatrix[r] and spatialMatrix[r][col] then
+						table.insert(orderedCommands, spatialMatrix[r][col])
+					end
+				end
+			end
+		end
+
+		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
+		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
+	elseif mods['alt'] and mods['shift'] then
+		-- Ctrl+Alt+Shift+F: Rotate starting corner clockwise
+		cornerRotation = (cornerRotation + 1) % 4
+
+		local builders = {}
+		for i = 1, #selectedUnitIds do
+			local unitId = selectedUnitIds[i]
+			local x, _, z = Spring.GetUnitPosition(unitId)
+			local def = UnitDefs[Spring.GetUnitDefID(unitId)]
+			if def and def.buildOptions and #def.buildOptions > 0 then
+				table.insert(builders, {id = unitId, x = x, z = z, def = def})
+			end
+		end
+
+		if #builders == 0 or #commands == 0 then
+			return
+		end
+
+		-- Analyze spatial positions to determine grid structure
+		local uniqueX, uniqueZ = {}, {}
+		for _, command in ipairs(commands) do
+			if command.x and command.z then
+				uniqueX[command.x] = true
+				uniqueZ[command.z] = true
+			end
+		end
+
+		local xPositions, zPositions = {}, {}
+		for x in pairs(uniqueX) do
+			table.insert(xPositions, x)
+		end
+		for z in pairs(uniqueZ) do
+			table.insert(zPositions, z)
+		end
+		table.sort(xPositions)
+		table.sort(zPositions)
+
+		local numCols, numRows = #xPositions, #zPositions
+		if numCols == 0 or numRows == 0 then
+			return
+		end
+
+		-- Create spatial matrix: map each command to its grid position
+		local spatialMatrix = {}
+		for row = 1, numRows do
+			spatialMatrix[row] = {}
+		end
+
+		for _, command in ipairs(commands) do
+			if command.x and command.z then
+				local col, row = nil, nil
+				for i, x in ipairs(xPositions) do
+					if math.abs(command.x - x) < 1 then
+						col = i
+						break
+					end
+				end
+				for i, z in ipairs(zPositions) do
+					if math.abs(command.z - z) < 1 then
+						row = i
+						break
+					end
+				end
+				if col and row then
+					spatialMatrix[row][col] = command
+				end
+			end
+		end
+
+		-- Define corners in clockwise order: bottom-left, bottom-right, top-right, top-left
+		local corners = {
+			{row = 1, col = 1}, -- bottom-left
+			{row = 1, col = numCols}, -- bottom-right
+			{row = numRows, col = numCols}, -- top-right
+			{row = numRows, col = 1} -- top-left
+		}
+
+		-- Find natural starting corner (closest to builders) then rotate from it
+		local builderCentroid = {x = selectedPos.x or 0, z = selectedPos.z or 0}
+		local naturalCornerIndex = 1
+		local minDistance = math.huge
+		for i, corner in ipairs(corners) do
+			local x = xPositions[corner.col]
+			local z = zPositions[corner.row]
+			local dist = (x - builderCentroid.x) ^ 2 + (z - builderCentroid.z) ^ 2
+			if dist < minDistance then
+				minDistance = dist
+				naturalCornerIndex = i
+			end
+		end
+
+		-- Apply corner rotation
+		local startCornerIndex = ((naturalCornerIndex - 1 + cornerRotation) % 4) + 1
+		local startCorner = corners[startCornerIndex]
+
+				-- Snake traverse using current transpose mode from the rotated starting corner
+		local orderedCommands = {}
+		if transposeMode == 'row_first' then
+			-- Snake row-first: alternate column direction for each row
+			local rowStep = (startCorner.row == 1) and 1 or -1
+			local baseColStep = (startCorner.col == 1) and 1 or -1
+
+			for r = 0, numRows - 1 do
+				local row = startCorner.row + (r * rowStep)
+				if row < 1 then row = numRows + row end
+				if row > numRows then row = row - numRows end
+
+				-- Alternate column direction for snake pattern
+				local colStep = (r % 2 == 0) and baseColStep or -baseColStep
+				local colStart = (colStep == 1) and 1 or numCols
+				local colEnd = (colStep == 1) and numCols or 1
+
+				for c = colStart, colEnd, colStep do
+					if spatialMatrix[row] and spatialMatrix[row][c] then
+						table.insert(orderedCommands, spatialMatrix[row][c])
+					end
+				end
+			end
+		else
+			-- Snake column-first: alternate row direction for each column
+			local colStep = (startCorner.col == 1) and 1 or -1
+			local baseRowStep = (startCorner.row == 1) and 1 or -1
+
+			for c = 0, numCols - 1 do
+				local col = startCorner.col + (c * colStep)
+				if col < 1 then col = numCols + col end
+				if col > numCols then col = col - numCols end
+
+				-- Alternate row direction for snake pattern
+				local rowStep = (c % 2 == 0) and baseRowStep or -baseRowStep
+				local rowStart = (rowStep == 1) and 1 or numRows
+				local rowEnd = (rowStep == 1) and numRows or 1
+
+				for r = rowStart, rowEnd, rowStep do
+					if spatialMatrix[r] and spatialMatrix[r][col] then
+						table.insert(orderedCommands, spatialMatrix[r][col])
+					end
+				end
+			end
+		end
+
+		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
+		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
 	end
 end
 
@@ -776,14 +1108,14 @@ local function handleAltEKey(selectedUnitIds)
 		if unitDef(unitID).canReclaim then
 			table.insert(reclaimers, unitID)
 		else
-			table.insert(reclaimCommands, { CMD.RECLAIM, unitID, { 'shift' } })
+			table.insert(reclaimCommands, {CMD.RECLAIM, unitID, {'shift'}})
 		end
 	end
 	Spring.GiveOrderArrayToUnitArray(reclaimers, reclaimCommands)
 end
 
 local function handleSpamFactories(selectedUnitIds)
-	local factories= {}
+	local factories = {}
 	for i = 1, #selectedUnitIds do
 		local unitID = selectedUnitIds[i]
 		local def = unitDef(unitID)

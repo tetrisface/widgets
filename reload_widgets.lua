@@ -53,8 +53,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		-- Spring.SendCommands("enablewidget CMD target time spread")
 		-- Spring.SendCommands('disablewidget Raptor Stats Panel With Eco Attraction')
 		-- Spring.SendCommands('enablewidget Raptor Stats Panel With Eco Attraction')
-		Spring.SendCommands('disablewidget commanders')
-		Spring.SendCommands('enablewidget commanders')
+		Spring.SendCommands('disablewidget Commands')
+		Spring.SendCommands('enablewidget Commands')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then
