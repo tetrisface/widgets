@@ -155,6 +155,7 @@ local isShieldDefId = {}
 local conCycleNumber
 local transposeMode = nil -- will be auto-detected on first use, then toggles between 'row_first' and 'col_first'
 local cornerRotation = 0 -- 0=closest corner, 1=next clockwise, 2=opposite, 3=next counter-clockwise
+local lastBuildOrderSignature = nil -- simple signature to detect new build orders
 function widget:Initialize()
 	Spring.SendCommands('bind Shift+Alt+sc_q buildfacing inc')
 	Spring.SendCommands('bind Shift+Alt+sc_e buildfacing dec')
@@ -499,6 +500,67 @@ local function calculateDistance(x1, z1, x2, z2)
 	return math.sqrt((x2 - x1) ^ 2 + (z2 - z1) ^ 2)
 end
 
+-- Filter out non-build commands (command.id >= 0)
+local function getBuildCommandsOnly(commands)
+	local buildCommands = {}
+	for _, command in ipairs(commands) do
+		if command.id < 0 then
+			table.insert(buildCommands, command)
+		end
+	end
+	return buildCommands
+end
+
+-- Generate signature from all build command positions
+local function generateBuildOrderSignature(commands)
+	local positions = {}
+	for _, command in ipairs(commands) do
+		if command.x and command.z then
+			table.insert(positions, tostring(command.x) .. '_' .. tostring(command.z))
+		end
+	end
+	table.sort(positions) -- Sort to make signature order-independent
+	return table.concat(positions, '|')
+end
+
+-- Check if two signatures are 90% similar
+local function signaturesAreSimilar(sig1, sig2, threshold)
+	threshold = threshold or 0.9
+	if sig1 == nil or sig2 == nil then
+		return false
+	end
+	if sig1 == sig2 then
+		return true
+	end
+
+	local positions1 = {}
+	local positions2 = {}
+	for pos in sig1:gmatch('[^|]+') do
+		positions1[pos] = true
+	end
+	for pos in sig2:gmatch('[^|]+') do
+		positions2[pos] = true
+	end
+
+	local totalPositions = 0
+	local matchingPositions = 0
+
+	for pos in pairs(positions1) do
+		totalPositions = totalPositions + 1
+		if positions2[pos] then
+			matchingPositions = matchingPositions + 1
+		end
+	end
+
+	for pos in pairs(positions2) do
+		if not positions1[pos] then
+			totalPositions = totalPositions + 1
+		end
+	end
+
+	return totalPositions > 0 and (matchingPositions / totalPositions) >= threshold
+end
+
 -- Handles Ctrl+Alt+Shift+W cheat key
 local function handleCheatGiveUnits()
 	-- Spring.SendCommands('give 1 armbanth')
@@ -782,7 +844,18 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			end
 			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
 		end
-			elseif mods['alt'] and not mods['shift'] then
+		elseif mods['alt'] and not mods['shift'] then
+		-- Filter to only build commands and generate signature
+		commands = getBuildCommandsOnly(commands)
+		local currentSignature = generateBuildOrderSignature(commands)
+
+		-- Reset states if working with new build orders (less than 90% similar)
+		if not signaturesAreSimilar(lastBuildOrderSignature, currentSignature) then
+			transposeMode = nil
+			cornerRotation = 0
+			lastBuildOrderSignature = currentSignature
+		end
+
 		-- Ctrl+Alt+F: Auto-detect mode on first use, then toggle
 		if transposeMode == nil then
 			-- First use: auto-detect current mode and use the OPPOSITE as starting mode
@@ -795,14 +868,13 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 				local isColFirst = true
 
 				-- Check if first 3 commands follow row-first pattern (same Z, different X)
-				if firstThree[1].z and firstThree[2].z and firstThree[3].z and
-				   firstThree[1].x and firstThree[2].x and firstThree[3].x then
-					if not (math.abs(firstThree[1].z - firstThree[2].z) < 1 and
-					        math.abs(firstThree[2].z - firstThree[3].z) < 1) then
+				if
+					firstThree[1].z and firstThree[2].z and firstThree[3].z and firstThree[1].x and firstThree[2].x and firstThree[3].x
+				 then
+					if not (math.abs(firstThree[1].z - firstThree[2].z) < 1 and math.abs(firstThree[2].z - firstThree[3].z) < 1) then
 						isRowFirst = false
 					end
-					if not (math.abs(firstThree[1].x - firstThree[2].x) < 1 and
-					        math.abs(firstThree[2].x - firstThree[3].x) < 1) then
+					if not (math.abs(firstThree[1].x - firstThree[2].x) < 1 and math.abs(firstThree[2].x - firstThree[3].x) < 1) then
 						isColFirst = false
 					end
 				end
@@ -886,27 +958,33 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			end
 		end
 
-		-- Find the starting corner based on builder positions
+		-- Find the starting corner using same logic as corner rotation command
 		local builderCentroid = {x = selectedPos.x or 0, z = selectedPos.z or 0}
 		local corners = {
-			{row = 1, col = 1, x = xPositions[1], z = zPositions[1]}, -- bottom-left
-			{row = 1, col = numCols, x = xPositions[numCols], z = zPositions[1]}, -- bottom-right
-			{row = numRows, col = 1, x = xPositions[1], z = zPositions[numRows]}, -- top-left
-			{row = numRows, col = numCols, x = xPositions[numCols], z = zPositions[numRows]} -- top-right
+			{row = 1, col = 1}, -- bottom-left
+			{row = 1, col = numCols}, -- bottom-right
+			{row = numRows, col = numCols}, -- top-right
+			{row = numRows, col = 1} -- top-left
 		}
 
-		-- Find closest corner to builder centroid
-		local startCorner = corners[1]
+		-- Find natural starting corner (closest to builders) then apply rotation
+		local naturalCornerIndex = 1
 		local minDistance = math.huge
-		for _, corner in ipairs(corners) do
-			local dist = (corner.x - builderCentroid.x) ^ 2 + (corner.z - builderCentroid.z) ^ 2
+		for i, corner in ipairs(corners) do
+			local x = xPositions[corner.col]
+			local z = zPositions[corner.row]
+			local dist = (x - builderCentroid.x) ^ 2 + (z - builderCentroid.z) ^ 2
 			if dist < minDistance then
 				minDistance = dist
-				startCorner = corner
+				naturalCornerIndex = i
 			end
 		end
 
-				-- Snake traversal based on mode and starting corner
+		-- Apply current corner rotation
+		local startCornerIndex = ((naturalCornerIndex - 1 + cornerRotation) % 4) + 1
+		local startCorner = corners[startCornerIndex]
+
+		-- Snake traversal based on mode and starting corner
 		local orderedCommands = {}
 		if transposeMode == 'row_first' then
 			-- Snake row-first: alternate column direction for each row
@@ -915,8 +993,12 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 			for r = 0, numRows - 1 do
 				local row = startCorner.row + (r * rowStep)
-				if row < 1 then row = numRows + row end
-				if row > numRows then row = row - numRows end
+				if row < 1 then
+					row = numRows + row
+				end
+				if row > numRows then
+					row = row - numRows
+				end
 
 				-- Alternate column direction for snake pattern
 				local colStep = (r % 2 == 0) and baseColStep or -baseColStep
@@ -936,8 +1018,12 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 			for c = 0, numCols - 1 do
 				local col = startCorner.col + (c * colStep)
-				if col < 1 then col = numCols + col end
-				if col > numCols then col = col - numCols end
+				if col < 1 then
+					col = numCols + col
+				end
+				if col > numCols then
+					col = col - numCols
+				end
 
 				-- Alternate row direction for snake pattern
 				local rowStep = (c % 2 == 0) and baseRowStep or -baseRowStep
@@ -954,7 +1040,18 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
-	elseif mods['alt'] and mods['shift'] then
+		elseif mods['alt'] and mods['shift'] then
+		-- Filter to only build commands and generate signature
+		commands = getBuildCommandsOnly(commands)
+		local currentSignature = generateBuildOrderSignature(commands)
+
+		-- Reset states if working with new build orders (less than 90% similar)
+		if not signaturesAreSimilar(lastBuildOrderSignature, currentSignature) then
+			transposeMode = nil
+			cornerRotation = 0
+			lastBuildOrderSignature = currentSignature
+		end
+
 		-- Ctrl+Alt+Shift+F: Rotate starting corner clockwise
 		cornerRotation = (cornerRotation + 1) % 4
 
@@ -1049,7 +1146,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 		local startCornerIndex = ((naturalCornerIndex - 1 + cornerRotation) % 4) + 1
 		local startCorner = corners[startCornerIndex]
 
-				-- Snake traverse using current transpose mode from the rotated starting corner
+		-- Snake traverse using current transpose mode from the rotated starting corner
 		local orderedCommands = {}
 		if transposeMode == 'row_first' then
 			-- Snake row-first: alternate column direction for each row
@@ -1058,8 +1155,12 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 			for r = 0, numRows - 1 do
 				local row = startCorner.row + (r * rowStep)
-				if row < 1 then row = numRows + row end
-				if row > numRows then row = row - numRows end
+				if row < 1 then
+					row = numRows + row
+				end
+				if row > numRows then
+					row = row - numRows
+				end
 
 				-- Alternate column direction for snake pattern
 				local colStep = (r % 2 == 0) and baseColStep or -baseColStep
@@ -1079,8 +1180,12 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 			for c = 0, numCols - 1 do
 				local col = startCorner.col + (c * colStep)
-				if col < 1 then col = numCols + col end
-				if col > numCols then col = col - numCols end
+				if col < 1 then
+					col = numCols + col
+				end
+				if col > numCols then
+					col = col - numCols
+				end
 
 				-- Alternate row direction for snake pattern
 				local rowStep = (c % 2 == 0) and baseRowStep or -baseRowStep
