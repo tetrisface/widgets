@@ -11,14 +11,12 @@ function widget:GetInfo()
   }
 end
 
--- Spring API functions
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitStockpile = Spring.GetUnitStockpile
 local GetUnitStates = Spring.GetUnitStates
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GetUnitPosition = Spring.GetUnitPosition
-local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitTeam = Spring.GetUnitTeam
 local GetMyTeamID = Spring.GetMyTeamID
 local GetMyAllyTeamID = Spring.GetMyAllyTeamID
@@ -27,9 +25,9 @@ local GiveOrderToUnit = Spring.GiveOrderToUnit
 local UnitDefs = UnitDefs
 local WeaponDefs = WeaponDefs
 local CMD = CMD
+local activeDgunCommand = 3
 local CMD_DGUN = CMD.DGUN
 local CMD_REPEAT = CMD.REPEAT
-local CMD_REMOVE = CMD.REMOVE
 
 -- Custom command for the setting
 local CMD_AUTO_DGUN = 28340
@@ -52,8 +50,8 @@ local AUTO_DGUN_ALWAYS = 2
 -- Localization
 local i18n = Spring.I18N
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[2], 'Auto D-Gun Off')
-i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[3], 'Auto D-Gun Stockpile Max')
-i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[4], 'Auto D-Gun Always')
+i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[3], 'Auto D-Gun Fill')
+i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[4], 'Auto D-Gun Deplete')
 i18n.set(
   'en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.action .. '_tooltip',
   'Automatically d-gun enemies within range'
@@ -65,6 +63,97 @@ local myAllyTeamID = GetMyAllyTeamID()
 local commanderDefs = {}
 local commanderUnits = {}
 local originalRepeatStates = {}
+
+-- Check if a unit is a commander
+local function isCommander(unitDefID)
+  return commanderDefs[unitDefID] ~= nil
+end
+
+-- Save original repeat state
+local function saveOriginalRepeatState(commanderID)
+  local states = GetUnitStates(commanderID)
+  if states then
+    originalRepeatStates[commanderID] = states['repeat']
+  end
+end
+
+-- Restore original repeat state
+local function restoreOriginalRepeatState(commanderID)
+  if originalRepeatStates[commanderID] ~= nil then
+    GiveOrderToUnit(commanderID, CMD_REPEAT, {originalRepeatStates[commanderID] and 1 or 0}, 0)
+    originalRepeatStates[commanderID] = nil
+  end
+end
+
+-- Check if unit has repeat enabled and manage repeat state for dgun
+local function manageRepeatStateForDgun(commanderID)
+  local states = GetUnitStates(commanderID)
+  if not states then
+    return false
+  end
+
+  local currentRepeat = states['repeat']
+
+  -- If repeat is already disabled, no need to manage it
+  if not currentRepeat then
+    return false
+  end
+
+  -- Save current repeat state and disable it
+  saveOriginalRepeatState(commanderID)
+  GiveOrderToUnit(commanderID, CMD_REPEAT, {0}, 0)
+  return true
+end
+
+-- Create or update a commander unit entry
+local function createCommanderUnit(unitID, unitDefID)
+  if not isCommander(unitDefID) then
+    return nil
+  end
+
+  commanderUnits[unitID] = commanderUnits[unitID] or {}
+  commanderUnits[unitID].mode = commanderUnits[unitID].mode or AUTO_DGUN_STOCKPILE_MAX
+
+  return commanderUnits[unitID]
+end
+
+-- Remove a commander unit and clean up its state
+local function removeCommanderUnit(unitID)
+  if commanderUnits[unitID] then
+    restoreOriginalRepeatState(unitID)
+    commanderUnits[unitID] = nil
+  end
+  originalRepeatStates[unitID] = nil
+end
+
+-- Initialize all existing commanders on the team
+local function initializeExistingCommanders()
+  local allUnits = Spring.GetTeamUnits(myTeamID)
+  for _, unitID in ipairs(allUnits) do
+    local unitDefID = GetUnitDefID(unitID)
+    if unitDefID and isCommander(unitDefID) then
+      createCommanderUnit(unitID, unitDefID)
+    end
+  end
+end
+
+-- Validate and clean up commander units (remove dead/invalid ones)
+local function validateCommanderUnits()
+  local toRemove = {}
+  for commanderID, _ in pairs(commanderUnits) do
+    local unitDefID = GetUnitDefID(commanderID)
+    local unitTeam = GetUnitTeam(commanderID)
+
+    -- Remove if unit doesn't exist, isn't a commander, or isn't on our team
+    if not unitDefID or not isCommander(unitDefID) or unitTeam ~= myTeamID then
+      table.insert(toRemove, commanderID)
+    end
+  end
+
+  for _, commanderID in ipairs(toRemove) do
+    removeCommanderUnit(commanderID)
+  end
+end
 
 -- Initialize commander unit definitions
 local function initializeCommanderDefs()
@@ -95,11 +184,6 @@ local function initializeCommanderDefs()
   end
 end
 
--- Check if a unit is a commander
-local function isCommander(unitDefID)
-  return commanderDefs[unitDefID] ~= nil
-end
-
 -- Get enemy units within range, sorted by health (highest first)
 local function getEnemyTargetsInRange(commanderID, range)
   -- Spring.Echo('getEnemyTargetsInRange', commanderID, range)
@@ -117,15 +201,15 @@ local function getEnemyTargetsInRange(commanderID, range)
     local unitTeam = GetUnitTeam(unitID)
     if unitTeam and not AreTeamsAllied(myTeamID, unitTeam) then
       -- Spring.Echo('unitTeam', unitTeam, myTeamID, AreTeamsAllied(myTeamID, unitTeam))
-        local unitDefID = GetUnitDefID(unitID)
-        local unitDef = UnitDefs[unitDefID]
-        table.insert(
-          enemies,
-          {
-            unitID = unitID,
-            unitDefMaxHealth = unitDef.health
-          }
-        )
+      local unitDefID = GetUnitDefID(unitID)
+      local unitDef = UnitDefs[unitDefID]
+      table.insert(
+        enemies,
+        {
+          unitID = unitID,
+          unitDefMaxHealth = unitDef.health
+        }
+      )
     end
   end
 
@@ -164,33 +248,6 @@ local function canFireDgun(commanderID, commanderDefID, mode)
   return false
 end
 
--- Save original repeat state
-local function saveOriginalRepeatState(commanderID)
-  local states = GetUnitStates(commanderID)
-  if states then
-    originalRepeatStates[commanderID] = states['repeat']
-  end
-end
-
--- Restore original repeat state
-local function restoreOriginalRepeatState(commanderID)
-  if originalRepeatStates[commanderID] ~= nil then
-    GiveOrderToUnit(commanderID, CMD_REPEAT, {originalRepeatStates[commanderID] and 1 or 0}, 0)
-    originalRepeatStates[commanderID] = nil
-  end
-end
-
--- Check if d-gun stockpile is empty
-local function isDgunEmpty(commanderID, commanderDefID)
-  local commanderDef = commanderDefs[commanderDefID]
-  if not commanderDef or not commanderDef.dgunWeaponNum then
-    return true
-  end
-
-  local numStockpiled = GetUnitStockpile(commanderID)
-  return not numStockpiled or numStockpiled <= 0
-end
-
 -- Process auto d-gun for a commander
 local function processCommanderAutoDgun(commanderID)
   -- Spring.Echo('processCommanderAutoDgun', commanderID)
@@ -206,26 +263,27 @@ local function processCommanderAutoDgun(commanderID)
     return
   end
 
+  -- Skip if commander is selected and has active d-gun command (manual control)
+  local selectedUnits = GetSelectedUnits()
+  local isSelected = false
+  for _, unitID in ipairs(selectedUnits) do
+    if unitID == commanderID then
+      isSelected = true
+      break
+    end
+  end
+
+  if isSelected then
+    local activeCmd = Spring.GetActiveCommand()
+    if activeCmd == activeDgunCommand then
+      return
+    end
+  end
+
   local commanderDef = commanderDefs[commanderDefID]
   if not commanderDef or not commanderDef.dgunRange then
     return
   end
-
-  -- For "always" mode, check if d-gun is empty and clean up
-  -- if mode == AUTO_DGUN_ALWAYS and commanderData.hasDgunOrder then
-  --   if isDgunEmpty(commanderID, commanderDefID) then
-  --     -- Remove d-gun order and restore repeat state
-  --     local commands = Spring.GetUnitCommands(commanderID, 10)
-  --     for _, cmd in ipairs(commands) do
-  --       if cmd.id == CMD_DGUN then
-  --         GiveOrderToUnit(commanderID, CMD_REMOVE, {cmd.tag}, 0)
-  --         break
-  --       end
-  --     end
-  --     restoreOriginalRepeatState(commanderID)
-  --     commanderData.hasDgunOrder = false
-  --   end
-  -- end
 
   -- Check if we can fire
   if not canFireDgun(commanderID, commanderDefID, mode) then
@@ -241,29 +299,15 @@ local function processCommanderAutoDgun(commanderID)
   -- Target the highest health enemy
   local target = enemies[1]
 
-  -- Handle repeat state based on mode
-  if mode == AUTO_DGUN_STOCKPILE_MAX then
-    -- Save original repeat state and turn off repeat
-    saveOriginalRepeatState(commanderID)
-    GiveOrderToUnit(commanderID, CMD_REPEAT, {0}, 0)
+  -- Manage repeat state and give dgun order
+  local needsRepeatRestore = manageRepeatStateForDgun(commanderID)
 
-    -- Give dgun order
-    -- GiveOrderToUnit(commanderID, CMD_DGUN, {target.unitID}, 0)
-    -- insert at beginning of queue?
-    GiveOrderToUnit(commanderID, CMD.INSERT, { 0, CMD.DGUN, CMD.OPT_CTRL, target.unitID }, { 'alt' })
+  -- Give dgun order (insert at beginning of queue)
+  GiveOrderToUnit(commanderID, CMD.INSERT, {0, CMD_DGUN, CMD.OPT_CTRL, target.unitID}, {'alt'})
 
-    -- Restore repeat state after a delay (handled in GameFrame)
-    commanderData.restoreRepeatFrame = Spring.GetGameFrame() + 30 -- 1 second delay
-  elseif mode == AUTO_DGUN_ALWAYS then
-    -- Save original repeat state and turn on repeat
-    -- saveOriginalRepeatState(commanderID)
-    -- GiveOrderToUnit(commanderID, CMD_REPEAT, {1}, 0)
-
-    -- Give dgun order
-    -- GiveOrderToUnit(commanderID, CMD_DGUN, {target.unitID}, 0)
-    -- insert at beginning of queue?
-    GiveOrderToUnit(commanderID, CMD.INSERT, { 0, CMD.DGUN, CMD.OPT_CTRL, target.unitID }, { 'alt' })
-    -- commanderData.hasDgunOrder = true
+  -- Restore repeat state immediately - Spring's command queue will handle timing
+  if needsRepeatRestore then
+    restoreOriginalRepeatState(commanderID)
   end
 end
 
@@ -280,17 +324,19 @@ local function checkSelectedUnits(updateMode)
 
       if updateMode then
         local mode = CMD_AUTO_DGUN_DESCRIPTION.params[1]
-        commanderUnits[unitID] = commanderUnits[unitID] or {}
-        commanderUnits[unitID].mode = mode
+        -- Ensure commander is tracked and update its mode
+        local commanderData = createCommanderUnit(unitID, unitDefID)
+        if commanderData then
+          commanderData.mode = mode
 
-        if mode == AUTO_DGUN_OFF then
-          -- Clean up any existing orders/states
-          restoreOriginalRepeatState(unitID)
-          -- commanderUnits[unitID].hasDgunOrder = false
-          commanderUnits[unitID].restoreRepeatFrame = nil
+          if mode == AUTO_DGUN_OFF then
+            -- Clean up any existing orders/states
+            restoreOriginalRepeatState(unitID)
+          end
         end
       else
-        -- Check existing mode for UI display
+        -- Check existing mode for UI display, ensuring commander is tracked
+        createCommanderUnit(unitID, unitDefID)
         if commanderUnits[unitID] and commanderUnits[unitID].mode then
           foundMode = commanderUnits[unitID].mode
         end
@@ -317,6 +363,9 @@ function widget:Initialize()
 
   myTeamID = GetMyTeamID()
   myAllyTeamID = GetMyAllyTeamID()
+
+  -- Initialize all existing commanders
+  initializeExistingCommanders()
 end
 
 function widget:CommandsChanged()
@@ -344,21 +393,32 @@ function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
 end
 
 function widget:UnitDestroyed(unitID)
-  commanderUnits[unitID] = nil
-  originalRepeatStates[unitID] = nil
+  removeCommanderUnit(unitID)
 end
 
 function widget:UnitGiven(unitID, unitDefID, newTeam, oldTeam)
-  if newTeam ~= myTeamID then
-    commanderUnits[unitID] = nil
-    originalRepeatStates[unitID] = nil
+  if oldTeam == myTeamID then
+    -- Unit was given away from our team
+    removeCommanderUnit(unitID)
+  elseif newTeam == myTeamID then
+    -- Unit was given to our team
+    createCommanderUnit(unitID, unitDefID)
+  end
+end
+
+function widget:UnitCreated(unitID, unitDefID, teamID)
+  if teamID == myTeamID then
+    createCommanderUnit(unitID, unitDefID)
   end
 end
 
 function widget:UnitTaken(unitID, unitDefID, oldTeam, newTeam)
   if oldTeam == myTeamID then
-    commanderUnits[unitID] = nil
-    originalRepeatStates[unitID] = nil
+    -- Unit was taken from our team
+    removeCommanderUnit(unitID)
+  elseif newTeam == myTeamID then
+    -- Unit was taken by our team
+    createCommanderUnit(unitID, unitDefID)
   end
 end
 
@@ -368,15 +428,8 @@ function widget:GameFrame(frameNum)
     return
   end
 
+    validateCommanderUnits()
   -- Spring.Echo('GameFrame', frameNum)
-
-  -- Handle repeat state restoration for stockpile max mode
-  for commanderID, commanderData in pairs(commanderUnits) do
-    if commanderData.restoreRepeatFrame and frameNum >= commanderData.restoreRepeatFrame then
-      restoreOriginalRepeatState(commanderID)
-      commanderData.restoreRepeatFrame = nil
-    end
-  end
 
   -- Process auto d-gun for all commanders
   for commanderID, commanderData in pairs(commanderUnits) do
