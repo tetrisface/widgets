@@ -801,7 +801,6 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 		return
 	end
 
-	Spring.Echo("DEBUG: Found " .. nCommands .. " unique commands from " .. #builders .. " builders")
 
 	-- Determine optimal number of queues based on builder count and build complexity
 	local optimalQueues = math.min(math.max(2, math.ceil(#builders / 3)), 4)
@@ -812,7 +811,6 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 		optimalQueues = nCommands
 	end
 
-	Spring.Echo("DEBUG: Using " .. optimalQueues .. " queues for " .. nCommands .. " commands")
 
 
 	-- Sort commands by priority (immobile build power + shields)
@@ -834,10 +832,8 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 	-- Debug cluster sizes
 	local totalCommandsInClusters = 0
 	for i, cluster in ipairs(clusters) do
-		Spring.Echo("DEBUG: Cluster " .. i .. " has " .. #cluster .. " commands")
 		totalCommandsInClusters = totalCommandsInClusters + #cluster
 	end
-	Spring.Echo("DEBUG: Total commands in clusters: " .. totalCommandsInClusters .. " (should be " .. nCommands .. ")")
 
 	-- Create queues with builder assignments based on proximity
 	local queues = {}
@@ -908,7 +904,6 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 					table.insert(queues[i].assignedBuilders, builderToMove)
 					queues[i].totalBuildPower = queues[i].totalBuildPower + (builderToMove.buildSpeed or 0)
 					queues[maxQueue].totalBuildPower = queues[maxQueue].totalBuildPower - (builderToMove.buildSpeed or 0)
-					Spring.Echo("DEBUG: Moved builder " .. builderToMove.id .. " from queue " .. maxQueue .. " to queue " .. i)
 				end
 			end
 		end
@@ -916,7 +911,6 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 
 	-- Debug builder assignments
 	for i, queue in ipairs(queues) do
-		Spring.Echo("DEBUG: Queue " .. i .. " has " .. #queue.assignedBuilders .. " builders")
 	end
 
 	-- Now distribute commands based on available build power per queue
@@ -945,10 +939,8 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 	-- Debug command distribution before load balancing
 	local totalDistributedCommands = 0
 	for i, queue in ipairs(queues) do
-		Spring.Echo("DEBUG: Queue " .. i .. " initially has " .. #queue.commands .. " commands")
 		totalDistributedCommands = totalDistributedCommands + #queue.commands
 	end
-	Spring.Echo("DEBUG: Total distributed commands: " .. totalDistributedCommands .. " (should be " .. nCommands .. ")")
 
 	-- Balance workload: move commands from overloaded to underloaded queues
 	local maxIterations = 3
@@ -997,10 +989,8 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 	-- Debug final queue state after load balancing
 	local finalDistributedCommands = 0
 	for i, queue in ipairs(queues) do
-		Spring.Echo("DEBUG: Queue " .. i .. " after balancing has " .. #queue.commands .. " commands and " .. #queue.assignedBuilders .. " builders")
 		finalDistributedCommands = finalDistributedCommands + #queue.commands
 	end
-	Spring.Echo("DEBUG: Final distributed commands: " .. finalDistributedCommands .. " (should be " .. nCommands .. ")")
 
 	-- Apply optimized queues to builders
 	for _, queue in ipairs(queues) do
@@ -1052,12 +1042,10 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 						end
 					end
 
-					Spring.Echo("DEBUG: Builder " .. builder.id .. " assigned " .. #builderCommands .. " buildable commands from " .. #optimizedCommands .. " queue commands")
 
 					Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
 					local maxNCommands = 510
 					if #builderCommands > maxNCommands then
-						Spring.Echo("DEBUG: Truncating builder " .. builder.id .. " commands from " .. #builderCommands .. " to " .. maxNCommands)
 						for k = #builderCommands, maxNCommands + 1, -1 do
 							builderCommands[k] = nil
 						end
