@@ -674,8 +674,403 @@ local function conQueueSliceCommand(key, selectedUnitIds, mods)
 	return false
 end
 
+-- Handles Shift+Alt+F for optimal build power pooling
+local function buildQueueOptimalPooling(selectedUnitIds, mods)
+	if #selectedUnitIds == 0 then
+		return
+	end
+
+	-- Filter and analyze commands (merge duplicates to prevent cancellation)
+	local mergedCommands = {}
+	for i = 1, #selectedUnitIds do
+		local commands = Spring.GetUnitCommands(selectedUnitIds[i], 1000)
+		if commands then
+			for j = 1, #commands do
+				local command = commands[j]
+				if command and command.id and command.id < 0 and command.params then
+					local commandString =
+						tostring(command.id) ..
+						' ' ..
+							tostring(command.params[1] or 0) ..
+								' ' .. tostring(command.params[2] or 0) .. ' ' .. tostring(command.params[3] or 0)
+					if mergedCommands[commandString] == nil then
+						mergedCommands[commandString] = command
+					end
+				end
+			end
+		end
+	end
+
+	-- Calculate builder positions and total mobile build power
+	local builders = {}
+	local totalMobileBuildPower = 0
+	for i = 1, #selectedUnitIds do
+		local unitId = selectedUnitIds[i]
+		if unitId then
+			local x, _, z = Spring.GetUnitPosition(unitId)
+			if x and z then
+				local unitDefId = Spring.GetUnitDefID(unitId)
+				local def = UnitDefs[unitDefId]
+				if def and def.buildOptions and #def.buildOptions > 0 then
+					local buildSpeed = def.buildSpeed or 1
+					table.insert(builders, {
+						id = unitId,
+						x = x,
+						z = z,
+						buildSpeed = buildSpeed,
+						buildOptions = def.buildOptions,
+						unitDefId = unitDefId
+					})
+					totalMobileBuildPower = totalMobileBuildPower + buildSpeed
+				end
+			end
+		end
+	end
+
+	if #builders == 0 then
+		return
+	end
+
+	-- Calculate median builder position
+	local xPositions, zPositions = {}, {}
+	for _, builder in ipairs(builders) do
+		table.insert(xPositions, builder.x)
+		table.insert(zPositions, builder.z)
+	end
+	selectedPos = {x = median(xPositions), z = median(zPositions)}
+
+	-- Get immobile builders (nano turrets, etc.)
+	local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds) or {}
+	for i = 1, #allImmobileBuilders do
+		if allImmobileBuilders[i] then
+			local x, _, z = Spring.GetUnitPosition(allImmobileBuilders[i])
+			if x and z then
+				local unitDefId = Spring.GetUnitDefID(allImmobileBuilders[i])
+				local unitDef = UnitDefs[unitDefId]
+				allImmobileBuilders[i] = {
+					id = allImmobileBuilders[i],
+					x = x,
+					z = z,
+					buildDistance = immobileBuilderDefs[unitDefId],
+					buildSpeed = (unitDef and unitDef.buildSpeed) or 0
+				}
+			end
+		end
+	end
+
+	-- Create enhanced command list with build power analysis
+	local commands, nCommands = {}, 0
+	if mergedCommands then
+		for _, command in pairs(mergedCommands) do
+			if command then
+				nCommands = nCommands + 1
+				local immobileBuildPower = 0
+				local nearbyNanos = {}
+
+				if command.params and command.params[1] and command.params[3] then
+					for j = 1, #allImmobileBuilders do
+						local builder = allImmobileBuilders[j]
+						if builder and builder.buildDistance and builder.x and builder.z then
+							if Distance(builder.x, builder.z, command.params[1], command.params[3]) < builder.buildDistance then
+								immobileBuildPower = immobileBuildPower + (builder.buildSpeed or 0)
+								table.insert(nearbyNanos, builder)
+							end
+						end
+					end
+				end
+
+				commands[nCommands] = {
+					command.id,
+					command.params,
+					command.options,
+					id = command.id,
+					params = command.params,
+					options = command.options,
+					x = command.params and command.params[1],
+					z = command.params and command.params[3],
+					immobileBuildPower = immobileBuildPower,
+					nearbyNanos = nearbyNanos,
+					priority = (immobileBuildPower or 0) + math.random() * 0.1, -- Add slight randomness to break ties
+					isShield = isShieldDefId[-command.id]
+				}
+			end
+		end
+	end
+
+	if nCommands == 0 then
+		return
+	end
+
+	Spring.Echo("DEBUG: Found " .. nCommands .. " unique commands from " .. #builders .. " builders")
+
+	-- Determine optimal number of queues based on builder count and build complexity
+	local optimalQueues = math.min(math.max(2, math.ceil(#builders / 3)), 4)
+	if #builders <= 2 then
+		optimalQueues = 1
+	end
+	if nCommands < optimalQueues then
+		optimalQueues = nCommands
+	end
+
+	Spring.Echo("DEBUG: Using " .. optimalQueues .. " queues for " .. nCommands .. " commands")
+
+
+	-- Sort commands by priority (immobile build power + shields)
+	table.sort(
+		commands,
+		function(a, b)
+			if (a.isShield or 0) > (b.isShield or 0) then
+				return true
+			elseif (a.isShield or 0) < (b.isShield or 0) then
+				return false
+			end
+			return a.priority > b.priority
+		end
+	)
+
+		-- First assign builders to spatial clusters for efficient movement
+	local clusters = kmeans(commands, optimalQueues, 100)
+
+	-- Debug cluster sizes
+	local totalCommandsInClusters = 0
+	for i, cluster in ipairs(clusters) do
+		Spring.Echo("DEBUG: Cluster " .. i .. " has " .. #cluster .. " commands")
+		totalCommandsInClusters = totalCommandsInClusters + #cluster
+	end
+	Spring.Echo("DEBUG: Total commands in clusters: " .. totalCommandsInClusters .. " (should be " .. nCommands .. ")")
+
+	-- Create queues with builder assignments based on proximity
+	local queues = {}
+	local unassignedBuilders = table.copy(builders)
+
+	for i = 1, optimalQueues do
+		queues[i] = {commands = {}, totalPriority = 0, assignedBuilders = {}, totalBuildPower = 0}
+	end
+
+	-- Assign builders to clusters with load balancing
+	local builderAssignments = {}
+	for i = 1, optimalQueues do
+		builderAssignments[i] = 0
+	end
+
+	-- First pass: assign builders with load balancing
+	local buildersPerQueue = math.ceil(#builders / optimalQueues)
+	local queueIndex = 1
+
+	for _, builder in ipairs(builders) do
+		-- Find the queue with the least builders that has commands
+		local bestQueue = 1
+		local minBuilders = math.huge
+
+		for i = 1, optimalQueues do
+			if #clusters[i] > 0 and #queues[i].assignedBuilders < minBuilders then
+				minBuilders = #queues[i].assignedBuilders
+				bestQueue = i
+			end
+		end
+
+		-- If all queues have equal builders, use proximity
+		if minBuilders >= buildersPerQueue then
+			local bestDistance = math.huge
+			for i, cluster in ipairs(clusters) do
+				if #cluster > 0 then
+					local clusterCentroid = calculate_centroid(cluster)
+					local dist = calculateDistance(builder.x, builder.z, clusterCentroid.x, clusterCentroid.z)
+					if dist < bestDistance then
+						bestDistance = dist
+						bestQueue = i
+					end
+				end
+			end
+		end
+
+		table.insert(queues[bestQueue].assignedBuilders, builder)
+		queues[bestQueue].totalBuildPower = queues[bestQueue].totalBuildPower + (builder.buildSpeed or 0)
+		builderAssignments[bestQueue] = builderAssignments[bestQueue] + 1
+	end
+
+	-- Second pass: redistribute builders if any queue has no builders
+	for i = 1, optimalQueues do
+		if #queues[i].assignedBuilders == 0 and #clusters[i] > 0 then
+			-- Find the queue with the most builders
+			local maxBuilders, maxQueue = 0, 1
+			for j = 1, optimalQueues do
+				if #queues[j].assignedBuilders > maxBuilders then
+					maxBuilders = #queues[j].assignedBuilders
+					maxQueue = j
+				end
+			end
+
+			-- Move one builder from the most loaded queue to this empty queue
+			if maxBuilders > 1 then
+				local builderToMove = table.remove(queues[maxQueue].assignedBuilders)
+				if builderToMove then
+					table.insert(queues[i].assignedBuilders, builderToMove)
+					queues[i].totalBuildPower = queues[i].totalBuildPower + (builderToMove.buildSpeed or 0)
+					queues[maxQueue].totalBuildPower = queues[maxQueue].totalBuildPower - (builderToMove.buildSpeed or 0)
+					Spring.Echo("DEBUG: Moved builder " .. builderToMove.id .. " from queue " .. maxQueue .. " to queue " .. i)
+				end
+			end
+		end
+	end
+
+	-- Debug builder assignments
+	for i, queue in ipairs(queues) do
+		Spring.Echo("DEBUG: Queue " .. i .. " has " .. #queue.assignedBuilders .. " builders")
+	end
+
+	-- Now distribute commands based on available build power per queue
+	for i, command in ipairs(commands) do
+		-- Find which cluster this command belongs to
+		local commandCluster = 1
+		local minDistanceToCluster = math.huge
+
+		for j, cluster in ipairs(clusters) do
+			for _, clusterCommand in ipairs(cluster) do
+				if clusterCommand == command then
+					commandCluster = j
+					break
+				end
+			end
+		end
+
+		-- Assign command to the queue with the most available build power in that cluster
+		local targetQueue = queues[commandCluster]
+		if targetQueue then
+			table.insert(targetQueue.commands, command)
+			targetQueue.totalPriority = targetQueue.totalPriority + (command.priority or 0)
+		end
+	end
+
+	-- Debug command distribution before load balancing
+	local totalDistributedCommands = 0
+	for i, queue in ipairs(queues) do
+		Spring.Echo("DEBUG: Queue " .. i .. " initially has " .. #queue.commands .. " commands")
+		totalDistributedCommands = totalDistributedCommands + #queue.commands
+	end
+	Spring.Echo("DEBUG: Total distributed commands: " .. totalDistributedCommands .. " (should be " .. nCommands .. ")")
+
+	-- Balance workload: move commands from overloaded to underloaded queues
+	local maxIterations = 3
+	for iter = 1, maxIterations do
+		local moved = false
+
+		-- Calculate work density (commands per build power) for each queue
+		local queueWorkDensity = {}
+		for i, queue in ipairs(queues) do
+			if queue.totalBuildPower > 0 then
+				queueWorkDensity[i] = #queue.commands / queue.totalBuildPower
+			else
+				queueWorkDensity[i] = math.huge
+			end
+		end
+
+		-- Find most overloaded and least loaded queues
+		local maxDensity, maxDensityQueue = -1, nil
+		local minDensity, minDensityQueue = math.huge, nil
+
+		for i, density in ipairs(queueWorkDensity) do
+			if density > maxDensity and #queues[i].commands > 1 then
+				maxDensity = density
+				maxDensityQueue = i
+			end
+			if density < minDensity and queues[i].totalBuildPower > 0 then
+				minDensity = density
+				minDensityQueue = i
+			end
+		end
+
+		-- Move a command from overloaded to underloaded queue if beneficial
+		if maxDensityQueue and minDensityQueue and maxDensityQueue ~= minDensityQueue and maxDensity > minDensity * 1.5 then
+			local commandToMove = table.remove(queues[maxDensityQueue].commands)
+			if commandToMove then
+				table.insert(queues[minDensityQueue].commands, commandToMove)
+				queues[maxDensityQueue].totalPriority = queues[maxDensityQueue].totalPriority - (commandToMove.priority or 0)
+				queues[minDensityQueue].totalPriority = queues[minDensityQueue].totalPriority + (commandToMove.priority or 0)
+				moved = true
+			end
+		end
+
+		if not moved then break end
+	end
+
+	-- Debug final queue state after load balancing
+	local finalDistributedCommands = 0
+	for i, queue in ipairs(queues) do
+		Spring.Echo("DEBUG: Queue " .. i .. " after balancing has " .. #queue.commands .. " commands and " .. #queue.assignedBuilders .. " builders")
+		finalDistributedCommands = finalDistributedCommands + #queue.commands
+	end
+	Spring.Echo("DEBUG: Final distributed commands: " .. finalDistributedCommands .. " (should be " .. nCommands .. ")")
+
+	-- Apply optimized queues to builders
+	for _, queue in ipairs(queues) do
+		if #queue.assignedBuilders > 0 and #queue.commands > 0 then
+			-- Sort commands within queue by priority and distance
+			table.sort(
+				queue.commands,
+				function(a, b)
+					if (a.isShield or 0) > (b.isShield or 0) then
+						return true
+					elseif (a.isShield or 0) < (b.isShield or 0) then
+						return false
+					end
+					if (a.priority or 0) > (b.priority or 0) then
+						return true
+					elseif (a.priority or 0) < (b.priority or 0) then
+						return false
+					end
+					-- Distance tiebreaker
+					local aDistanceToSelected =
+						(a.x and selectedPos.x) and ((a.x - selectedPos.x) ^ 2 + (a.z - selectedPos.z) ^ 2) or math.huge
+					local bDistanceToSelected =
+						(b.x and selectedPos.x) and ((b.x - selectedPos.x) ^ 2 + (b.z - selectedPos.z) ^ 2) or math.huge
+					return aDistanceToSelected < bDistanceToSelected
+				end
+			)
+			local optimizedCommands = queue.commands
+
+			for _, builder in ipairs(queue.assignedBuilders) do
+				if builder and builder.buildOptions then
+					local builderCommands = {}
+					for _, command in ipairs(optimizedCommands) do
+						if command and command.id then
+							if builder.buildOptions and #builder.buildOptions > 0 then
+								if table.contains(builder.buildOptions, -command.id) then
+									table.insert(builderCommands, command)
+								elseif replacementMap[-command.id] then
+									for replacementN = 1, #replacementMap[-command.id] or 0 do
+										local replacementId = replacementMap[-command.id][replacementN]
+										if table.contains(builder.buildOptions, replacementId) then
+											local temp = table.copy(command)
+											temp[1] = -replacementId
+											table.insert(builderCommands, temp)
+											break
+										end
+									end
+								end
+							end
+						end
+					end
+
+					Spring.Echo("DEBUG: Builder " .. builder.id .. " assigned " .. #builderCommands .. " buildable commands from " .. #optimizedCommands .. " queue commands")
+
+					Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
+					local maxNCommands = 510
+					if #builderCommands > maxNCommands then
+						Spring.Echo("DEBUG: Truncating builder " .. builder.id .. " commands from " .. #builderCommands .. " to " .. maxNCommands)
+						for k = #builderCommands, maxNCommands + 1, -1 do
+							builderCommands[k] = nil
+						end
+					end
+					Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
+				end
+			end
+		end
+	end
+end
+
 -- Handles Ctrl+F for merging and sorting build commands
-local function handleCtrlFKey(selectedUnitIds, mods)
+local function buildQueueDistributeTransform(selectedUnitIds, mods)
 	if #selectedUnitIds == 0 then
 		return
 	end
@@ -844,7 +1239,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 			end
 			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
 		end
-		elseif mods['alt'] and not mods['shift'] then
+	elseif mods['alt'] and not mods['shift'] then
 		-- Filter to only build commands and generate signature
 		commands = getBuildCommandsOnly(commands)
 		local currentSignature = generateBuildOrderSignature(commands)
@@ -1040,7 +1435,7 @@ local function handleCtrlFKey(selectedUnitIds, mods)
 
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
-		elseif mods['alt'] and mods['shift'] then
+	elseif mods['alt'] and mods['shift'] then
 		-- Filter to only build commands and generate signature
 		commands = getBuildCommandsOnly(commands)
 		local currentSignature = generateBuildOrderSignature(commands)
@@ -1252,7 +1647,9 @@ function widget:KeyPress(key, mods, isRepeat)
 	if (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] then
 		return conQueueSliceCommand(key, selectedUnitIds, mods)
 	elseif (key == KEYSYMS.F) and mods['ctrl'] then
-		handleCtrlFKey(selectedUnitIds, mods)
+		buildQueueDistributeTransform(selectedUnitIds, mods)
+	elseif (key == KEYSYMS.F) and mods['shift'] and mods['alt'] and not mods['ctrl'] then
+		buildQueueOptimalPooling(selectedUnitIds, mods)
 	elseif key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then
 		handleAltEKey(selectedUnitIds)
 	elseif key == KEYSYMS.G and mods.alt then

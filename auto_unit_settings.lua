@@ -28,6 +28,8 @@ local lraa = {
 	[UnitDefNames['armmercury'].id] = true
 }
 
+local cmdFly = 145
+
 local myTeamId = Spring.GetMyTeamID()
 local isFactoryDefIds = {}
 local reclaimerDefIds = {}
@@ -41,8 +43,8 @@ local function isFriendlyFiringDef(def)
 		def.name:find 'legkeres')
 end
 
-local function isT3Aide(def)
-	return def.name:find 't3aide'
+local function isT3AirAide(def)
+	return def.name:find 't3airaide'
 end
 
 local function isReclaimerUnit(def)
@@ -128,8 +130,9 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 		Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { 2 }, 0)
 	end
 
-	if isT3Aide(def) then
-		Spring.GiveOrderToUnit(unitID, CMD.LAND, { 0 }, 0)
+
+	if isT3AirAide(def) then
+		Spring.GiveOrderToUnit(unitID, cmdFly, { 0 }, 0)
 		return
 	end
 
