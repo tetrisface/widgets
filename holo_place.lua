@@ -35,7 +35,7 @@ local CMD_HOLO_PLACE_DESCRIPTION = {
     name = 'Holo Place',
     cursor = nil,
     action = 'holo_place',
-    params = {4, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
+    params = {2, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[2], 'Holo Place off')
@@ -136,7 +136,7 @@ widget.UnitTaken = ForgetUnit
 
 function widget:CommandsChanged()
     local ids = GetSelectedUnits()
-    local found_mode = 4  -- Default to 90% instead of off
+    local found_mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
     for i = 1, #ids do
         local placer = HOLO_PLACERS[ids[i]]
         if placer and placer.threshold then
@@ -161,10 +161,11 @@ function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
         local mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
 
         -- Check for right-click
+        local n_modes = #CMD_HOLO_PLACE_DESCRIPTION.params - 1
         if cmd_options and cmd_options.shift then
-            mode = (mode - 1 + 5) % 5
+            mode = (mode - 1 + n_modes) % n_modes
         else
-            mode = (mode + 1) % 5 -- 5 options (0 to 4)
+            mode = (mode + 1) % n_modes
         end
 
         CMD_HOLO_PLACE_DESCRIPTION.params[1] = mode

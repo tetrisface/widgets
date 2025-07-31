@@ -65,9 +65,6 @@ local circleInstanceVBOLayout = {
   {id = 3, name = 'params',   size = 4}, -- parameters (first component: online flag)
 }
 
-local luaShaderDir = "LuaUI/Include/"
-local LuaShader = VFS.Include(luaShaderDir.."LuaShader.lua")
-
 local vsSrc = [[
 #version 420
 #line 10000
@@ -164,12 +161,12 @@ local function initGL4()
   shieldVAO:AttachVertexBuffer(shieldRingVBO, 0)
   shieldVAO:AttachInstanceBuffer(shieldInstanceVBO)
 
-  local engineUniformBufferDefs = LuaShader.GetEngineUniformBufferDefs()
+  local engineUniformBufferDefs = gl.LuaShader.GetEngineUniformBufferDefs()
   vsSrc = vsSrc:gsub("//__ENGINEUNIFORMBUFFERDEFS__", engineUniformBufferDefs)
 
-  shieldShader = LuaShader({
-    vertex   = vsSrc,
-    fragment = fsSrc,
+  shieldShader = gl.LuaShader({
+    vertex   = vsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
+    fragment = fsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
     uniformInt = {
       heightmapTex = 0,
       maskMode     = 0,

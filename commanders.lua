@@ -37,7 +37,7 @@ local CMD_AUTO_DGUN_DESCRIPTION = {
   name = 'Auto D-Gun',
   cursor = nil,
   action = 'auto_dgun',
-  params = {1, 'auto_dgun_off', 'auto_dgun_stockpile_max', 'auto_dgun_always'}
+  params = {0, 'auto_dgun_off', 'auto_dgun_stockpile_max', 'auto_dgun_always'}
 }
 
 local nModes = #CMD_AUTO_DGUN_DESCRIPTION.params - 1

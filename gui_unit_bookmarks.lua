@@ -53,9 +53,6 @@ local color1Uniform
 local viewportSizeXUniform
 local viewportSizeYUniform
 
-local luaShaderDir = 'LuaUI/Include/'
-local LuaShader = VFS.Include(luaShaderDir .. 'LuaShader.lua')
-
 local vsSrc = [[
 #version 420
 
@@ -153,12 +150,12 @@ local function initGL4()
 	bookmarksVAO:AttachInstanceBuffer(bookmarksVBOInstances)
 
 	-- Initialize shader
-	local engineUniformBufferDefs = LuaShader.GetEngineUniformBufferDefs()
+	local engineUniformBufferDefs = gl.LuaShader.GetEngineUniformBufferDefs()
 	vsSrc = vsSrc:gsub('//__ENGINEUNIFORMBUFFERDEFS__', engineUniformBufferDefs)
 
-	bookmarksShader = LuaShader({
-		vertex = vsSrc,
-		fragment = fsSrc,
+	bookmarksShader = gl.LuaShader({
+		vertex = vsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
+		fragment = fsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
 		uniformInt = {
 			windowPositionX = windowPositionX,
 			windowPositionY = windowPositionY,
