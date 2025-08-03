@@ -293,11 +293,11 @@ end
 
 local lookahead_steps = 10
 
-local function distance(p1, p2)
+local function DistancePoints(p1, p2)
 	if not p1 or not p1.x or not p1.z or not p2 or not p2.x or not p2.z then
-		return 0
+		return 1000000000
 	end
-	return math.sqrt((p1.x - p2.x) ^ 2 + (p1.z - p2.z) ^ 2)
+	return math.sqrt((p1.x - p2.x) ^ 2 + (p1.z - p2.z) ^ 2) or 1000000000
 end
 
 local function SortbuildSpeedDistance(a, b)
@@ -352,7 +352,7 @@ local function evaluate_path(current_building, remaining_commands, direction, st
 
 		for i, building in ipairs(remaining_commands) do
 			if is_in_line(future_building, building, direction) then
-				local dist = distance(future_building, building)
+				local dist = DistancePoints(future_building, building)
 				if dist < best_distance then
 					best_distance = dist
 					best_next_building = building
@@ -395,7 +395,7 @@ local function snake_sort_with_lookahead(commands, _lookahead_steps)
 		if not best_path_buildings or #best_path_buildings == 0 then
 			local closest_distance = math.huge
 			for i, building in ipairs(commands) do
-				local dist = distance(current_building, building)
+				local dist = DistancePoints(current_building, building)
 				if dist < closest_distance then
 					closest_distance = dist
 					best_path_buildings = {building}
@@ -521,6 +521,14 @@ local function generateBuildOrderSignature(commands)
 	end
 	table.sort(positions) -- Sort to make signature order-independent
 	return table.concat(positions, '|')
+end
+
+-- Generate unique signature for a single command (id + position)
+local function generateCommandSignature(command)
+	if command.id and command.params and command.params[1] and command.params[3] then
+		return tostring(command.id) .. '_' .. tostring(command.params[1]) .. '_' .. tostring(command.params[3])
+	end
+	return nil
 end
 
 -- Check if two signatures are 90% similar
@@ -1167,25 +1175,64 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 			snakeSortedClusters[i] = snake_sort_with_lookahead(cluster, lookahead_steps)
 		end
 
+		-- Calculate cluster centroids for better distance measurement
+		local clusterCentroids = {}
+		for i, cluster in ipairs(snakeSortedClusters) do
+			if #cluster > 0 then
+				clusterCentroids[i] = calculate_centroid(cluster)
+			end
+		end
+
+		-- Improved greedy assignment: find globally optimal assignments
 		local builderAssignments, assignedClusters = {}, {}
-		for i, builder in ipairs(builders) do
-			local minDistance, closestCluster, closestClusterIndex = math.huge, nil, nil
-			for j, cluster in ipairs(snakeSortedClusters) do
-				if not assignedClusters[j] then
-					local firstCommand = cluster[1]
-					if firstCommand ~= nil then
-						local builderBuildingDistance = calculateDistance(builder.x, builder.z, firstCommand[2][1], firstCommand[2][2])
-						if builderBuildingDistance < minDistance then
-							minDistance = builderBuildingDistance
-							closestCluster = cluster
-							closestClusterIndex = j
+		local unassignedBuilders = {}
+		for i = 1, #builders do
+			table.insert(unassignedBuilders, i)
+		end
+		local unassignedClusters = {}
+		for i = 1, #snakeSortedClusters do
+			if #snakeSortedClusters[i] > 0 then
+				table.insert(unassignedClusters, i)
+			end
+		end
+
+		-- Assign builders to clusters greedily based on global minimum distance
+		while #unassignedBuilders > 0 and #unassignedClusters > 0 do
+			local minDistance, bestBuilder, bestCluster = math.huge, nil, nil
+			
+			for _, builderIdx in ipairs(unassignedBuilders) do
+				local builder = builders[builderIdx]
+				for _, clusterIdx in ipairs(unassignedClusters) do
+					local centroid = clusterCentroids[clusterIdx]
+					if centroid then
+						local distance = calculateDistance(builder.x, builder.z, centroid.x, centroid.z)
+						if distance < minDistance then
+							minDistance = distance
+							bestBuilder = builderIdx
+							bestCluster = clusterIdx
 						end
 					end
 				end
 			end
-			if closestCluster ~= nil and closestClusterIndex ~= nil then
-				builderAssignments[i] = closestCluster
-				assignedClusters[closestClusterIndex] = true
+			
+			if bestBuilder and bestCluster then
+				builderAssignments[bestBuilder] = snakeSortedClusters[bestCluster]
+				
+				-- Remove assigned builder and cluster from unassigned lists
+				for i, builderIdx in ipairs(unassignedBuilders) do
+					if builderIdx == bestBuilder then
+						table.remove(unassignedBuilders, i)
+						break
+					end
+				end
+				for i, clusterIdx in ipairs(unassignedClusters) do
+					if clusterIdx == bestCluster then
+						table.remove(unassignedClusters, i)
+						break
+					end
+				end
+			else
+				break -- No valid assignments left
 			end
 		end
 
@@ -1617,6 +1664,208 @@ local function handleSpamFactories(selectedUnitIds)
 	Spring.GiveOrderArrayToUnitArray(factories, spamUnits)
 end
 
+-- Calculate distance between chunks (last command of chunk1 to first command of chunk2)
+local function calculateChunkDistance(chunk1, chunk2)
+	if not chunk1.commands or #chunk1.commands == 0 or 
+	   not chunk2.commands or #chunk2.commands == 0 then
+		return math.huge
+	end
+	
+	local lastCmd = chunk1.commands[#chunk1.commands]
+	local firstCmd = chunk2.commands[1]
+	
+	if lastCmd.params and lastCmd.params[1] and lastCmd.params[3] and
+	   firstCmd.params and firstCmd.params[1] and firstCmd.params[3] then
+		return Distance(lastCmd.params[1], lastCmd.params[3], firstCmd.params[1], firstCmd.params[3])
+	end
+	
+	return math.huge
+end
+
+-- Optimize chunk order using a simple greedy approach (nearest neighbor)
+local function optimizeChunkOrder(chunks, builderPos)
+	if #chunks <= 1 then
+		return chunks
+	end
+	
+	local optimizedOrder = {}
+	local remaining = {}
+	for i, chunk in ipairs(chunks) do
+		remaining[i] = chunk
+	end
+	
+	-- Start with chunk closest to builder position
+	local startIndex = 1
+	local minDistance = math.huge
+	for i, chunk in ipairs(remaining) do
+		if chunk.commands and #chunk.commands > 0 then
+			local cmd = chunk.commands[1]
+			if cmd.params and cmd.params[1] and cmd.params[3] and builderPos then
+				local dist = Distance(builderPos.x or 0, builderPos.z or 0, cmd.params[1], cmd.params[3])
+				if dist < minDistance then
+					minDistance = dist
+					startIndex = i
+				end
+			end
+		end
+	end
+	
+	table.insert(optimizedOrder, remaining[startIndex])
+	table.remove(remaining, startIndex)
+	
+	-- Greedily select next closest chunk
+	while #remaining > 0 do
+		local currentChunk = optimizedOrder[#optimizedOrder]
+		local nextIndex = 1
+		local minChunkDistance = math.huge
+		
+		for i, chunk in ipairs(remaining) do
+			local dist = calculateChunkDistance(currentChunk, chunk)
+			if dist < minChunkDistance then
+				minChunkDistance = dist
+				nextIndex = i
+			end
+		end
+		
+		table.insert(optimizedOrder, remaining[nextIndex])
+		table.remove(remaining, nextIndex)
+	end
+	
+	return optimizedOrder
+end
+
+-- Handles Shift+Q for build queue redundancy - distributes all build commands to all builders
+local function buildQueueRedundancy(selectedUnitIds, mods)
+	if #selectedUnitIds < 2 then
+		return  -- Need at least 2 units for redundancy
+	end
+
+	-- Get all builders from selected units
+	local builders = {}
+	for i = 1, #selectedUnitIds do
+		local unitId = selectedUnitIds[i]
+		local unitDefId = Spring.GetUnitDefID(unitId)
+		local def = UnitDefs[unitDefId]
+		if def and def.buildOptions and #def.buildOptions > 0 then
+			local x, _, z = Spring.GetUnitPosition(unitId)
+			table.insert(builders, {
+				id = unitId,
+				def = def,
+				buildOptions = def.buildOptions,
+				x = x,
+				z = z
+			})
+		end
+	end
+
+	if #builders < 2 then
+		return  -- Need at least 2 builders for redundancy
+	end
+
+	-- Collect all build commands from all builders
+	local allCommandChunks = {}  -- Array of {builderId, commands}
+	local allUniqueCommands = {}  -- Map of signature -> command
+	
+	for _, builder in ipairs(builders) do
+		local commands = Spring.GetUnitCommands(builder.id, 1000)
+		if commands then
+			local buildCommands = getBuildCommandsOnly(commands)
+			if #buildCommands > 0 then
+				table.insert(allCommandChunks, {
+					builderId = builder.id,
+					commands = buildCommands
+				})
+				
+				-- Add to unique commands collection (for duplicate detection)
+				for _, command in ipairs(buildCommands) do
+					local signature = generateCommandSignature(command)
+					if signature then
+						allUniqueCommands[signature] = command
+					end
+				end
+			end
+		end
+	end
+
+	if #allCommandChunks == 0 then
+		return  -- No build commands found
+	end
+
+	-- For each builder, create new command queue with optimized chunk order
+	for _, targetBuilder in ipairs(builders) do
+		local newCommands = {}
+		local existingSignatures = {}
+		
+		-- First, get existing commands for this builder to avoid duplicates
+		local existingCommands = Spring.GetUnitCommands(targetBuilder.id, 1000)
+		if existingCommands then
+			local existingBuildCommands = getBuildCommandsOnly(existingCommands)
+			for _, command in ipairs(existingBuildCommands) do
+				local signature = generateCommandSignature(command)
+				if signature then
+					existingSignatures[signature] = true
+					table.insert(newCommands, command)  -- Keep existing commands
+				end
+			end
+		end
+
+		-- Get chunks from other builders (not this builder's own commands)
+		local chunksToAdd = {}
+		for _, chunk in ipairs(allCommandChunks) do
+			if chunk.builderId ~= targetBuilder.id then
+				local chunkCommands = {}
+				
+				-- Filter commands this builder can actually build
+				for _, command in ipairs(chunk.commands) do
+					local signature = generateCommandSignature(command)
+					if signature and not existingSignatures[signature] then
+						-- Check if builder can build this unit
+						if table.contains(targetBuilder.buildOptions, -command.id) then
+							table.insert(chunkCommands, command)
+							existingSignatures[signature] = true
+						end
+					end
+				end
+				
+				if #chunkCommands > 0 then
+					table.insert(chunksToAdd, {
+						builderId = chunk.builderId,
+						commands = chunkCommands
+					})
+				end
+			end
+		end
+		
+		-- Optimize chunk order for this builder
+		if #chunksToAdd > 0 then
+			local optimizedChunks = optimizeChunkOrder(chunksToAdd, {x = targetBuilder.x, z = targetBuilder.z})
+			
+			-- Add optimized chunks to command queue
+			for _, chunk in ipairs(optimizedChunks) do
+				for _, command in ipairs(chunk.commands) do
+					table.insert(newCommands, command)
+				end
+			end
+		end
+
+		-- Apply new command queue to builder
+		if #newCommands > 0 then
+			-- Stop current commands and give new ones
+			Spring.GiveOrderToUnit(targetBuilder.id, CMD.STOP, {}, {})
+			
+			-- Limit to max commands to avoid overwhelming the unit
+			local maxNCommands = 500
+			if #newCommands > maxNCommands then
+				for k = #newCommands, maxNCommands + 1, -1 do
+					newCommands[k] = nil
+				end
+			end
+			
+			Spring.GiveOrderArrayToUnit(targetBuilder.id, newCommands)
+		end
+	end
+end
+
 function widget:KeyPress(key, mods, isRepeat)
 	if isRepeat then
 		return false
@@ -1641,6 +1890,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		buildQueueDistributeTransform(selectedUnitIds, mods)
 	elseif (key == KEYSYMS.F) and mods['shift'] and mods['alt'] and not mods['ctrl'] then
 		buildQueueOptimalPooling(selectedUnitIds, mods)
+	elseif key == KEYSYMS.Q and mods['shift'] and not mods['alt'] and not mods['ctrl'] then
+		buildQueueRedundancy(selectedUnitIds, mods)
 	elseif key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then
 		handleAltEKey(selectedUnitIds)
 	elseif key == KEYSYMS.G and mods.alt then
