@@ -1143,11 +1143,13 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 		return
 	end
 
-	if not mods['shift'] and not mods['alt'] then
+	-- Ctrl+Alt+F - Snake sort
+	if not mods['shift'] and mods['alt'] then
 		table.sort(commands, SortbuildSpeedDistance)
 		commands = snake_sort_with_lookahead(commands, lookahead_steps)
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {}, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, commands)
+	-- Ctrl+Shift+F - K-Means clustering
 	elseif mods['shift'] and not mods['alt'] then
 		local builders = {}
 		for i = 1, #selectedUnitIds do
@@ -1227,7 +1229,8 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 			end
 			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
 		end
-	elseif mods['alt'] and not mods['shift'] then
+	-- Ctrl+F - Transpose
+	elseif not mods['alt'] and not mods['shift'] then
 		-- Filter to only build commands and generate signature
 		commands = getBuildCommandsOnly(commands)
 		local currentSignature = generateBuildOrderSignature(commands)
@@ -1239,7 +1242,6 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 			lastBuildOrderSignature = currentSignature
 		end
 
-		-- Ctrl+Alt+F: Auto-detect mode on first use, then toggle
 		if transposeMode == nil then
 			-- First use: auto-detect current mode and use the OPPOSITE as starting mode
 			local detectedMode = 'row_first' -- default fallback
@@ -1423,6 +1425,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 
 		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
 		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
+	-- Ctrl+Alt+Shift+F - Rotate starting corner clockwise
 	elseif mods['alt'] and mods['shift'] then
 		-- Filter to only build commands and generate signature
 		commands = getBuildCommandsOnly(commands)
