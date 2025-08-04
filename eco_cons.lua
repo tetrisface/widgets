@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    desc = 'Some inspiration from gui_build_costs.lua by Milan Satala and also some from ecostats.lua by Jools, iirc',
+    desc = ' Some snippets copied from gui_build_costs.lua by Milan Satala',
     author = 'tetrisface',
     version = '',
     date = 'feb, 2016',

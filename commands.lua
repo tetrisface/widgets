@@ -242,7 +242,7 @@ local function reverseQueue(unit_id)
 end
 
 local function KeyUnits(key, mods)
-	local faction = (key == KEYSYMS.D and 'arm') or (key == KEYSYMS.S and 'cor') or 'leg'
+	local faction = (key == KEYSYMS.D and 'leg') or (key == KEYSYMS.S and 'cor') or 'arm'
 	local builders
 
 	local selectList

@@ -27,6 +27,11 @@ local lraa = {
 	[UnitDefNames['corscreamer'].id] = true,
 	[UnitDefNames['armmercury'].id] = true
 }
+local assistDrones = {
+	[UnitDefNames['armassistdrone'].id] = true,
+	[UnitDefNames['corassistdrone'].id] = true,
+	[UnitDefNames['legassistdrone'].id] = true
+}
 
 local cmdFly = 145
 
@@ -131,8 +136,11 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 	end
 
 
-	if isT3AirAide(def) then
+	if isT3AirAide(def) or assistDrones[unitDefID] then
 		Spring.GiveOrderToUnit(unitID, cmdFly, { 0 }, 0)
+		if assistDrones[unitDefID] then
+			Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
+		end
 		return
 	end
 
