@@ -11,7 +11,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+VFS.Include('helpers.lua')
 
 local myTeamId                  = Spring.GetMyTeamID()
 local allies                    = Spring.GetTeamList(myTeamId)

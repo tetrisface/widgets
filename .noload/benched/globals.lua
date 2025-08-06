@@ -12,7 +12,7 @@ function widget:GetInfo()
 end
 
 function LoadHelpers()
-  VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+  VFS.Include('helpers.lua')
 end
 
 WG.LoadHelpers = LoadHelpers

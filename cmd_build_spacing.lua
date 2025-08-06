@@ -10,7 +10,7 @@ function widget:GetInfo()
 	}
 end
 
-VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+VFS.Include('helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local decrease = KEYSYMS.A

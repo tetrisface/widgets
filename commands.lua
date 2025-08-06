@@ -10,7 +10,7 @@ function widget:GetInfo()
 	}
 end
 
-VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+VFS.Include('helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local selectPrios = {
@@ -1199,7 +1199,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 		-- Assign builders to clusters greedily based on global minimum distance
 		while #unassignedBuilders > 0 and #unassignedClusters > 0 do
 			local minDistance, bestBuilder, bestCluster = math.huge, nil, nil
-			
+
 			for _, builderIdx in ipairs(unassignedBuilders) do
 				local builder = builders[builderIdx]
 				for _, clusterIdx in ipairs(unassignedClusters) do
@@ -1214,10 +1214,10 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 					end
 				end
 			end
-			
+
 			if bestBuilder and bestCluster then
 				builderAssignments[bestBuilder] = snakeSortedClusters[bestCluster]
-				
+
 				-- Remove assigned builder and cluster from unassigned lists
 				for i, builderIdx in ipairs(unassignedBuilders) do
 					if builderIdx == bestBuilder then
@@ -1666,19 +1666,19 @@ end
 
 -- Calculate distance between chunks (last command of chunk1 to first command of chunk2)
 local function calculateChunkDistance(chunk1, chunk2)
-	if not chunk1.commands or #chunk1.commands == 0 or 
+	if not chunk1.commands or #chunk1.commands == 0 or
 	   not chunk2.commands or #chunk2.commands == 0 then
 		return math.huge
 	end
-	
+
 	local lastCmd = chunk1.commands[#chunk1.commands]
 	local firstCmd = chunk2.commands[1]
-	
+
 	if lastCmd.params and lastCmd.params[1] and lastCmd.params[3] and
 	   firstCmd.params and firstCmd.params[1] and firstCmd.params[3] then
 		return Distance(lastCmd.params[1], lastCmd.params[3], firstCmd.params[1], firstCmd.params[3])
 	end
-	
+
 	return math.huge
 end
 
@@ -1687,13 +1687,13 @@ local function optimizeChunkOrder(chunks, builderPos)
 	if #chunks <= 1 then
 		return chunks
 	end
-	
+
 	local optimizedOrder = {}
 	local remaining = {}
 	for i, chunk in ipairs(chunks) do
 		remaining[i] = chunk
 	end
-	
+
 	-- Start with chunk closest to builder position
 	local startIndex = 1
 	local minDistance = math.huge
@@ -1709,16 +1709,16 @@ local function optimizeChunkOrder(chunks, builderPos)
 			end
 		end
 	end
-	
+
 	table.insert(optimizedOrder, remaining[startIndex])
 	table.remove(remaining, startIndex)
-	
+
 	-- Greedily select next closest chunk
 	while #remaining > 0 do
 		local currentChunk = optimizedOrder[#optimizedOrder]
 		local nextIndex = 1
 		local minChunkDistance = math.huge
-		
+
 		for i, chunk in ipairs(remaining) do
 			local dist = calculateChunkDistance(currentChunk, chunk)
 			if dist < minChunkDistance then
@@ -1726,11 +1726,11 @@ local function optimizeChunkOrder(chunks, builderPos)
 				nextIndex = i
 			end
 		end
-		
+
 		table.insert(optimizedOrder, remaining[nextIndex])
 		table.remove(remaining, nextIndex)
 	end
-	
+
 	return optimizedOrder
 end
 
@@ -1765,7 +1765,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 	-- Collect all build commands from all builders
 	local allCommandChunks = {}  -- Array of {builderId, commands}
 	local allUniqueCommands = {}  -- Map of signature -> command
-	
+
 	for _, builder in ipairs(builders) do
 		local commands = Spring.GetUnitCommands(builder.id, 1000)
 		if commands then
@@ -1775,7 +1775,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 					builderId = builder.id,
 					commands = buildCommands
 				})
-				
+
 				-- Add to unique commands collection (for duplicate detection)
 				for _, command in ipairs(buildCommands) do
 					local signature = generateCommandSignature(command)
@@ -1795,7 +1795,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 	for _, targetBuilder in ipairs(builders) do
 		local newCommands = {}
 		local existingSignatures = {}
-		
+
 		-- First, get existing commands for this builder to avoid duplicates
 		local existingCommands = Spring.GetUnitCommands(targetBuilder.id, 1000)
 		if existingCommands then
@@ -1814,7 +1814,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 		for _, chunk in ipairs(allCommandChunks) do
 			if chunk.builderId ~= targetBuilder.id then
 				local chunkCommands = {}
-				
+
 				-- Filter commands this builder can actually build
 				for _, command in ipairs(chunk.commands) do
 					local signature = generateCommandSignature(command)
@@ -1826,7 +1826,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 						end
 					end
 				end
-				
+
 				if #chunkCommands > 0 then
 					table.insert(chunksToAdd, {
 						builderId = chunk.builderId,
@@ -1835,11 +1835,11 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 				end
 			end
 		end
-		
+
 		-- Optimize chunk order for this builder
 		if #chunksToAdd > 0 then
 			local optimizedChunks = optimizeChunkOrder(chunksToAdd, {x = targetBuilder.x, z = targetBuilder.z})
-			
+
 			-- Add optimized chunks to command queue
 			for _, chunk in ipairs(optimizedChunks) do
 				for _, command in ipairs(chunk.commands) do
@@ -1852,7 +1852,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 		if #newCommands > 0 then
 			-- Stop current commands and give new ones
 			Spring.GiveOrderToUnit(targetBuilder.id, CMD.STOP, {}, {})
-			
+
 			-- Limit to max commands to avoid overwhelming the unit
 			local maxNCommands = 500
 			if #newCommands > maxNCommands then
@@ -1860,7 +1860,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 					newCommands[k] = nil
 				end
 			end
-			
+
 			Spring.GiveOrderArrayToUnit(targetBuilder.id, newCommands)
 		end
 	end

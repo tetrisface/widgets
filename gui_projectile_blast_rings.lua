@@ -12,7 +12,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+VFS.Include('helpers.lua')
 
 local projectiles = {}
 local drawListIndex = 1

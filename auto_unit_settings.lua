@@ -11,7 +11,7 @@ function widget:GetInfo()
 	}
 end
 
-VFS.Include('luaui/Widgets/.noload/misc/helpers.lua')
+VFS.Include('helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
 local antis = {
@@ -54,10 +54,10 @@ end
 
 local function isReclaimerUnit(def)
 	local isReclaimer =
-			(def.canResurrect or def.canReclaim) and
-			not (def.name:match '^armcom.*' or def.name:match '^corcom.*' or def.name:match '^legcom.*' or def.name == 'armthor' or
-				(def.customParams and def.customParams.iscommander)) and
-			not (def.buildOptions and def.buildOptions[1] ~= nil)
+		(def.canResurrect or def.canReclaim) and
+		not (def.name:match '^armcom.*' or def.name:match '^corcom.*' or def.name:match '^legcom.*' or def.name == 'armthor' or
+			(def.customParams and def.customParams.iscommander)) and
+		not (def.buildOptions and def.buildOptions[1] ~= nil)
 
 	-- if isReclaimer then
 	--   log(
@@ -85,17 +85,17 @@ function widget:Initialize()
 
 	for unitDefID, unitDef in pairs(UnitDefs) do
 		if
-				unitDef.isFactory and
+			unitDef.isFactory and
 				not (unitDef.name:match '^armcom.*' or unitDef.name:match '^corcom.*' or unitDef.name:match '^legcom.*')
-		then
+		 then
 			isFactoryDefIds[unitDefID] = true
-			-- log('add factory: ', unitDef.translatedHumanName)
+		-- log('add factory: ', unitDef.translatedHumanName)
 		end
 
 		if isReclaimerUnit(unitDef) then
 			reclaimerDefIds[unitDefID] = true
 			table.insert(resurrectorDefIds, unitDefID)
-			-- log('add ressurector: ', unitDef.translatedHumanName)
+		-- log('add ressurector: ', unitDef.translatedHumanName)
 		end
 	end
 end
@@ -128,51 +128,49 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 
 	-- evocom + thor fix
 	if def.name == 'armthor' or def.name:find '^armcom.*' or def.name:find '^corcom.*' or def.name:find '^legcom.*' then
-		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 0 }, 0)
+		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {0}, 0)
 		return
 	end
 	if not isFriendlyFiringDef(def) then
-		Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, { 2 }, 0)
+		Spring.GiveOrderToUnit(unitID, CMD.FIRE_STATE, {2}, 0)
 	end
 
-
 	if isT3AirAide(def) or assistDrones[unitDefID] then
-		Spring.GiveOrderToUnit(unitID, cmdFly, { 0 }, 0)
+		Spring.GiveOrderToUnit(unitID, cmdFly, {0}, 0)
 		if assistDrones[unitDefID] then
-			Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
+			Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {1}, 0)
 		end
 		return
 	end
 
 	if isFactoryDefIds[unitDefID] then
 		local cmdTable = {
-			{ CMD.MOVE_STATE, { 0 }, {} },
-			{ CMD.REPEAT,     { 0 }, {} }
+			{CMD.MOVE_STATE, {0}, {}},
+			{CMD.REPEAT, {0}, {}}
 		}
 
 		if
-				(def.translatedHumanName:lower():find('aircraft', 1, true) or
-					def.translatedHumanName:lower():find('gantry', 1, true) or
-					def.translatedHumanName:lower():find('experimental', 1, true)) and
+			(def.translatedHumanName:lower():find('aircraft', 1, true) or def.translatedHumanName:lower():find('gantry', 1, true) or
+				def.translatedHumanName:lower():find('experimental', 1, true)) and
 				not def.name == 'corapt3'
-		then
-			table.insert(cmdTable, { CMD.FIRE_STATE, { 0 }, {} })
-			-- log('adding aircraft factory: ', def.translatedHumanName)
+		 then
+			table.insert(cmdTable, {CMD.FIRE_STATE, {0}, {}})
+		-- log('adding aircraft factory: ', def.translatedHumanName)
 		end
 		-- log('Repeating 1', def.translatedHumanName)
-		Spring.GiveOrderArrayToUnitArray({ unitID }, cmdTable)
+		Spring.GiveOrderArrayToUnitArray({unitID}, cmdTable)
 	elseif reclaimerDefIds[unitDefID] and #areaReclaimParams > 0 and isReclaimerUnit(def) then
 		-- log('setting repeat', def.translatedHumanName)
 		-- log('Repeating 2', def.translatedHumanName)
-		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
+		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {1}, 0)
 		waitReclaimUnits[unitID] = 1
-		-- elseif vehicleCons[unitDefID] then
-		--   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
+	-- elseif vehicleCons[unitDefID] then
+	--   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
 	end
 
 	if def.canStockpile and not lraa[unitDefID] and def.isBuilding and unitID ~= nil and type(unitID) == 'number' then
-		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
-		Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, { 'ctrl', 'shift', 'right' })
+		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {1}, 0)
+		Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
 		Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, 0)
 		if (def.customparams and def.customparams.unitgroup == 'antinuke') or antis[unitDefID] then
 			Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, CMD.OPT_SHIFT)
@@ -213,7 +211,7 @@ function widget:GameFrame(gameFrame)
 						Spring.GiveOrderToUnit(unitId, CMD.STOP, {}, 0)
 						Spring.GiveOrderToUnit(unitId, CMD.RECLAIM, areaReclaimParams, {}, 0)
 						waitReclaimUnits[unitId] = nil
-						-- log('Repeating 3', UnitIdUnitDef(unitId).translatedHumanName)
+					-- log('Repeating 3', UnitIdUnitDef(unitId).translatedHumanName)
 					end
 				end
 			end
@@ -223,14 +221,14 @@ function widget:GameFrame(gameFrame)
 				local unitId = idleResurrectors[i]
 				local commands = Spring.GetUnitCommands(unitId, 2)
 				if
-						isReclaimerUnit(UnitDefs[Spring.GetUnitDefID(unitId)]) and
+					isReclaimerUnit(UnitDefs[Spring.GetUnitDefID(unitId)]) and
 						(#commands == 0 or
 							(#commands == 1 and commands[1].id == CMD.MOVE and select(4, Spring.GetUnitVelocity(unitId)) < 0.02))
-				then
+				 then
 					-- log('Repeating 4', UnitIdUnitDef(unitId).translatedHumanName)
-					Spring.GiveOrderToUnit(unitId, CMD.REPEAT, { 1 }, 0)
+					Spring.GiveOrderToUnit(unitId, CMD.REPEAT, {1}, 0)
 					Spring.GiveOrderToUnit(unitId, CMD.RECLAIM, areaReclaimParams, {})
-					-- log('ordering reclaim idle', unitId, areaReclaimParams[1], areaReclaimParams[2], areaReclaimParams[3], areaReclaimParams[4])
+				-- log('ordering reclaim idle', unitId, areaReclaimParams[1], areaReclaimParams[2], areaReclaimParams[3], areaReclaimParams[4])
 				end
 			end
 		end
