@@ -14,7 +14,7 @@ function widget:GetInfo()
   }
 end
 
-VFS.Include('helpers.lua')
+VFS.Include('LuaUI/Widgets/helpers.lua')
 
 local config               = VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua')
 

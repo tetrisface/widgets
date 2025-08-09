@@ -15,7 +15,7 @@ if not (Spring.Utilities.Gametype.IsScavengers() or Spring.Utilities.Gametype.Is
   return false
 end
 
-VFS.Include('helpers.lua')
+VFS.Include('LuaUI/Widgets/helpers.lua')
 
 local transportTiers = {}
 for unitDefName, tier in pairs({ armatlas_scav = 1, corvalk_scav = 1, legatrans_scav = 1, armdfly_scav = 2, corseah_scav = 2, legstronghold_scav = 2 }) do

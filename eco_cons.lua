@@ -17,7 +17,7 @@ end
 -- todo make builders push back unnecessary eco types
 
 local NewSetList = VFS.Include('common/SetList.lua').NewSetList
-VFS.Include('helpers.lua')
+VFS.Include('LuaUI/Widgets/helpers.lua')
 
 local GetFeatureHealth = Spring.GetFeatureHealth
 local GetFeatureResources = Spring.GetFeatureResources
