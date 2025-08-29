@@ -1,5 +1,3 @@
-local WIDGET_NAME = 'Construction Turrets Range Check'
-local WIDGET_VERSION = '1.4e'
 -- ### VERSIONS ###
 -- 1.0 - initial release, basic
 -- 1.1 - added more command types (reclaim, attack)
@@ -13,13 +11,13 @@ local WIDGET_VERSION = '1.4e'
 
 function widget:GetInfo()
     return {
-        name = WIDGET_NAME,
+        name = 'Construction Turrets Range Check (nano_check)',
         desc = 'Stops construction turrets from being assigned to constructions out of reach.',
         author = 'Nehroz',
         date = '2024.9.15', -- update date.
         license = 'GPL v3',
         layer = 0,
-        version = WIDGET_VERSION
+        version = '1.4e'
     }
 end
 
@@ -88,22 +86,22 @@ end
 -- NOTE: There is no "overflow" protection. Setting DELAY to low will cause stacks to fill up constantly.
 local DELAY = 15
 local TURRETS = {
-    'armnanotc',
-    'cornanotc',
-    'armnanotct2',
-    'cornanotct2',
-    'armnanotc_scav',
-    'cornanotc_scav',
-    'armnanotct2_scav',
-    'cornanotct2_scav',
-    'legmohoconct',
-    'legmohoconct_scav',
-    'armnanotct3_scav',
-    'cornanotct3_scav',
-    'legnanotct3_scav',
-    'armnanotct3',
-    'cornanotct3',
-    'legnanotct3'
+    armnanotc = 1,
+    cornanotc = 1,
+    armnanotct2 = 1,
+    cornanotct2 = 1,
+    armnanotc_scav = 1,
+    cornanotc_scav = 1,
+    armnanotct2_scav = 1,
+    cornanotct2_scav = 1,
+    legmohoconct = 1,
+    legmohoconct_scav = 1,
+    armnanotct3_scav = 1,
+    cornanotct3_scav = 1,
+    legnanotct3_scav = 1,
+    armnanotct3 = 1,
+    cornanotct3 = 1,
+    legnanotct3= 1
 }
  -- names of nano turrets names
 local COMMAND_LIMIT = 20 -- Maximum number of commands to be processed in a single frame, blocking
@@ -117,13 +115,6 @@ local to_be_cleared = {} -- stack of uIDs to be cleared
 local new_orders = {} -- stack of {uid = {cmdArr},...} to be processed
 local radius_cache = LRUCache:new(10) -- LRU cache to reduce the number of calls for model radius
 -- !SECTION Settings and other variables
-
--- converts a table to a Set()-like
-local function make_set(t) -- coverts a table to a Set()-like
-    for _, key in ipairs(t) do
-        t[key] = true
-    end
-end
 
 local function check_turret_range(uID)
     local x, y, z = Spring.GetUnitPosition(uID)
@@ -148,6 +139,7 @@ local function check_turret_range(uID)
             local radius = radius_cache:get(tuID)
             if not radius then
                 -- Spring.GetUnitDefID(tuID) nil
+                -- GetUnitDefDimensions can be sent nil
                 radius = Spring.GetUnitDefDimensions(Spring.GetUnitDefID(tuID)).radius
                 radius_cache:put(tuID, radius)
             end
@@ -176,15 +168,14 @@ end
 
 function widget:Initialize()
     is_play = Spring.GetSpectatingState()
-    -- Spring.Echo(WIDGET_NAME .. " V" .. WIDGET_VERSION)
     -- pre-check set
-    for _, name in ipairs(TURRETS) do
-        if UnitDefNames[name].buildDistance == nil then
+    for name, _ in pairs(TURRETS) do
+        local ud = UnitDefs[name]
+        if not ud or ud.buildDistance == nil then
             Spring.Echo('Error: ' .. name .. ' has no buildDistance')
-            widget:Shutdown()
+            TURRETS[name] = nil
         end
     end
-    make_set(TURRETS)
 end
 
 function widget:GameFrame()

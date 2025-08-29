@@ -258,46 +258,46 @@ function widget:DrawWorld()
 			local inCrossPattern = (gridX == mouseGridX) or (gridZ == mouseGridZ)
 			local isUnderCursor = (gridX == mouseGridX) and (gridZ == mouseGridZ)
 
-			if alpha >= 0.01 and inCrossPattern and not isUnderCursor then
-				-- Calculate grid number from map edges
-				local gridNumX = math.floor(centerX / xStep) -- grid count from left edge
-				local gridNumZ = math.floor(centerZ / xStep) -- grid count from bottom edge
+			-- if alpha >= 0.01 and inCrossPattern and not isUnderCursor then
+			-- 	-- Calculate grid number from map edges
+			-- 	local gridNumX = math.floor(centerX / xStep) -- grid count from left edge
+			-- 	local gridNumZ = math.floor(centerZ / xStep) -- grid count from bottom edge
 
-				-- Calculate distances to each edge (1-based)
-				local distToLeft = gridNumX + 1
-				local distToRight = math.floor(Game.mapSizeX / xStep) - gridNumX
-				local distToBottom = gridNumZ + 1
-				local distToTop = math.floor(Game.mapSizeZ / xStep) - gridNumZ
+			-- 	-- Calculate distances to each edge (1-based)
+			-- 	local distToLeft = gridNumX + 1
+			-- 	local distToRight = math.floor(Game.mapSizeX / xStep) - gridNumX
+			-- 	local distToBottom = gridNumZ + 1
+			-- 	local distToTop = math.floor(Game.mapSizeZ / xStep) - gridNumZ
 
-				-- Determine which direction this label is from the cursor
-				local mouseGridNumX = math.floor(pos[1] / xStep)
-				local mouseGridNumZ = math.floor(pos[3] / xStep)
+			-- 	-- Determine which direction this label is from the cursor
+			-- 	local mouseGridNumX = math.floor(pos[1] / xStep)
+			-- 	local mouseGridNumZ = math.floor(pos[3] / xStep)
 
-				local label
-				if gridNumX < mouseGridNumX then
-					-- Label is to the left of cursor
-					label = tostring(distToLeft)
-				elseif gridNumX > mouseGridNumX then
-					-- Label is to the right of cursor
-					label = tostring(distToRight)
-				elseif gridNumZ < mouseGridNumZ then
-					-- Label is below cursor
-					label = tostring(distToBottom)
-				else
-					-- Label is above cursor
-					label = tostring(distToTop)
-				end
+				-- local label
+				-- if gridNumX < mouseGridNumX then
+				-- 	-- Label is to the left of cursor
+				-- 	label = tostring(distToLeft)
+				-- elseif gridNumX > mouseGridNumX then
+				-- 	-- Label is to the right of cursor
+				-- 	label = tostring(distToRight)
+				-- elseif gridNumZ < mouseGridNumZ then
+				-- 	-- Label is below cursor
+				-- 	label = tostring(distToBottom)
+				-- else
+				-- 	-- Label is above cursor
+				-- 	label = tostring(distToTop)
+				-- end
 
 				-- draw label
-				gl.Color(1, 1, 1, alpha)
-				gl.PushMatrix()
-				gl.Translate(centerX, y, centerZ)
-				gl.Rotate(-90, 1, 0, 0) -- lay flat
-				gl.Rotate(camYawSnapped+180, 0, 0, 1) -- rotate to face camera but always within the plane of the map
-				gl.Scale(1, 1, 1) -- no mirroring
-				gl.Text(label, -#label*fontSize/4, -8, fontSize, 'o')
-				gl.PopMatrix()
-			end
+				-- gl.Color(1, 1, 1, alpha)
+				-- gl.PushMatrix()
+				-- gl.Translate(centerX, y, centerZ)
+				-- gl.Rotate(-90, 1, 0, 0) -- lay flat
+				-- gl.Rotate(camYawSnapped+180, 0, 0, 1) -- rotate to face camera but always within the plane of the map
+				-- gl.Scale(1, 1, 1) -- no mirroring
+				-- gl.Text(label, -#label*fontSize/4, -8, fontSize, 'o')
+				-- gl.PopMatrix()
+			-- end
 		end
 	end
 

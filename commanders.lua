@@ -163,17 +163,17 @@ local function initializeCommanderDefs()
     -- Check if it's a commander using customParams.iscommander
     if unitDef.customParams and unitDef.customParams.iscommander then --and unitDef.name:find('armcom') then
       commanderDefs[unitDefID] = {
-        dgunWeaponNum = nil,
+        dgunWeaponName = nil,
         dgunWeaponDef = nil,
         dgunRange = 0
       }
 
       -- Find the d-gun weapon
       if unitDef.weapons then
-        for weaponNum, weapon in ipairs(unitDef.weapons) do
+        for weaponName, weapon in ipairs(unitDef.weapons) do
           local weaponDef = WeaponDefs[weapon.weaponDef]
           if weaponDef and weaponDef.stockpile then
-            commanderDefs[unitDefID].dgunWeaponNum = weaponNum
+            commanderDefs[unitDefID].dgunWeaponName = weaponName
             commanderDefs[unitDefID].dgunWeaponDef = weaponDef
             commanderDefs[unitDefID].dgunRange = weaponDef.range
             break
@@ -229,7 +229,7 @@ end
 -- Check if commander can fire d-gun
 local function canFireDgun(commanderID, commanderDefID, mode)
   local commanderDef = commanderDefs[commanderDefID]
-  if not commanderDef or not commanderDef.dgunWeaponNum then
+  if not commanderDef or not commanderDef.dgunWeaponName then
     return false
   end
 
