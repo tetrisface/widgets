@@ -91,7 +91,9 @@ local function registerMetalMaker(unitID, unitDef)
 end
 
 local function drawBox(x, y, w, h)
-  if not GL.QUADS or not w or not h or not x or not y then
+  if not GL_QUADS or not w or not h or not x or not y
+    or x < 0 or y < 0 or w < 0 or h < 0
+    then
     return
   end
   glShape(GL_QUADS, {
