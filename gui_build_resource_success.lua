@@ -91,6 +91,9 @@ local function registerMetalMaker(unitID, unitDef)
 end
 
 local function drawBox(x, y, w, h)
+  if not GL.QUADS or not w or not h or not x or not y then
+    return
+  end
   glShape(GL_QUADS, {
     { v = { x, y } },
     { v = { x, y + h } },
@@ -363,6 +366,10 @@ end
 
 function drawResourceBar(type, after, lvl, storage, color, changeWhenBuilding, consumption, alreadyInStall, time, position)
   if consumption < 1 or (not alreadyInStall and after > 0) then
+    -- Prevent division by zero
+    if storage <= 0 then
+      return
+    end
     local ratio = barWidth / storage
     glColor(0.2, 0.2, 0.2, 1)
     drawBox(windowX + 135, windowY + position + 3, barWidth, barHeight)
