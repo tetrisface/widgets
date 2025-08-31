@@ -331,10 +331,7 @@ local function isStandingInBuilding(constructorID, buildCommand)
 							', ' .. (buildCommand.params[3] or 'nil') .. ', ' .. (buildCommand.params[4] or 'nil') .. ']'
 		)
 		echo('  build pos: (' .. buildX .. ', ' .. (buildY or 'nil') .. ', ' .. buildZ .. ')')
-		echo(
-			'  Constructor pos: (' ..
-				(baseX or 'nil') .. ', ' .. (baseY or 'nil') .. ', ' .. (baseZ or 'nil') .. ')'
-		)
+		echo('  Constructor pos: (' .. (baseX or 'nil') .. ', ' .. (baseY or 'nil') .. ', ' .. (baseZ or 'nil') .. ')')
 		-- echo('  Distance to center: ' .. math.floor(distanceToCenter * 10) / 10)
 		echo('  TestBuildOrder blocking: ' .. (blockingTestBuildOrder and 'yes' or 'no'))
 		-- echo('  Constructor can reach (distance): ' .. (constructorCanReach and 'yes' or 'no'))
@@ -344,8 +341,12 @@ local function isStandingInBuilding(constructorID, buildCommand)
 		-- 			', ' ..
 		-- 				(buildZ - buildArea) .. '] to [' .. (buildX + buildArea) .. ', ' .. (buildZ + buildArea) .. ']'
 		-- )
-		echo('  GetUnitsInRectangle blocking: ' .. (blockingRectangleSelect and 'yes' or 'no') .. ' with ' .. (#unitsInBuildArea or 0) .. ' units', '[' .. left .. ', ' .. bottom .. ', ' .. right .. ', ' .. top .. ']')
-		-- echo('  Standing in building (combined): ' .. (isStandingInBuildingBool and 'YES' or 'NO'))
+		echo(
+			'  GetUnitsInRectangle blocking: ' ..
+				(blockingRectangleSelect and 'yes' or 'no') .. ' with ' .. (#unitsInBuildArea or 0) .. ' units',
+			'[' .. left .. ', ' .. bottom .. ', ' .. right .. ', ' .. top .. ']'
+		)
+	-- echo('  Standing in building (combined): ' .. (isStandingInBuildingBool and 'YES' or 'NO'))
 	end
 
 	return isStandingInBuildingBool
@@ -405,7 +406,7 @@ local function findOptimalPosition(
 			currentTargetX, currentTargetZ = targetX, targetZ
 		end
 	end
-	
+
 	-- If we don't have a current build target, fall back to the standing position
 	if not currentTargetX then
 		currentTargetX, currentTargetZ = buildX, buildZ
@@ -496,7 +497,7 @@ local function findOptimalPosition(
 		local distToCurrentTarget = math.sqrt((sampleX - currentTargetX) ^ 2 + (sampleZ - currentTargetZ) ^ 2)
 		if distToCurrentTarget <= maxBuildDistance then
 			-- Can reach current build target, now check future buildings
-			
+
 			-- Check if this position can still reach ALL initially reachable buildings
 			local canReachAll = true
 			for _, buildingIndex in ipairs(initiallyReachableBuildings) do
@@ -538,7 +539,9 @@ local function findOptimalPosition(
 		echo('  Best position: (' .. bestPosition.x .. ', ' .. bestPosition.z .. ')')
 		echo('  Progress toward average: ' .. math.floor(bestPosition.progress * 100) .. '%')
 		echo('  Move distance: ' .. math.floor(moveDistance))
-		echo('  Guarantees access to current target AND all ' .. #initiallyReachableBuildings .. ' initially reachable buildings')
+		echo(
+			'  Guarantees access to current target AND all ' .. #initiallyReachableBuildings .. ' initially reachable buildings'
+		)
 	end
 
 	return bestPosition.x, bestPosition.z
@@ -623,7 +626,7 @@ local function processConstructorPositioning(constructorID)
 	-- Check if constructor is standing in any building position
 	if not standingInBuildCommand then
 		if debugMode then
-			echo('Con ' .. constructorID .. ' skipped: not blocking build. '.. #buildCommands .. ' commands')
+			echo('Con ' .. constructorID .. ' skipped: not blocking build. ' .. #buildCommands .. ' commands')
 		end
 		return
 	end
@@ -897,7 +900,6 @@ if not table.keys then
 	end
 end
 
-
 function widget:ActiveCommandChanged(id, cmdType)
 	local cmd = Spring.GetActiveCommand()
 	local selectedUnits = Spring.GetSelectedUnits()
@@ -907,6 +909,10 @@ function widget:ActiveCommandChanged(id, cmdType)
 		local cmdDef = UnitDefs[cmd]
 		local eff = GetUnitEffectiveBuildRange(selectedUnits[1])
 		local effCmd = GetUnitEffectiveBuildRange(selectedUnits[1], cmd)
-		Spring.Echo('buildrange def ' .. UnitDefs[defID].buildDistance .. ', eff ' .. eff .. ', eff cmd ' .. effCmd, 'radius cmd ' .. cmdDef.radius, 'radius con ' .. UnitDefs[defID].radius)
+		Spring.Echo(
+			'buildrange def ' .. UnitDefs[defID].buildDistance .. ', eff ' .. eff .. ', eff cmd ' .. effCmd,
+			'radius cmd ' .. cmdDef.radius,
+			'radius con ' .. UnitDefs[defID].radius
+		)
 	end
 end
