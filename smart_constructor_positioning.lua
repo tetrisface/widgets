@@ -10,6 +10,8 @@ function widget:GetInfo()
 	}
 end
 
+VFS.Include('LuaUI/Widgets/helpers.lua')
+
 local echo = Spring.Echo
 local i18n = Spring.I18N
 local GetSelectedUnits = Spring.GetSelectedUnits
@@ -50,7 +52,7 @@ local SMART_POSITIONING_ON = 1
 local myTeamID = Spring.GetMyTeamID()
 local constructorUnits = {}
 local constructorDefs = {}
-local debugMode = false
+local debugMode = true
 
 -- Initialize constructor definitions
 local function initializeConstructorDefs()
@@ -205,8 +207,6 @@ local function isBeingAssisted(constructorID)
 				local assisterDef = UnitDefs[assisterDefID]
 				echo('  - Assister ' .. i .. ': ' .. assisterID .. ' (' .. (assisterDef and assisterDef.name or 'unknown') .. ')')
 			end
-		else
-			echo('Constructor ' .. constructorID .. ' has no assisters for target ' .. currentBuildTarget)
 		end
 	end
 
@@ -256,21 +256,20 @@ local function isStandingInBuilding(constructorID, buildCommand)
 		return false
 	end
 
-	local unitX, unitY, unitZ = Spring.GetUnitPosition(constructorID)
+	-- local unitX, unitY, unitZ = Spring.GetUnitPosition(constructorID)
 	local baseX, baseY, baseZ = Spring.GetUnitBasePosition(constructorID)
-	if not unitX then
+	if not baseX then
 		return false
 	end
 
 	-- Get the actual center position of the building
-	local buildCenterX, buildCenterZ = getBuildingCenterPosition(buildX, buildZ, buildeeDefID, buildFacing)
+	-- local buildCenterX, buildCenterZ = getBuildingCenterPosition(buildX, buildZ, buildeeDefID, buildFacing)
 
 	-- Use TestBuildOrder to see if the build position is blocked (1 = allowed, 0 = blocked)
-	local testBuildResult = Spring.TestBuildOrder(buildeeDefID, buildX, buildY or 0, buildZ, buildFacing)
-	local isBlocking = testBuildResult == 0
+	local blockingTestBuildOrder = Spring.TestBuildOrder(buildeeDefID, buildX, buildY or 0, buildZ, buildFacing) == 1
 
 	-- Calculate distance from constructor to building center
-	local distanceToCenter = math.sqrt((unitX - buildX) ^ 2 + (unitZ - buildZ) ^ 2)
+	-- local distanceToCenter = math.sqrt((baseX - buildX) ^ 2 + (baseZ - buildZ) ^ 2)
 
 	-- Get building footprint for reference
 	local buildDef = UnitDefs[buildeeDefID]
@@ -290,33 +289,35 @@ local function isStandingInBuilding(constructorID, buildCommand)
 	end
 
 	-- Calculate proper build distance (buildDistance + constructor radius)
-	local maxBuildDistance = constructorDef.maxBuildDistance
+	-- local maxBuildDistance = GetUnitEffectiveBuildRangePatched(constructorID, -buildCommand.id)
 
 	-- Check if constructor is within build range of the build position
-	local constructorCanReach = distanceToCenter <= maxBuildDistance
+	-- local constructorCanReach = distanceToCenter <= maxBuildDistance
 
 	-- Alternative check: Use GetUnitsInRectangle to see if constructor is in build area
 	-- Use building center position for accurate rectangle check
 	local buildArea = buildingFootprint / 2
-	local unitsInBuildArea =
-		Spring.GetUnitsInRectangle(
-		buildCenterX - buildArea,
-		buildCenterZ - buildArea,
-		buildCenterX + buildArea,
-		buildCenterZ + buildArea
-	)
-	local constructorInBuildArea = false
+	-- local unitsInBuildArea =
+	-- 	Spring.GetUnitsInRectangle(
+	-- 	buildX - buildArea,
+	-- 	buildZ - buildArea,
+	-- 	buildX + buildArea,
+	-- 	buildZ + buildArea
+	-- )
+	local left, bottom, right, top = buildX - buildArea, buildZ - buildArea, buildX + buildArea, buildZ + buildArea
+	local unitsInBuildArea = Spring.GetUnitsInRectangle(left, bottom, right, top, -2)
+	local blockingRectangleSelect = false
 	if unitsInBuildArea then
 		for _, unitID in ipairs(unitsInBuildArea) do
 			if unitID == constructorID then
-				constructorInBuildArea = true
+				blockingRectangleSelect = true
 				break
 			end
 		end
 	end
 
 	-- Constructor is standing in building if: build is blocked AND constructor can reach it OR constructor is directly in build area
-	local isStandingInBuildingBool = isBlocking and constructorInBuildArea
+	local isStandingInBuildingBool = blockingTestBuildOrder and blockingRectangleSelect
 
 	if debugMode then
 		echo('=== Standing in Building Check ===')
@@ -329,37 +330,22 @@ local function isStandingInBuilding(constructorID, buildCommand)
 						(buildCommand.params[2] or 'nil') ..
 							', ' .. (buildCommand.params[3] or 'nil') .. ', ' .. (buildCommand.params[4] or 'nil') .. ']'
 		)
-		echo('  Extracted build pos: (' .. buildX .. ', ' .. (buildY or 'nil') .. ', ' .. buildZ .. ') [corner]')
-		echo('  Building center pos: (' .. buildCenterX .. ', ' .. buildCenterZ .. ') [calculated]')
-		echo('  Constructor GetUnitPosition: (' .. unitX .. ', ' .. unitY .. ', ' .. unitZ .. ')')
+		echo('  build pos: (' .. buildX .. ', ' .. (buildY or 'nil') .. ', ' .. buildZ .. ')')
 		echo(
-			'  Constructor GetUnitBasePosition: (' ..
+			'  Constructor pos: (' ..
 				(baseX or 'nil') .. ', ' .. (baseY or 'nil') .. ', ' .. (baseZ or 'nil') .. ')'
 		)
-		echo('  Distance calculation: sqrt((' .. unitX .. '-' .. buildX .. ')^2 + (' .. unitZ .. '-' .. buildZ .. ')^2)')
-		echo('  Distance components: deltaX=' .. (unitX - buildX) .. ', deltaZ=' .. (unitZ - buildZ))
-		echo('  Distance to center: ' .. math.floor(distanceToCenter * 10) / 10)
-		echo('  Building footprint: ' .. buildingFootprint)
-		echo('  Constructor build distance: ' .. constructorDef.buildDistance)
-		echo('  Constructor radius: ' .. constructorDef.radius)
-		echo('  Max build distance: ' .. maxBuildDistance .. ' (buildDistance + radius)')
-		echo(
-			'  TestBuildOrder(' ..
-				buildeeDefID ..
-					', ' ..
-						buildX .. ', ' .. (buildY or 0) .. ', ' .. buildZ .. ', ' .. buildFacing .. ') = ' .. (testBuildResult or 'nil')
-		)
-		echo('  Is blocked (TestBuildOrder == 0): ' .. (isBlocking and 'yes' or 'no'))
-		echo('  Constructor can reach (distance): ' .. (constructorCanReach and 'yes' or 'no'))
-		echo(
-			'  Rectangle bounds: [' ..
-				(buildCenterX - buildArea) ..
-					', ' ..
-						(buildCenterZ - buildArea) .. '] to [' .. (buildCenterX + buildArea) .. ', ' .. (buildCenterZ + buildArea) .. ']'
-		)
-		echo('  Constructor in build area (rectangle): ' .. (constructorInBuildArea and 'yes' or 'no'))
-		echo('  GetUnitsInRectangle found: ' .. (#unitsInBuildArea or 0) .. ' units')
-		echo('  Standing in building (combined): ' .. (isStandingInBuildingBool and 'YES' or 'NO'))
+		-- echo('  Distance to center: ' .. math.floor(distanceToCenter * 10) / 10)
+		echo('  TestBuildOrder blocking: ' .. (blockingTestBuildOrder and 'yes' or 'no'))
+		-- echo('  Constructor can reach (distance): ' .. (constructorCanReach and 'yes' or 'no'))
+		-- echo(
+		-- 	'  Rectangle bounds: [' ..
+		-- 		(buildX - buildArea) ..
+		-- 			', ' ..
+		-- 				(buildZ - buildArea) .. '] to [' .. (buildX + buildArea) .. ', ' .. (buildZ + buildArea) .. ']'
+		-- )
+		echo('  GetUnitsInRectangle blocking: ' .. (blockingRectangleSelect and 'yes' or 'no') .. ' with ' .. (#unitsInBuildArea or 0) .. ' units', '[' .. left .. ', ' .. bottom .. ', ' .. right .. ', ' .. top .. ']')
+		-- echo('  Standing in building (combined): ' .. (isStandingInBuildingBool and 'YES' or 'NO'))
 	end
 
 	return isStandingInBuildingBool
@@ -403,25 +389,27 @@ local function findOptimalPosition(
 	standingInBuildIndex)
 	local unitX, _, unitZ = Spring.GetUnitBasePosition(constructorID)
 	local buildX, buildZ = currentBuildCommand.params[1], currentBuildCommand.params[3]
-	local buildFacing = currentBuildCommand.params[4] or 0
-	local buildeeDefID = -currentBuildCommand.id
 
 	if not unitX or not buildX or not averageX then
 		return nil
 	end
 
-	-- Get the actual center position of the building we're currently building
-	local buildCenterX, buildCenterZ = getBuildingCenterPosition(buildX, buildZ, buildeeDefID, buildFacing)
+	local maxBuildDistance = GetUnitEffectiveBuildRangePatched(constructorID, -currentBuildCommand.id)
 
-	-- Use proper build distance calculation like the construction turrets gadget
-	local constructorDefID = GetUnitDefID(constructorID)
-	local constructorDef = constructorDefs[constructorDefID]
-	if not constructorDef then
-		return nil
+	-- Get the actual current build target position (this might be different from where we're standing)
+	local _, currentBuildTarget = Spring.GetUnitWorkerTask(constructorID)
+	local currentTargetX, currentTargetZ
+	if currentBuildTarget then
+		local targetX, _, targetZ = Spring.GetUnitPosition(currentBuildTarget)
+		if targetX then
+			currentTargetX, currentTargetZ = targetX, targetZ
+		end
 	end
-
-	-- Use maxBuildDistance (buildDistance + radius) for accurate range calculation
-	local maxBuildDistance = constructorDef.maxBuildDistance
+	
+	-- If we don't have a current build target, fall back to the standing position
+	if not currentTargetX then
+		currentTargetX, currentTargetZ = buildX, buildZ
+	end
 
 	-- Get all future build positions (after the current one we're standing in)
 	local futureBuildPositions = {}
@@ -433,15 +421,15 @@ local function findOptimalPosition(
 			local futureDefID = -command.id
 
 			-- Get center position of future building
-			local centerX, centerZ = getBuildingCenterPosition(futureX, futureZ, futureDefID, futureFacing)
-			table.insert(futureBuildPositions, {centerX, centerZ})
+			-- local centerX, centerZ = getBuildingCenterPosition(futureX, futureZ, futureDefID, futureFacing)
+			table.insert(futureBuildPositions, {futureX, futureZ, futureFacing, futureDefID})
 		end
 	end
 
 	if #futureBuildPositions == 0 then
-		-- No future builds, use simple positioning
-		local dirX = averageX - buildCenterX
-		local dirZ = averageZ - buildCenterZ
+		-- No future builds, use simple positioning relative to current build target
+		local dirX = averageX - currentTargetX
+		local dirZ = averageZ - currentTargetZ
 		local dirLength = math.sqrt(dirX ^ 2 + dirZ ^ 2)
 
 		if dirLength < 10 then
@@ -452,8 +440,14 @@ local function findOptimalPosition(
 		dirZ = dirZ / dirLength
 
 		local safeRange = maxBuildDistance * 0.99
-		local moveX = buildCenterX + dirX * safeRange
-		local moveZ = buildCenterZ + dirZ * safeRange
+		local moveX = currentTargetX + dirX * safeRange
+		local moveZ = currentTargetZ + dirZ * safeRange
+
+		-- Verify the move position can reach the current build target
+		local distToCurrentTarget = math.sqrt((moveX - currentTargetX) ^ 2 + (moveZ - currentTargetZ) ^ 2)
+		if distToCurrentTarget > maxBuildDistance then
+			return nil -- Can't reach current target
+		end
 
 		local moveDistance = math.sqrt((moveX - unitX) ^ 2 + (moveZ - unitZ) ^ 2)
 		if moveDistance < 32 then
@@ -464,8 +458,8 @@ local function findOptimalPosition(
 	end
 
 	-- Calculate direction from build center towards average position
-	local dirX = averageX - buildCenterX
-	local dirZ = averageZ - buildCenterZ
+	local dirX = averageX - buildX
+	local dirZ = averageZ - buildZ
 	local dirLength = math.sqrt(dirX ^ 2 + dirZ ^ 2)
 
 	if dirLength < 10 then
@@ -479,14 +473,14 @@ local function findOptimalPosition(
 	-- First, determine which future buildings are reachable from the current build center
 	local initiallyReachableBuildings = {}
 	for i, buildPos in ipairs(futureBuildPositions) do
-		local distToBuilding = math.sqrt((buildCenterX - buildPos[1]) ^ 2 + (buildCenterZ - buildPos[2]) ^ 2)
+		local distToBuilding = math.sqrt((buildX - buildPos[1]) ^ 2 + (buildZ - buildPos[2]) ^ 2)
 		if distToBuilding <= maxBuildDistance then
 			table.insert(initiallyReachableBuildings, i)
 		end
 	end
 
 	-- Sample positions along the line from current building center towards average
-	-- Only accept positions that can still reach ALL initially reachable buildings
+	-- Only accept positions that can reach the current build target AND all initially reachable buildings
 	local bestPosition = nil
 	local safeRange = maxBuildDistance * 0.99
 
@@ -495,27 +489,30 @@ local function findOptimalPosition(
 	for i = 1, sampleCount do
 		local progress = i / sampleCount -- 0.1, 0.2, ... 1.0
 		local distance = safeRange * progress
-		local sampleX = buildCenterX + dirX * distance
-		local sampleZ = buildCenterZ + dirZ * distance
+		local sampleX = buildX + dirX * distance
+		local sampleZ = buildZ + dirZ * distance
 
-		-- Check if this position can still reach ALL initially reachable buildings
-		local canReachAll = true
-		for _, buildingIndex in ipairs(initiallyReachableBuildings) do
-			local buildPos = futureBuildPositions[buildingIndex]
-			local distToBuilding = math.sqrt((sampleX - buildPos[1]) ^ 2 + (sampleZ - buildPos[2]) ^ 2)
-			if distToBuilding > maxBuildDistance then
-				canReachAll = false
-				break
+		-- CRITICAL: First check if this position can reach the current build target
+		local distToCurrentTarget = math.sqrt((sampleX - currentTargetX) ^ 2 + (sampleZ - currentTargetZ) ^ 2)
+		if distToCurrentTarget <= maxBuildDistance then
+			-- Can reach current build target, now check future buildings
+			
+			-- Check if this position can still reach ALL initially reachable buildings
+			local canReachAll = true
+			for _, buildingIndex in ipairs(initiallyReachableBuildings) do
+				local buildPos = futureBuildPositions[buildingIndex]
+				local distToBuilding = math.sqrt((sampleX - buildPos[1]) ^ 2 + (sampleZ - buildPos[2]) ^ 2)
+				if distToBuilding > maxBuildDistance then
+					canReachAll = false
+					break
+				end
 			end
-		end
 
-		-- If we can reach all initially reachable buildings, this is a valid position
-		-- Prefer the furthest position toward average (highest progress)
-		if canReachAll then
-			bestPosition = {x = sampleX, z = sampleZ, distance = distance, progress = progress}
-		else
-			-- Stop sampling once we can't reach all buildings
-			break
+			-- If we can reach the current target AND all initially reachable buildings, this is a valid position
+			-- Prefer the furthest position toward average (highest progress)
+			if canReachAll then
+				bestPosition = {x = sampleX, z = sampleZ, distance = distance, progress = progress}
+			end
 		end
 	end
 
@@ -533,14 +530,15 @@ local function findOptimalPosition(
 	if debugMode then
 		echo('=== Multi-Building Optimization (Conservative) ===')
 		echo('  Constructor position: (' .. unitX .. ', ' .. unitZ .. ')')
-		echo('  Current build center: (' .. buildCenterX .. ', ' .. buildCenterZ .. ')')
+		echo('  Current build center: (' .. buildX .. ', ' .. buildZ .. ')')
+		echo('  Current build target: (' .. currentTargetX .. ', ' .. currentTargetZ .. ')')
 		echo('  Average position: (' .. averageX .. ', ' .. averageZ .. ')')
 		echo('  Future buildings total: ' .. #futureBuildPositions)
 		echo('  Initially reachable buildings: ' .. #initiallyReachableBuildings .. '/' .. #futureBuildPositions)
 		echo('  Best position: (' .. bestPosition.x .. ', ' .. bestPosition.z .. ')')
 		echo('  Progress toward average: ' .. math.floor(bestPosition.progress * 100) .. '%')
 		echo('  Move distance: ' .. math.floor(moveDistance))
-		echo('  Guarantees access to all ' .. #initiallyReachableBuildings .. ' initially reachable buildings')
+		echo('  Guarantees access to current target AND all ' .. #initiallyReachableBuildings .. ' initially reachable buildings')
 	end
 
 	return bestPosition.x, bestPosition.z
@@ -595,9 +593,15 @@ local function processConstructorPositioning(constructorID)
 	local standingInBuildCommand = nil
 
 	for i, command in ipairs(commands) do
-		if command.id < 0 then -- Build command
+		if command.id > 0 and CMD.REPAIR ~= command.id then
+			if debugMode then
+				echo('Con ' .. constructorID .. ' stopped evaluating at command id ' .. command.id .. ' at index ' .. i)
+			end
+			break
+		end
+		if command.id ~= CMD.REPAIR then
 			table.insert(buildCommands, {command = command, index = i})
-
+			echo('build command ' .. command.id .. ' at index ' .. i)
 			-- Check if constructor is standing in this building position
 			if not standingInBuildCommand and isStandingInBuilding(constructorID, command) then
 				standingInBuildIndex = i
@@ -606,9 +610,6 @@ local function processConstructorPositioning(constructorID)
 					echo('Constructor ' .. constructorID .. ' is standing in build command at queue position ' .. i)
 				end
 			end
-		end
-		if i > 2 then
-			break
 		end
 	end
 
@@ -622,8 +623,7 @@ local function processConstructorPositioning(constructorID)
 	-- Check if constructor is standing in any building position
 	if not standingInBuildCommand then
 		if debugMode then
-			echo('Constructor ' .. constructorID .. ' skipped: not standing in any building position')
-			echo('  Found ' .. #buildCommands .. ' build commands in queue')
+			echo('Con ' .. constructorID .. ' skipped: not blocking build. '.. #buildCommands .. ' commands')
 		end
 		return
 	end
@@ -656,8 +656,7 @@ local function processConstructorPositioning(constructorID)
 	GiveOrderToUnit(constructorID, CMD_INSERT, {0, CMD_MOVE, 0, moveX, moveY, moveZ}, {'alt'})
 
 	if debugMode then
-		echo('*** SMART POSITIONING ACTIVATED ***')
-		echo('Moving constructor ' .. constructorID .. ' to (' .. moveX .. ', ' .. moveY .. ', ' .. moveZ .. ')')
+		-- echo('Moving constructor ' .. constructorID .. ' to (' .. moveX .. ', ' .. moveY .. ', ' .. moveZ .. ')')
 
 		-- Add debug spotlights when we actually make a move
 		if WG['ObjectSpotlight'] then
@@ -682,15 +681,30 @@ local function processConstructorPositioning(constructorID)
 				{duration = 30, radius = 16, heightCoefficient = 6}
 			)
 
-			-- Build position (red spotlight)
-			local buildX, buildZ = standingInBuildCommand.params[1], standingInBuildCommand.params[3]
-			WG['ObjectSpotlight'].addSpotlight(
-				'ground',
-				spotlightID .. '_build',
-				{buildX, Spring.GetGroundHeight(buildX, buildZ), buildZ},
-				{1, 0, 0, 1}, -- Red
-				{duration = 30, radius = 16, heightCoefficient = 6}
-			)
+			-- Current build target position (red spotlight) - use actual build target, not standing position
+			local _, currentBuildTarget = Spring.GetUnitWorkerTask(constructorID)
+			if currentBuildTarget then
+				local buildTargetX, buildTargetY, buildTargetZ = Spring.GetUnitPosition(currentBuildTarget)
+				if buildTargetX then
+					WG['ObjectSpotlight'].addSpotlight(
+						'ground',
+						spotlightID .. '_build',
+						{buildTargetX, buildTargetY or Spring.GetGroundHeight(buildTargetX, buildTargetZ), buildTargetZ},
+						{1, 0, 0, 1}, -- Red
+						{duration = 30, radius = 16, heightCoefficient = 6}
+					)
+				end
+			else
+				-- Fallback to standing position if no current build target
+				local buildX, buildZ = standingInBuildCommand.params[1], standingInBuildCommand.params[3]
+				WG['ObjectSpotlight'].addSpotlight(
+					'ground',
+					spotlightID .. '_build',
+					{buildX, Spring.GetGroundHeight(buildX, buildZ), buildZ},
+					{1, 0, 0, 1}, -- Red
+					{duration = 30, radius = 16, heightCoefficient = 6}
+				)
+			end
 
 			-- Average position (green spotlight)
 			WG['ObjectSpotlight'].addSpotlight(
@@ -707,35 +721,15 @@ local function processConstructorPositioning(constructorID)
 			local maxBuildDistance = constructorDef.maxBuildDistance
 			local baseBuildDistance = constructorDef.buildDistance
 			local constructorRadius = constructorDef.radius
-			local effectiveBuildRange = GetUnitEffectiveBuildRange(constructorID, -standingInBuildCommand.id)
+			local effectiveBuildRange = GetUnitEffectiveBuildRangePatched(constructorID, -standingInBuildCommand.id)
 
-			-- Most important: Max build range circle (bright blue spotlight)
-			WG['ObjectSpotlight'].addSpotlight(
-				'ground',
-				spotlightID .. '_max_build_range',
-				{buildX, Spring.GetGroundHeight(buildX, buildZ), buildZ},
-				{0, 0.8, 1, 0.4}, -- Bright blue, semi-transparent
-				{duration = 30, radius = maxBuildDistance, heightCoefficient = 1}
-			)
-
-			-- Base build range for comparison (cyan circle)
-			if baseBuildDistance ~= maxBuildDistance then
-				WG['ObjectSpotlight'].addSpotlight(
-					'ground',
-					spotlightID .. '_base_range',
-					{buildX, Spring.GetGroundHeight(buildX, buildZ), buildZ},
-					{0, 1, 1, 0.2}, -- Cyan, more transparent
-					{duration = 30, radius = baseBuildDistance, heightCoefficient = 1}
-				)
-			end
-
-			-- Effective build range if different from max (purple circle)
+			-- Effective build range (purple circle)
 			if effectiveBuildRange and effectiveBuildRange ~= maxBuildDistance then
 				WG['ObjectSpotlight'].addSpotlight(
 					'ground',
 					spotlightID .. '_effective_range',
-					{buildX, Spring.GetGroundHeight(buildX, buildZ), buildZ},
-					{0.8, 0, 0.8, 0.3}, -- Purple, semi-transparent
+					{moveX, Spring.GetGroundHeight(moveX, moveZ), moveZ},
+					{0.8, 0, 0.8, 0.8}, -- Purple, semi-transparent
 					{duration = 30, radius = effectiveBuildRange, heightCoefficient = 1}
 				)
 			end
@@ -794,11 +788,6 @@ function widget:Initialize()
 
 	myTeamID = Spring.GetMyTeamID()
 	initializeExistingConstructors()
-
-	echo('Smart Constructor Positioning widget initialized with debug mode ON')
-	echo('All constructors default to SMART_POSITIONING_ON')
-	echo('Use "/luaui smartdebug" to toggle debug mode')
-	echo('Use "/luaui smartinfo" to see constructor status')
 end
 
 function widget:CommandsChanged()
@@ -870,7 +859,7 @@ end
 
 -- Debug command
 function widget:TextCommand(command)
-	if command == 'smartdebug' then
+	if command == 'dbg_conpos' then
 		debugMode = not debugMode
 		echo('Smart positioning debug mode: ' .. (debugMode and 'ON' or 'OFF'))
 		return true
@@ -905,5 +894,19 @@ if not table.keys then
 			table.insert(keys, k)
 		end
 		return keys
+	end
+end
+
+
+function widget:ActiveCommandChanged(id, cmdType)
+	local cmd = Spring.GetActiveCommand()
+	local selectedUnits = Spring.GetSelectedUnits()
+
+	if cmd and cmd > 0 and #selectedUnits > 0 then
+		local defID = Spring.GetUnitDefID(selectedUnits[1])
+		local cmdDef = UnitDefs[cmd]
+		local eff = GetUnitEffectiveBuildRange(selectedUnits[1])
+		local effCmd = GetUnitEffectiveBuildRange(selectedUnits[1], cmd)
+		Spring.Echo('buildrange def ' .. UnitDefs[defID].buildDistance .. ', eff ' .. eff .. ', eff cmd ' .. effCmd, 'radius cmd ' .. cmdDef.radius, 'radius con ' .. UnitDefs[defID].radius)
 	end
 end

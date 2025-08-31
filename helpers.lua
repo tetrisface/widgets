@@ -259,5 +259,14 @@ function LRUCacheTable:moveToEnd(serializedKey)
     end
     table.insert(self.order, serializedKey)
 end
--- !SECTION LRU Cache
--- !SECTION OOP
+
+function GetUnitEffectiveBuildRangePatched(unitID, cmd)
+  if cmd == UnitDefNames['armwint2'].id then
+    return 256
+  elseif cmd == UnitDefNames['legwint2'].id then
+    return 200
+  elseif cmd == UnitDefNames['corwint2'].id then
+    return 212
+  end
+  return Spring.GetUnitEffectiveBuildRange(unitID, cmd)
+end

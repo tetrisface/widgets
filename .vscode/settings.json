@@ -4,7 +4,8 @@
     "undefined-global",
     "lowercase-global",
     "duplicate-set-field",
-    "undefined-field"
+    "undefined-field",
+    "inject-field"
   ],
   "Lua.runtime.version": "LuaJIT",
   "editor.formatOnPaste": true,
