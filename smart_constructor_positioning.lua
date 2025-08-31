@@ -52,7 +52,7 @@ local SMART_POSITIONING_ON = 1
 local myTeamID = Spring.GetMyTeamID()
 local constructorUnits = {}
 local constructorDefs = {}
-local debugMode = true
+local debugMode = false
 
 -- Initialize constructor definitions
 local function initializeConstructorDefs()
