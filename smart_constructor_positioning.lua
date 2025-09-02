@@ -69,7 +69,7 @@ local SMART_POSITIONING_ON = 1
 local myTeamID = Spring.GetMyTeamID()
 local constructorUnits = {}
 local constructorDefs = {}
-local debugMode = true
+local debugMode = false
 local objectSpotlightAvailable = false
 
 -- Initialize constructor definitions
@@ -896,7 +896,9 @@ local function processConstructorPositioning(constructorID)
 		end
 		if command.id ~= CMD.REPAIR then
 			table.insert(buildCommands, {command = command, index = i})
-			echo('build command ' .. command.id .. ' at index ' .. i)
+			if debugMode then
+				echo('build command ' .. command.id .. ' at index ' .. i)
+			end
 			-- Check if constructor is standing in this building position
 			if not standingInBuildCommand and isStandingInBuilding(constructorID, command) then
 				standingInBuildIndex = i
@@ -1141,13 +1143,14 @@ end
 
 -- Widget event handlers
 function widget:Initialize()
-	initializeConstructorDefs()
 
 	-- Clean up if spectating
 	if Spring.GetSpectatingState() or Spring.IsReplay() then
 		widgetHandler:RemoveWidget()
 		return
 	end
+
+	initializeConstructorDefs()
 
 	-- Check if ObjectSpotlight is available and working
 	if WG['ObjectSpotlight'] and WG['ObjectSpotlight'].addSpotlight then
