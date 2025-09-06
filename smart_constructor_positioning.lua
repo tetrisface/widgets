@@ -1347,10 +1347,12 @@ function widget:ActiveCommandChanged(id, cmdType)
 		local cmdDef = UnitDefs[cmd]
 		local eff = GetUnitEffectiveBuildRange(selectedUnits[1])
 		local effCmd = GetUnitEffectiveBuildRange(selectedUnits[1], cmd)
-		Spring.Echo(
-			'buildrange def ' .. UnitDefs[defID].buildDistance .. ', eff ' .. eff .. ', eff cmd ' .. effCmd,
-			'radius cmd ' .. cmdDef.radius,
-			'radius con ' .. UnitDefs[defID].radius
-		)
+		if debugMode then
+			Spring.Echo(
+				'buildrange def ' .. UnitDefs[defID].buildDistance .. ', eff ' .. eff .. ', eff cmd ' .. (effCmd or 0),
+				'radius cmd ' .. cmdDef.radius,
+				'radius con ' .. UnitDefs[defID].radius
+			)
+		end
 	end
 end
