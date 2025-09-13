@@ -275,11 +275,11 @@ local function executeUnblockedBuilds()
     if queue.buildCmds and queue.orderedBuilds then
       local buildsToExecute = {}
 
-      -- Find builds with no blocking units
+      -- Find builds with no blocking units (originally unblocked OR became unblocked)
       for _, buildID in ipairs(queue.orderedBuilds) do
         local buildCmd = queue.buildCmds[buildID]
         if buildCmd and buildCmd.blockingUnits and #buildCmd.blockingUnits == 0 then
-          Log('Found unblocked build %s for builder %d: %s', buildID, builderID, UnitDefs[-buildCmd.id].name)
+          Log('Found unblocked build %s for builder %d: %s (temporal order preserved)', buildID, builderID, UnitDefs[-buildCmd.id].name)
           table.insert(buildsToExecute, {buildID = buildID, cmd = buildCmd})
         end
       end
@@ -446,14 +446,14 @@ local function findBuildersNearPosition(x, z, maxDistance)
         }
       )
 
-      Log(
-        '  Added builder: %s (ID: %d, distance: %.1f, range: %.1f, mobile: %s)',
-        unitDef.name or 'unknown',
-        unitID,
-        distance,
-        unitDef.buildDistance or 0,
-        tostring(unitDef.canMove or false)
-      )
+      -- Log(
+      --   '  Added builder: %s (ID: %d, distance: %.1f, range: %.1f, mobile: %s)',
+      --   unitDef.name or 'unknown',
+      --   unitID,
+      --   distance,
+      --   unitDef.buildDistance or 0,
+      --   tostring(unitDef.canMove or false)
+      -- )
     end
   end
 
@@ -503,19 +503,19 @@ local function queueReclaimOperation(obstructionType, obstructionID, position, u
   Log('Found %d total builders for reclaim operation', #builders)
 
   -- Log details about found builders
-  for i, builder in ipairs(builders) do
-    local builderDefID = Spring.GetUnitDefID(builder.unitID)
-    local builderDef = UnitDefs[builderDefID]
-    local builderName = builderDef and builderDef.name or 'unknown'
-    Log(
-      '  Found builder %d: %s (ID: %d, distance: %.1f, range: %.1f)',
-      i,
-      builderName,
-      builder.unitID,
-      builder.distance,
-      builder.buildRange
-    )
-  end
+  -- for i, builder in ipairs(builders) do
+    -- local builderDefID = Spring.GetUnitDefID(builder.unitID)
+    -- local builderDef = UnitDefs[builderDefID]
+    -- local builderName = builderDef and builderDef.name or 'unknown'
+    -- Log(
+    --   '  Found builder %d: %s (ID: %d, distance: %.1f, range: %.1f)',
+    --   i,
+    --   builderName,
+    --   builder.unitID,
+    --   builder.distance,
+    --   builder.buildRange
+    -- )
+  -- end
 
   local reclaimOp = {
     type = obstructionType,
@@ -574,12 +574,12 @@ local function executeReclaimOperations()
           effectiveRange
         )
       else
-        Log(
-          '  Builder %d too far (separation: %.1f > effective range: %.1f) - skipping',
-          builder.unitID,
-          separation,
-          effectiveRange
-        )
+        -- Log(
+        --   '  Builder %d too far (separation: %.1f > effective range: %.1f) - skipping',
+        --   builder.unitID,
+        --   separation,
+        --   effectiveRange
+        -- )
       end
     end
 
@@ -689,6 +689,8 @@ function widget:CommandNotify(id, params, options)
               local buildID = generateBuildID(selectedUnitID)
               globalSequenceCounter = globalSequenceCounter + 1
 
+              Log('  Queuing blocked build %s - reclaim will be handled by updateBuilderProgress', buildID)
+
               local buildCmd = {
                 id = id,
                 params = params,
@@ -704,42 +706,12 @@ function widget:CommandNotify(id, params, options)
                 addBlockingUnit(buildCmd, blockingUnit.unitID)
               end
 
-              -- Calculate position BEFORE adding to queue
-              local currentSpringCommands = Spring.GetUnitCommands(selectedUnitID, -1) or {}
-              local springBuildCount = 0
-              for _, cmd in ipairs(currentSpringCommands) do
-                if cmd.id < 0 then -- Build command
-                  springBuildCount = springBuildCount + 1
-                end
-              end
-              
-              -- Count existing widget-managed builds BEFORE adding this new one
-              local orderedBuilds = unitBuildQueues[selectedUnitID].orderedBuilds or {}
-              local existingWidgetBuilds = #orderedBuilds
-              local totalBuildPosition = (springBuildCount or 0) + existingWidgetBuilds + 1 -- +1 for this new build
-              
-              Log('  Position calculation: spring=%d, existing_widget=%d, total_pos=%d', springBuildCount, existingWidgetBuilds, totalBuildPosition)
-
               -- Add to both hash table and ordered list
               unitBuildQueues[selectedUnitID].buildCmds[buildID] = buildCmd
               table.insert(unitBuildQueues[selectedUnitID].orderedBuilds, buildID)
-              
-              -- Only reclaim if this build is in position 1 or 2 (current or next)
-              local shouldReclaimNow = (totalBuildPosition <= 2)
-              
-              if shouldReclaimNow then
-                Log('  IMMEDIATE RECLAIM: Build %s at position %d needs reclaiming', buildID, totalBuildPosition)
-                for _, blockingUnit in ipairs(detectedBlockingUnits) do
-                  local ux, _, uz = Spring.GetUnitPosition(blockingUnit.unitID)
-                  if ux and uz then
-                    if queueReclaimOperation('unit', blockingUnit.unitID, {ux, 0, uz}, selectedUnitID) then
-                      Log('  Immediate reclaim operation queued for blocking unit %d', blockingUnit.unitID)
-                    end
-                  end
-                end
-              else
-                Log('  DEFERRED RECLAIM: Build %s at position %d is too far ahead, deferring reclaim', buildID, totalBuildPosition)
-              end
+
+              -- NO IMMEDIATE RECLAIMING! Let updateBuilderProgress handle it based on actual build state
+              Log('  DEFERRED RECLAIM: Build %s will be handled by updateBuilderProgress when builder reaches it', buildID)
 
               Log(
                 '  Queued BLOCKED build %s for unit %d (total: %d commands, %d blockers)',
@@ -752,10 +724,8 @@ function widget:CommandNotify(id, params, options)
             end
 
             if buildQueued then
-              -- Execute reclaim operations immediately
-              executeReclaimOperations()
-
               -- Block the original command so we can handle it ourselves
+              -- No immediate reclaim execution - let updateBuilderProgress handle it
               return true
             end
           else
@@ -767,21 +737,21 @@ function widget:CommandNotify(id, params, options)
           if JIT_RECLAIM_ENABLED then
             -- Even for non-blocked builds, we need to queue them if we're managing build sequences
             local selectedUnits = Spring.GetSelectedUnits()
-            local hasActiveBlockedBuilds = false
+            local hasActiveQueuedBuilds = false
 
-            -- Check if any selected unit has blocked builds in queue
+            -- Check if any selected unit has ANY builds in queue (blocked OR unblocked)
             for _, selectedUnitID in ipairs(selectedUnits) do
               if
-                unitBuildQueues[selectedUnitID] and unitBuildQueues[selectedUnitID].buildCmds and
-                  #unitBuildQueues[selectedUnitID].buildCmds > 0
+                unitBuildQueues[selectedUnitID] and unitBuildQueues[selectedUnitID].orderedBuilds and
+                  #unitBuildQueues[selectedUnitID].orderedBuilds > 0
                then
-                hasActiveBlockedBuilds = true
+                hasActiveQueuedBuilds = true
                 break
               end
             end
 
-            if hasActiveBlockedBuilds then
-              Log('  Non-blocked build queued because other builds are blocked for same units')
+            if hasActiveQueuedBuilds then
+              Log('  Non-blocked build queued to preserve temporal order with existing queued builds')
 
               -- Queue this non-blocked build too so it executes in proper order
               for _, selectedUnitID in ipairs(selectedUnits) do
@@ -789,6 +759,8 @@ function widget:CommandNotify(id, params, options)
                   -- Generate unique build ID for non-blocked builds too
                   local buildID = generateBuildID(selectedUnitID)
                   globalSequenceCounter = globalSequenceCounter + 1
+                  
+                  Log('  Queuing non-blocked build %s for sequence preservation', buildID)
 
                   local buildCmd = {
                     id = id,
@@ -813,10 +785,8 @@ function widget:CommandNotify(id, params, options)
                 end
               end
 
-              -- Execute any unblocked builds immediately
-              executeUnblockedBuilds()
-
-              -- Block this command too so we can manage the sequence
+              -- Do NOT execute unblocked builds immediately - let updateBuilderProgress handle sequencing
+              -- Block this command so we can manage the temporal sequence
               return true
             end
           end
@@ -880,10 +850,10 @@ local function updateBuilderProgress(builderID)
   -- Calculate total builds (Spring queue + widget managed builds)
   local totalWidgetBuilds = #queue.orderedBuilds
   local totalBuilds = springBuildCount + totalWidgetBuilds
-  
+
   -- Calculate completed builds based on the difference
   local completedBuilds = math.max(0, totalBuilds - springBuildCount - totalWidgetBuilds)
-  
+
   -- If spring has builds, those are earlier in the sequence
   -- Widget builds start after all spring builds are done
   if springBuildCount > 0 then
@@ -909,25 +879,81 @@ local function updateBuilderProgress(builderID)
       totalWidgetBuilds
     )
 
-    -- Check if we need to start reclaiming for newly eligible builds
+    -- Check if we need to execute current build or start reclaiming for blocked builds
     if newCurrentBuildID then
       local currentBuildID, nextBuildID = getCurrentAndNextBuildIDs(builderID)
+      
+      -- Handle current build
+      if currentBuildID then
+        local currentBuildCmd = queue.buildCmds[currentBuildID]
+        if currentBuildCmd then
+          -- Check if current build is blocked or unblocked
+          if currentBuildCmd.blockingUnits and #currentBuildCmd.blockingUnits > 0 then
+            -- Current build is blocked - trigger reclaim
+            Log('Triggering reclaim for current build %s (blocked)', currentBuildID)
+            for _, blockingUnitID in ipairs(currentBuildCmd.blockingUnits) do
+              local ux, _, uz = Spring.GetUnitPosition(blockingUnitID)
+              if ux and uz then
+                queueReclaimOperation('unit', blockingUnitID, {ux, 0, uz}, builderID)
+              end
+            end
+          else
+            -- Current build is unblocked - execute it immediately (temporal order preserved)
+            Log('Executing unblocked build %s in temporal order', currentBuildID)
 
-      -- Check if next build needs reclaiming
+            -- Calculate options from the stored options
+            local opt = 0
+            if currentBuildCmd.options then
+              if currentBuildCmd.options.alt then opt = opt + CMD.OPT_ALT end
+              if currentBuildCmd.options.ctrl then opt = opt + CMD.OPT_CTRL end
+              if currentBuildCmd.options.shift then opt = opt + CMD.OPT_SHIFT end
+              if currentBuildCmd.options.right then opt = opt + CMD.OPT_RIGHT end
+            end
+
+            -- Insert at end of Spring queue
+            local currentCommands = Spring.GetUnitCommands(builderID, -1) or {}
+            local insertPos = #currentCommands
+            Log('  Inserting unblocked build at position %d in temporal sequence', insertPos)
+
+            Spring.GiveOrderToUnit(builderID, CMD.INSERT, {insertPos, currentBuildCmd.id, opt, unpack(currentBuildCmd.params)}, {'alt'})
+
+            -- Remove from both hash table and ordered list
+            queue.buildCmds[currentBuildID] = nil
+            for i, orderedBuildID in ipairs(queue.orderedBuilds) do
+              if orderedBuildID == currentBuildID then
+                table.remove(queue.orderedBuilds, i)
+                break
+              end
+            end
+
+            -- Update current build ID to next build or clean up empty queue
+            if #queue.orderedBuilds > 0 then
+              builderCurrentBuildID[builderID] = queue.orderedBuilds[1]
+            else
+              builderCurrentBuildID[builderID] = nil
+              unitBuildQueues[builderID] = nil
+              Log('Cleared empty build queue for builder %d after executing unblocked build', builderID)
+            end
+          end
+        end
+      end
+
+      -- Reclaim for next build if blocked
       if nextBuildID then
         local nextBuildCmd = queue.buildCmds[nextBuildID]
         if nextBuildCmd and nextBuildCmd.blockingUnits and #nextBuildCmd.blockingUnits > 0 then
-          Log('Triggering delayed reclaim for newly eligible build %s', nextBuildID)
-          -- Trigger reclaim for this newly eligible build
+          Log('Triggering reclaim for next build %s (blocked)', nextBuildID)
           for _, blockingUnitID in ipairs(nextBuildCmd.blockingUnits) do
             local ux, _, uz = Spring.GetUnitPosition(blockingUnitID)
             if ux and uz then
               queueReclaimOperation('unit', blockingUnitID, {ux, 0, uz}, builderID)
             end
           end
-          executeReclaimOperations()
         end
       end
+      
+      -- Execute all queued reclaim operations
+      executeReclaimOperations()
     end
   end
 end
@@ -1022,6 +1048,7 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
   if builderCurrentBuildID[unitID] then
     builderCurrentBuildID[unitID] = nil
   end
+  
 
   Log('=== END UNIT DESTROYED ===')
 end
@@ -1052,12 +1079,13 @@ function widget:Initialize()
   globalSequenceCounter = 0
   builderCurrentBuildID = {}
   buildIDCounter = 0
-  
-  Log('=== JIT Build Queue Reclaim Widget Initialized (v2.0 Position-Based) ===')
-  Log('This widget uses position-based just-ahead-of-time reclaiming:')
-  Log('- Only reclaims builds at positions 1-2 in the total build sequence')
-  Log('- Calculates position = Spring builds + Widget builds + 1')
-  Log('- Properly waits until builder approaches blocked builds')
+
+  Log('=== JIT Build Queue Reclaim Widget Initialized (v3.2 Sequential Execution) ===')
+  Log('This widget uses hash-based just-ahead-of-time reclaiming with sequential execution:')
+  Log('- Preserves perfect temporal build order - builds execute in exact queued sequence')
+  Log('- updateBuilderProgress executes builds sequentially: blocked (after reclaim) or unblocked (immediate)')
+  Log('- Only reclaims for current and next builds when builder actually reaches them')
+  Log('- No more queue reversal - unblocked builds wait their turn in the sequence')
   Log('Press F14 to toggle JIT reclaiming, F15 to clear all state')
 end
 
