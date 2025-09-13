@@ -35,7 +35,7 @@ local CMD_HOLO_PLACE_DESCRIPTION = {
     name = 'Holo Place',
     cursor = nil,
     action = 'holo_place',
-    params = {2, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
+    params = {1, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[2], 'Holo Place off')

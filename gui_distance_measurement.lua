@@ -10,6 +10,8 @@ function widget:GetInfo()
   }
 end
 
+VFS.Include('luaui/Widgets/helpers.lua')
+
 --------------------------------------------------------------------------------
 -- Configuration
 --------------------------------------------------------------------------------
@@ -24,8 +26,15 @@ local spGetModKeyState = Spring.GetModKeyState
 local spTraceScreenRay = Spring.TraceScreenRay
 local spGetSelectedUnits = Spring.GetSelectedUnits
 local spGetUnitPosition = Spring.GetUnitPosition
+local spGetUnitCommands = Spring.GetUnitCommands
+local spGetUnitSeparation = Spring.GetUnitSeparation
+local spGetUnitsInRectangle = Spring.GetUnitsInRectangle
+local spGetUnitRadius = Spring.GetUnitRadius
+local spEcho = Spring.Echo
 local math_sqrt = math.sqrt
 local math_floor = math.floor
+local math_min = math.min
+local math_max = math.max
 local string_format = string.format
 
 -- OpenGL speedups
@@ -122,17 +131,17 @@ function widget:DrawWorld()
   if not measurementActive then
     return
   end
-  
+
   local x, y = spGetMouseState()
   local _, cursorWorldPos = spTraceScreenRay(x, y, true)
-  
+
   if not cursorWorldPos then
     return
   end
-  
+
   local selectedUnits = spGetSelectedUnits()
   local startPos = nil
-  
+
   if #selectedUnits > 0 then
     -- Mode 1: Line from selected unit to cursor
     local unitID = selectedUnits[1]
@@ -144,16 +153,19 @@ function widget:DrawWorld()
     -- Mode 2: Line from set point to cursor
     startPos = startPoint
   end
-  
+
   if startPos then
     -- Draw line between start point and cursor
     glLineWidth(2.0)
-    glColor(1, 1, 1, 0.8)  -- White with some transparency
-    
-    glBeginEnd(GL_LINES, function()
-      glVertex(startPos[1], startPos[2], startPos[3])
-      glVertex(cursorWorldPos[1], cursorWorldPos[2], cursorWorldPos[3])
-    end)
+    glColor(1, 1, 1, 0.8) -- White with some transparency
+
+    glBeginEnd(
+      GL_LINES,
+      function()
+        glVertex(startPos[1], startPos[2], startPos[3])
+        glVertex(cursorWorldPos[1], cursorWorldPos[2], cursorWorldPos[3])
+      end
+    )
   end
 end
 
@@ -212,6 +224,125 @@ function widget:DrawScreen()
     font:End()
   end
 end
+
+-- function widget:Update(deltaTime)
+--   -- Get currently selected units
+--   local selectedUnits = spGetSelectedUnits()
+--   if #selectedUnits == 0 then
+--     return
+--   end
+
+--   local selectedUnitID = selectedUnits[1] -- Use first selected unit
+
+--   -- Get queued commands for the selected unit
+--   local commands = spGetUnitCommands(selectedUnitID, 1) -- Get first command only
+--   if not commands or #commands == 0 then
+--     return
+--   end
+
+--   local cmd = commands[1]
+--   if not cmd or cmd.id >= 0 then -- Only interested in build commands (negative IDs)
+--     return
+--   end
+
+--   -- Get unit positions
+--   local unitX, unitY, unitZ = spGetUnitPosition(selectedUnitID)
+--   if not unitX then
+--     return
+--   end
+
+--   local unitPos = {unitX, unitY, unitZ}
+--   local buildPos = {cmd.params[1], cmd.params[2], cmd.params[3]}
+
+--   -- Calculate distances using different methods
+
+--   -- 1. Simple positional calculation
+--   local simpleDistance = calculateDistance(unitPos, buildPos)
+
+--   -- 2. Effective build ranges for the queued command
+--   local effectiveBuildRange = Spring.GetUnitEffectiveBuildRange(selectedUnitID, -cmd.id) -- cmd.id is negative for build commands
+--   local effectiveBuildRangePatched = GetUnitEffectiveBuildRangePatched(selectedUnitID, -cmd.id)
+
+--   -- Check if build position is within range
+--   local isInRange = simpleDistance <= effectiveBuildRange
+--   local isInRangePatched = simpleDistance <= effectiveBuildRangePatched
+
+--   -- 3. Find unit at build position for GetUnitSeparation comparison
+--   local unitAtBuildPos = nil
+--   local searchRadius = 50 -- Small radius to find unit at exact build position
+--   local minX = buildPos[1] - searchRadius
+--   local maxX = buildPos[1] + searchRadius
+--   local minZ = buildPos[3] - searchRadius
+--   local maxZ = buildPos[3] + searchRadius
+
+--   local unitsAtPos = spGetUnitsInRectangle(minX, minZ, maxX, maxZ)
+--   for i, unitID in ipairs(unitsAtPos) do
+--     if unitID ~= selectedUnitID then
+--       local ux, uy, uz = spGetUnitPosition(unitID)
+--       if ux then
+--         local distance = calculateDistance({ux, uy, uz}, buildPos)
+--         if distance <= searchRadius then
+--           unitAtBuildPos = unitID
+--           break -- Found a unit at/near the build position
+--         end
+--       end
+--     end
+--   end
+
+--   -- Print the distance data (only every ~2 seconds to avoid spam)
+--   if not self.lastPrintTime then
+--     self.lastPrintTime = 0
+--   end
+--   self.lastPrintTime = self.lastPrintTime + deltaTime
+
+--   if self.lastPrintTime >= 2.0 then
+--     self.lastPrintTime = 0
+
+--     -- Always output distance analysis for queued commands
+--     spEcho("=== Queued Command Distance Analysis ===")
+--     spEcho(string_format("Simple Distance to Build Pos: %.2f", simpleDistance))
+--     spEcho(string_format("Effective Build Range: %.2f", effectiveBuildRange))
+--     spEcho(string_format("Effective Build Range Patched: %.2f", effectiveBuildRangePatched))
+--     spEcho(string_format("Range Status (Standard): %s", isInRange and "IN RANGE" or "OUT OF RANGE"))
+--     spEcho(string_format("Range Status (Patched): %s", isInRangePatched and "IN RANGE" or "OUT OF RANGE"))
+--     spEcho(string_format("Distance vs Standard Range: %.2f", simpleDistance - effectiveBuildRange))
+--     spEcho(string_format("Distance vs Patched Range: %.2f", simpleDistance - effectiveBuildRangePatched))
+
+--     -- GetUnitSeparation analysis with unit at build position
+--     if unitAtBuildPos then
+--       local unitRadius = spGetUnitRadius(selectedUnitID) or 0
+--       local targetRadius = spGetUnitRadius(unitAtBuildPos) or 0
+
+--       -- GetUnitSeparation without radii subtraction
+--       local sepNoRadii = spGetUnitSeparation(unitAtBuildPos, selectedUnitID, false, false)
+--       -- GetUnitSeparation with radii subtraction
+--       local sepWithRadii = spGetUnitSeparation(unitAtBuildPos, selectedUnitID, false, true)
+
+--       spEcho("")
+--       spEcho("=== GetUnitSeparation Analysis ===")
+--       spEcho(string_format("Unit at Build Position ID: %d", unitAtBuildPos))
+--       spEcho(string_format("Selected Unit Radius: %.2f", unitRadius))
+--       spEcho(string_format("Target Unit Radius: %.2f", targetRadius))
+--       spEcho(string_format("GetUnitSeparation (no radii): %.2f", sepNoRadii or 0))
+--       spEcho(string_format("GetUnitSeparation (with radii): %.2f", sepWithRadii or 0))
+--       spEcho(string_format("Radii difference: %.2f", (sepNoRadii or 0) - (sepWithRadii or 0)))
+
+--       -- Compare GetUnitSeparation with simple distance
+--       spEcho(string_format("Simple Distance vs GetUnitSeparation (no radii): %.2f", simpleDistance - (sepNoRadii or 0)))
+--       spEcho(string_format("Simple Distance vs GetUnitSeparation (with radii): %.2f", simpleDistance - (sepWithRadii or 0)))
+
+--       -- Range checks using GetUnitSeparation
+--       spEcho(string_format("GetUnitSeparation (no radii) <= Standard Range: %.1f", effectiveBuildRange - (sepNoRadii or 0)))
+--       spEcho(string_format("GetUnitSeparation (with radii) <= Standard Range: %.1f", effectiveBuildRange - (sepWithRadii or 0)))
+--       spEcho(string_format("GetUnitSeparation (no radii) <= Patched Range: %.1f", effectiveBuildRangePatched - (sepNoRadii or 0)))
+--       spEcho(string_format("GetUnitSeparation (with radii) <= Patched Range: %.1f", effectiveBuildRangePatched - (sepWithRadii or 0)))
+--     else
+--       spEcho("")
+--       spEcho("=== GetUnitSeparation Analysis ===")
+--       spEcho("No unit found at build position for GetUnitSeparation comparison")
+--     end
+--   end
+-- end
 
 --------------------------------------------------------------------------------
 -- Cleanup

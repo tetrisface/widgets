@@ -199,9 +199,7 @@ end
 LRUCacheTable = {}
 LRUCacheTable.__index = LRUCacheTable
 
--- Helper function to serialize a key (table with 3 elements) into a string
 local function serializeKey(key)
-    -- Assuming the key is a table with exactly 3 items
     return table.concat(key, "-")
 end
 
@@ -260,6 +258,12 @@ function LRUCacheTable:moveToEnd(serializedKey)
     table.insert(self.order, serializedKey)
 end
 
+function IsInBuildRange(reclaimer_unit_id, target_unit_id)
+	local separationNoRadii = Spring.GetUnitSeparation(target_unit_id, reclaimer_unit_id, false, false) or 0
+	return (Spring.GetUnitEffectiveBuildRange(reclaimer_unit_id, Spring.GetUnitDefID(target_unit_id)) or 0) - separationNoRadii > 0
+end
+
+
 function GetUnitEffectiveBuildRangePatched(unitID, cmd)
   if cmd == UnitDefNames['armwint2'].id then
     return 256
@@ -270,3 +274,16 @@ function GetUnitEffectiveBuildRangePatched(unitID, cmd)
   end
   return Spring.GetUnitEffectiveBuildRange(unitID, cmd)
 end
+
+-- -- lru cached version of the function
+-- local cache = LRUCacheTable:new(400)
+-- function __GetUnitEffectiveBuildRangePatched(unitID, cmd)
+--   local result = cache:get({unitID, cmd})
+--   if result then
+--     return result
+--   end
+--   result = _GetUnitEffectiveBuildRangePatched(unitID, cmd)
+--   cache:put({unitID, cmd}, result)
+--   return result
+-- end
+

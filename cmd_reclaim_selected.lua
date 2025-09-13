@@ -6,14 +6,16 @@ function widget:GetInfo()
 		date = '2025-04-01',
 		layer = 2,
 		enabled = false,
-		handler = true,
+		handler = true
 	}
 end
+
+VFS.Include('LuaUI/Widgets/helpers.lua')
 
 local CONFIG = {
 	-- shuffle reclaim selected orders when shuffle key is held
 	-- default keybind is space (32)
-	shuffle_key = 32,
+	shuffle_key = 32
 }
 
 local i18n = Spring.I18N
@@ -34,7 +36,7 @@ local CMD_RECLAIM_SELECTED_DESCRIPTION = {
 	type = CMDTYPE.ICON,
 	name = 'Reclaim Units',
 	cursor = nil,
-	action = 'reclaim_selected',
+	action = 'reclaim_selected'
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_RECLAIM_SELECTED_DESCRIPTION.action, 'Reclaim Selected')
@@ -52,25 +54,51 @@ for unit_def_id, unit_def in pairs(UnitDefs) do
 	end
 end
 
-local ALT = { 'alt' }
-local CMD_CACHE = { 0, CMD_RECLAIM, CMD_OPT_SHIFT, 0 }
+local ALT = {'alt'}
+local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
 local SHUFFLE_MODIFIER = false
 
 local function ntNearUnit(target_unit_id)
-	local pos = { GetUnitPosition(target_unit_id) }
-	local units_near = GetUnitsInCylinder(pos[1], pos[3], MAX_DISTANCE, -3)
+	local x, _, z = Spring.GetUnitBasePosition(target_unit_id)
+	local units_near = GetUnitsInCylinder(x, z, MAX_DISTANCE, -3)
+
 	local unit_ids = {}
 	for _, id in ipairs(units_near) do
-		local dist = NANO_DEFS[GetUnitDefID(id)]
-		if dist ~= nil and target_unit_id ~= id then
-			if dist > GetUnitSeparation(target_unit_id, id, true) then
-				unit_ids[#unit_ids + 1] = id
-			end
+		if IsInBuildRange(id, target_unit_id) then
+
+			unit_ids[#unit_ids + 1] = id
 		end
+		-- local dist = NANO_DEFS[GetUnitDefID(id)]
+		-- if dist ~= nil and target_unit_id ~= id then
+		-- 	if dist > GetUnitSeparation(target_unit_id, id, true) then
+		-- 		unit_ids[#unit_ids + 1] = id
+		-- 	end
+		-- end
 	end
 
 	return unit_ids
 end
+
+-- local function ntNearUnit(target_unit_id)
+-- 	local pos = {GetUnitPosition(target_unit_id)}
+-- 	local units_near = GetUnitsInCylinder(pos[1], pos[3], MAX_DISTANCE, -3)
+-- 	local unit_ids = {}
+-- 	local reclaimeeDefID = GetUnitDefID(target_unit_id)
+-- 	for _, reclaimerID in ipairs(units_near) do
+-- 		-- local dist = NANO_DEFS[reclaimerID]
+-- 		-- if dist ~= nil and target_unit_id ~= reclaimerID then
+-- 		-- if dist > GetUnitSeparation(target_unit_id, id, true) then
+-- 		-- distance between units
+-- 		local reclaimerPos = Spring.GetUnitBasePosition(reclaimerID)
+-- 		local unitDistances = Distance(reclaimerPos[1], reclaimerPos[3], pos[1], pos[3])
+-- 		if dist > GetUnitEffectiveBuildRangePatched(reclaimerID, reclaimeeDefID) then
+-- 			unit_ids[#unit_ids + 1] = reclaimerID
+-- 		-- end
+-- 		end
+-- 	end
+
+-- 	return unit_ids
+-- end
 
 local function signalReclaim(target_unit_id)
 	local unit_ids = ntNearUnit(target_unit_id)
@@ -87,7 +115,7 @@ local function signalReclaimShuffle(target_unit_ids)
 		tasks[i] = {
 			num_units = #unit_ids,
 			unit_ids = unit_ids,
-			target_unit_id = target_unit_ids[i],
+			target_unit_id = target_unit_ids[i]
 		}
 	end
 

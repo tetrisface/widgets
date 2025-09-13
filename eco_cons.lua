@@ -1018,7 +1018,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
   local builderDef = builder.def
   local features = {}
   local nFeaturesAll = 0
-  local builderPosX, _, builderPosZ = GetUnitBasePosition(builderId, true)
+  local builderPosX, _, builderPosZ = GetUnitBasePosition(builderId)
   -- log('builder ', builderId, builderDef.translatedHumanName, builder.def.radius)
   local candidateIds = GetUnitsInCylinder(builderPosX, builderPosZ, builderDef.buildDistance + 250, myTeamId)
   local candidatesDamaged = {}
@@ -1041,8 +1041,9 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
         local candidateDefId = GetUnitDefID(candidateId)
         local def = UnitDefs[candidateDefId]
         local candidatePosX, candidatePosZ = GetUnitBasePosition(candidateId)
-        local distance = math.sqrt((builderPosX - candidatePosX) ^ 2 + (builderPosZ - candidatePosZ) ^ 2)
-        if GetUnitEffectiveBuildRangePatched(builderId, candidateDefId) <= distance then
+        -- local distance = math.sqrt((builderPosX - candidatePosX) ^ 2 + (builderPosZ - candidatePosZ) ^ 2)
+        -- if GetUnitEffectiveBuildRangePatched(builderId, candidateDefId) <= distance then
+        if IsInBuildRange(builderId, candidateDefId) then
           local candidate = {
             id = candidateId,
             defId = candidateDefId,

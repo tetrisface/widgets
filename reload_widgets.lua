@@ -21,6 +21,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		Spring.SendCommands('enablewidget Reload Widgets')
 		Spring.SendCommands('disablewidget Smart Constructor Positioning')
 		Spring.SendCommands('enablewidget Smart Constructor Positioning')
+		Spring.SendCommands('disablewidget CMD JAOT Build Queue Reclaim')
+		Spring.SendCommands('enablewidget CMD JAOT Build Queue Reclaim')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then
