@@ -1,12 +1,12 @@
 function widget:GetInfo()
   return {
-    name = 'CMD JIT Build Queue Reclaim',
-    desc = 'Just-in-time build queue reclaiming',
+    name = 'CMD JAOT Build Queue Reclaim v9001',
+    desc = 'Just-Ahead-Of-Time build queue reclaiming',
     author = 'tetrisface',
     date = '2025-09-13',
     license = 'GNU GPL, v2 or later',
     layer = 0,
-    enabled = true
+    enabled = false
   }
 end
 
@@ -23,11 +23,10 @@ local unitBuildQueues = {} -- unitID -> {buildCmds = {}, nextSequence = 0}
 local reclaimQueue = {} -- Queue of reclaim operations to execute
 local processedCommands = {} -- Prevent duplicate command processing: "unitID_x_z_buildDefID" -> timestamp
 local globalSequenceCounter = 0 -- Global sequence counter for build order preservation
-local builderCurrentBuild = {} -- builderID -> current build index (0-based, matches Spring queue positions)
-local builderBuildIndex = {} -- builderID -> next index to assign to new builds
-local builderLastSpringBuildCount = {} -- builderID -> last known Spring build queue count
+local builderCurrentBuildHash = {} -- builderID -> hash of build currently being worked on
+local builderCompletedBuilds = {} -- builderID -> set of completed build hashes
 
--- Timing and performance  
+-- Timing and performance
 local RECLAIM_AHEAD_DISTANCE = 600 -- Start reclaiming this far ahead (nano turrets can have 500+ build distance)
 local MAX_RECLAIM_OPERATIONS = 8 -- Max simultaneous reclaim operations (increased for more builders)
 local debugMode = true
@@ -52,19 +51,71 @@ end
 
 -- JIT Reclaim System Functions
 
--- Check if we should reclaim for this build (current + next only)
-local function shouldReclaimForBuild(builderID, buildIndex)
-  local currentBuild = builderCurrentBuild[builderID] or 0
-  local maxLookahead = 1 -- Only current + next build
-  
-  -- Reclaim if this is the current build or the next build
-  local shouldReclaim = (buildIndex >= currentBuild) and (buildIndex <= currentBuild + maxLookahead)
-  
-  if debugMode then
-    Log('  Build reclaim check: builder %d, build index %d, current %d, should reclaim: %s', 
-        builderID, buildIndex, currentBuild, tostring(shouldReclaim))
+-- Create a unique hash for a building command (unit def + position + facing)
+local function createBuildingHash(buildCommand)
+  if not buildCommand or not buildCommand.params or not buildCommand.params[1] or not buildCommand.params[3] then
+    return nil
   end
-  
+
+  local buildeeDefID = -buildCommand.id
+  local buildX, buildZ = buildCommand.params[1], buildCommand.params[3]
+  local buildFacing = buildCommand.params[4] or 0
+
+  -- Round positions to avoid floating point precision issues
+  buildX = math.floor(buildX * 10) / 10
+  buildZ = math.floor(buildZ * 10) / 10
+
+  -- Create hash: unitDefID + position + facing
+  return string.format('%d_%.1f_%.1f_%d', buildeeDefID, buildX, buildZ, buildFacing)
+end
+
+-- Check if we should reclaim for this build (current + next only)
+local function shouldReclaimForBuild(builderID, buildHash, allBuildHashes)
+  if not builderID or not buildHash or not allBuildHashes then
+    return false
+  end
+
+  -- Find current build position in the ordered list
+  local currentBuildHash = builderCurrentBuildHash and builderCurrentBuildHash[builderID]
+  local currentPosition = 1 -- Default to first build if no current build
+
+  if currentBuildHash then
+    for i, hash in ipairs(allBuildHashes) do
+      if hash == currentBuildHash then
+        currentPosition = i
+        break
+      end
+    end
+  end
+
+  -- Find this build's position in the ordered list
+  local buildPosition = nil
+  for i, hash in ipairs(allBuildHashes) do
+    if hash == buildHash then
+      buildPosition = i
+      break
+    end
+  end
+
+  if not buildPosition then
+    return false
+  end
+
+  -- Reclaim if this is the current build or the next build (lookahead of 1)
+  local maxLookahead = 1
+  local shouldReclaim = (buildPosition >= currentPosition) and (buildPosition <= currentPosition + maxLookahead)
+
+  if debugMode then
+    Log(
+      '  Build reclaim check: builder %d, build hash %s at pos %d, current pos %d, should reclaim: %s',
+      builderID,
+      buildHash:sub(1, 20) .. '...',
+      buildPosition,
+      currentPosition,
+      tostring(shouldReclaim)
+    )
+  end
+
   return shouldReclaim
 end
 
@@ -102,7 +153,7 @@ local function executeBlockedBuilds(destroyedUnitID)
         totalCommandsProcessed = totalCommandsProcessed + 1
         if buildCmd.blockingUnits then
           local originalBlockerCount = #buildCmd.blockingUnits
-          
+
           -- Remove the destroyed unit from this command's blocking list
           local newBlockingUnits = {}
           local wasBlocking = false
@@ -116,13 +167,24 @@ local function executeBlockedBuilds(destroyedUnitID)
           buildCmd.blockingUnits = newBlockingUnits
 
           if wasBlocking then
-            Log('  Unit %d was blocking build command for builder %d (%d -> %d blockers)', 
-                destroyedUnitID, builderID, originalBlockerCount, #newBlockingUnits)
-                
+            Log(
+              '  Unit %d was blocking build command for builder %d (%d -> %d blockers)',
+              destroyedUnitID,
+              builderID,
+              originalBlockerCount,
+              #newBlockingUnits
+            )
+
             -- If no more blocking units, this command can be executed
             if #buildCmd.blockingUnits == 0 then
-              Log('  Build command for builder %d is now FULLY UNBLOCKED: %s at (%.1f, %.1f) [seq: %d]',
-                  builderID, UnitDefs[-buildCmd.id].name, buildCmd.params[1], buildCmd.params[3], buildCmd.sequence or 0)
+              Log(
+                '  Build command for builder %d is now FULLY UNBLOCKED: %s at (%.1f, %.1f) [seq: %d]',
+                builderID,
+                UnitDefs[-buildCmd.id].name,
+                buildCmd.params[1],
+                buildCmd.params[3],
+                buildCmd.sequence or 0
+              )
               table.insert(commandsToExecute, {index = i, cmd = buildCmd})
               foundBlockedBuilds = true
             else
@@ -134,45 +196,84 @@ local function executeBlockedBuilds(destroyedUnitID)
       end
 
       -- Sort commands by sequence to preserve original order
-      table.sort(commandsToExecute, function(a, b) 
-        return (a.cmd.sequence or 0) < (b.cmd.sequence or 0)
-      end)
-      
+      table.sort(
+        commandsToExecute,
+        function(a, b)
+          return (a.cmd.sequence or 0) < (b.cmd.sequence or 0)
+        end
+      )
+
       -- Execute unblocked commands in sequence order
       for _, cmdInfo in ipairs(commandsToExecute) do
         local buildCmd = cmdInfo.cmd
 
-        Log('Executing build command for builder %d: %s at (%.1f, %.1f, %.1f, %i) [seq: %d]', 
-            builderID, UnitDefs[-buildCmd.id].name, buildCmd.params[1], buildCmd.params[2], 
-            buildCmd.params[3], buildCmd.params[4] or 0, buildCmd.sequence or 0)
-        
+        Log(
+          'Executing build command for builder %d: %s at (%.1f, %.1f, %.1f, %i) [seq: %d]',
+          builderID,
+          UnitDefs[-buildCmd.id].name,
+          buildCmd.params[1],
+          buildCmd.params[2],
+          buildCmd.params[3],
+          buildCmd.params[4] or 0,
+          buildCmd.sequence or 0
+        )
+
         -- Calculate options from the stored options
         local opt = 0
         if buildCmd.options then
-          if buildCmd.options.alt then opt = opt + CMD.OPT_ALT end
-          if buildCmd.options.ctrl then opt = opt + CMD.OPT_CTRL end
-          if buildCmd.options.shift then opt = opt + CMD.OPT_SHIFT end
-          if buildCmd.options.right then opt = opt + CMD.OPT_RIGHT end
+          if buildCmd.options.alt then
+            opt = opt + CMD.OPT_ALT
+          end
+          if buildCmd.options.ctrl then
+            opt = opt + CMD.OPT_CTRL
+          end
+          if buildCmd.options.shift then
+            opt = opt + CMD.OPT_SHIFT
+          end
+          if buildCmd.options.right then
+            opt = opt + CMD.OPT_RIGHT
+          end
         end
-        
+
         -- For shift-queued commands, always append to end to preserve original sequence
-        local insertPos = 0  -- Default to front for immediate execution
-        
+        local insertPos = 0 -- Default to front for immediate execution
+
         if buildCmd.options and buildCmd.options.shift then
           -- Insert at end of current queue to preserve sequence order
           local currentCommands = Spring.GetUnitCommands(builderID, -1) or {}
-          insertPos = #currentCommands  -- Insert at very end
+          insertPos = #currentCommands -- Insert at very end
           Log('  Inserting at end of queue (pos: %d) due to shift queue [seq: %d]', insertPos, buildCmd.sequence or 0)
         else
           Log('  Inserting at front of queue for immediate execution [seq: %d]', buildCmd.sequence or 0)
         end
-        
+
         Spring.GiveOrderToUnit(builderID, CMD.INSERT, {insertPos, buildCmd.id, opt, unpack(buildCmd.params)}, {})
+
+        -- Update hash tracking: this build is now active in Spring's queue
+        if buildCmd.hash then
+          if not builderCurrentBuildHash then
+            builderCurrentBuildHash = {}
+          end
+          -- If this is the first command being executed, it becomes the current build
+          if not builderCurrentBuildHash[builderID] then
+            builderCurrentBuildHash[builderID] = buildCmd.hash
+            Log('  Set initial current build hash for builder %d: %s', builderID, buildCmd.hash:sub(1, 20) .. '...')
+          end
+        end
       end
-      
+
       -- Remove executed commands from queue (in reverse order to maintain indices)
-      table.sort(commandsToExecute, function(a, b) return a.index > b.index end)
+      table.sort(
+        commandsToExecute,
+        function(a, b)
+          return a.index > b.index
+        end
+      )
       for _, cmdInfo in ipairs(commandsToExecute) do
+        Log(
+          '  Removing executed command with hash: %s',
+          cmdInfo.cmd.hash and cmdInfo.cmd.hash:sub(1, 20) .. '...' or 'no hash'
+        )
         table.remove(queue.buildCmds, cmdInfo.index)
       end
 
@@ -184,9 +285,13 @@ local function executeBlockedBuilds(destroyedUnitID)
     end
   end
 
-  Log('EXECUTE BLOCKED BUILDS SUMMARY: Unit %d processed %d total commands, found blocked builds: %s', 
-      destroyedUnitID, totalCommandsProcessed, tostring(foundBlockedBuilds))
-      
+  Log(
+    'EXECUTE BLOCKED BUILDS SUMMARY: Unit %d processed %d total commands, found blocked builds: %s',
+    destroyedUnitID,
+    totalCommandsProcessed,
+    tostring(foundBlockedBuilds)
+  )
+
   if not foundBlockedBuilds then
     Log('Unit %d was not blocking any builds', destroyedUnitID)
   end
@@ -207,45 +312,84 @@ local function executeUnblockedBuilds()
       end
 
       -- Sort commands by sequence to preserve original order
-      table.sort(commandsToExecute, function(a, b) 
-        return (a.cmd.sequence or 0) < (b.cmd.sequence or 0)
-      end)
-      
+      table.sort(
+        commandsToExecute,
+        function(a, b)
+          return (a.cmd.sequence or 0) < (b.cmd.sequence or 0)
+        end
+      )
+
       -- Execute unblocked commands in sequence order
       for _, cmdInfo in ipairs(commandsToExecute) do
         local buildCmd = cmdInfo.cmd
 
-        Log('Executing unblocked build command for builder %d: %s at (%.1f, %.1f, %.1f, %i) [seq: %d]', 
-            builderID, UnitDefs[-buildCmd.id].name, buildCmd.params[1], buildCmd.params[2], 
-            buildCmd.params[3], buildCmd.params[4] or 0, buildCmd.sequence or 0)
-        
+        Log(
+          'Executing unblocked build command for builder %d: %s at (%.1f, %.1f, %.1f, %i) [seq: %d]',
+          builderID,
+          UnitDefs[-buildCmd.id].name,
+          buildCmd.params[1],
+          buildCmd.params[2],
+          buildCmd.params[3],
+          buildCmd.params[4] or 0,
+          buildCmd.sequence or 0
+        )
+
         -- Calculate options from the stored options
         local opt = 0
         if buildCmd.options then
-          if buildCmd.options.alt then opt = opt + CMD.OPT_ALT end
-          if buildCmd.options.ctrl then opt = opt + CMD.OPT_CTRL end
-          if buildCmd.options.shift then opt = opt + CMD.OPT_SHIFT end
-          if buildCmd.options.right then opt = opt + CMD.OPT_RIGHT end
+          if buildCmd.options.alt then
+            opt = opt + CMD.OPT_ALT
+          end
+          if buildCmd.options.ctrl then
+            opt = opt + CMD.OPT_CTRL
+          end
+          if buildCmd.options.shift then
+            opt = opt + CMD.OPT_SHIFT
+          end
+          if buildCmd.options.right then
+            opt = opt + CMD.OPT_RIGHT
+          end
         end
-        
+
         -- Get current unit commands to find proper insertion position
         local currentCommands = Spring.GetUnitCommands(builderID, -1) or {}
-        local insertPos = 0  -- Default to front for immediate execution
-        
+        local insertPos = 0 -- Default to front for immediate execution
+
         -- If this was a shift-queued command, insert at end
         if buildCmd.options and buildCmd.options.shift then
-          insertPos = #currentCommands  -- Insert at end of queue
+          insertPos = #currentCommands -- Insert at end of queue
           Log('  Inserting at end of queue (pos: %d) due to shift queue', insertPos)
         else
           Log('  Inserting at front of queue for immediate execution')
         end
-        
+
         Spring.GiveOrderToUnit(builderID, CMD.INSERT, {insertPos, buildCmd.id, opt, unpack(buildCmd.params)}, {})
+
+        -- Update hash tracking: this build is now active in Spring's queue
+        if buildCmd.hash then
+          if not builderCurrentBuildHash then
+            builderCurrentBuildHash = {}
+          end
+          -- If this is the first command being executed, it becomes the current build
+          if not builderCurrentBuildHash[builderID] then
+            builderCurrentBuildHash[builderID] = buildCmd.hash
+            Log('  Set initial current build hash for builder %d: %s', builderID, buildCmd.hash:sub(1, 20) .. '...')
+          end
+        end
       end
-      
-      -- Remove executed commands from queue (in reverse order to maintain indices)  
-      table.sort(commandsToExecute, function(a, b) return a.index > b.index end)
+
+      -- Remove executed commands from queue (in reverse order to maintain indices)
+      table.sort(
+        commandsToExecute,
+        function(a, b)
+          return a.index > b.index
+        end
+      )
       for _, cmdInfo in ipairs(commandsToExecute) do
+        Log(
+          '  Removing executed unblocked command with hash: %s',
+          cmdInfo.cmd.hash and cmdInfo.cmd.hash:sub(1, 20) .. '...' or 'no hash'
+        )
         table.remove(queue.buildCmds, cmdInfo.index)
       end
 
@@ -261,18 +405,20 @@ end
 -- Find units that would block a build in the footprint area
 local function findBlockingUnitsInFootprint(unitDefID, x, z, facing)
   local unitDef = UnitDefs[unitDefID]
-  if not unitDef then return {} end
+  if not unitDef then
+    return {}
+  end
 
   -- Get the footprint dimensions
-  local xsize = unitDef.xsize * 8  -- Convert to game units (8 units per square)
+  local xsize = unitDef.xsize * 8 -- Convert to game units (8 units per square)
   local zsize = unitDef.zsize * 8
 
   -- Create a search rectangle slightly larger than the footprint
-  local searchMargin = 16  -- Extra margin for safety
-  local searchX1 = x - (xsize/2) - searchMargin
-  local searchZ1 = z - (zsize/2) - searchMargin
-  local searchX2 = x + (xsize/2) + searchMargin
-  local searchZ2 = z + (zsize/2) + searchMargin
+  local searchMargin = 16 -- Extra margin for safety
+  local searchX1 = x - (xsize / 2) - searchMargin
+  local searchZ1 = z - (zsize / 2) - searchMargin
+  local searchX2 = x + (xsize / 2) + searchMargin
+  local searchZ2 = z + (zsize / 2) + searchMargin
 
   -- Find all units in the search rectangle
   local units = Spring.GetUnitsInRectangle(searchX1, searchZ1, searchX2, searchZ2, Spring.GetMyTeamID())
@@ -307,11 +453,14 @@ local function findBlockingUnitsInFootprint(unitDefID, x, z, facing)
           local overlapZ = math.abs(uz - z) < (unitZSize + buildHalfZ)
 
           if overlapX and overlapZ then
-            table.insert(blockingUnits, {
-              unitID = unitID,
-              position = {ux, 0, uz},
-              distance = math.sqrt((ux - x)^2 + (uz - z)^2)
-            })
+            table.insert(
+              blockingUnits,
+              {
+                unitID = unitID,
+                position = {ux, 0, uz},
+                distance = math.sqrt((ux - x) ^ 2 + (uz - z) ^ 2)
+              }
+            )
           end
         end
       end
@@ -333,23 +482,36 @@ local function findBuildersNearPosition(x, z, maxDistance)
 
     if unitDef and unitDef.isBuilder then
       local bx, _, bz = Spring.GetUnitPosition(unitID)
-      local distance = math.sqrt((bx - x)^2 + (bz - z)^2)
+      local distance = math.sqrt((bx - x) ^ 2 + (bz - z) ^ 2)
 
       -- Allow both mobile and immobile builders to reclaim
-      table.insert(builders, {
-        unitID = unitID,
-        distance = distance,
-        buildRange = unitDef.buildDistance or 0
-      })
+      table.insert(
+        builders,
+        {
+          unitID = unitID,
+          distance = distance,
+          buildRange = unitDef.buildDistance or 0
+        }
+      )
 
-      Log('  Added builder: %s (ID: %d, distance: %.1f, range: %.1f, mobile: %s)',
-          unitDef.name or "unknown", unitID, distance, unitDef.buildDistance or 0,
-          tostring(unitDef.canMove or false))
+      Log(
+        '  Added builder: %s (ID: %d, distance: %.1f, range: %.1f, mobile: %s)',
+        unitDef.name or 'unknown',
+        unitID,
+        distance,
+        unitDef.buildDistance or 0,
+        tostring(unitDef.canMove or false)
+      )
     end
   end
 
   -- Sort by distance (closest first)
-  table.sort(builders, function(a, b) return a.distance < b.distance end)
+  table.sort(
+    builders,
+    function(a, b)
+      return a.distance < b.distance
+    end
+  )
 
   return builders
 end
@@ -361,7 +523,12 @@ local function queueReclaimOperation(obstructionType, obstructionID, position, u
     return false
   end
 
-  Log('Searching for builders within %.1f units of position (%.1f, %.1f)', RECLAIM_AHEAD_DISTANCE, position[1], position[3])
+  Log(
+    'Searching for builders within %.1f units of position (%.1f, %.1f)',
+    RECLAIM_AHEAD_DISTANCE,
+    position[1],
+    position[3]
+  )
   local builders = findBuildersNearPosition(position[1], position[3], RECLAIM_AHEAD_DISTANCE)
 
   -- Remove the blocking unit from the builder list (can't reclaim itself!)
@@ -380,16 +547,22 @@ local function queueReclaimOperation(obstructionType, obstructionID, position, u
     Log('The blocking unit is the only builder in range - build will timeout and proceed')
     return false
   end
-  
+
   Log('Found %d total builders for reclaim operation', #builders)
 
   -- Log details about found builders
   for i, builder in ipairs(builders) do
     local builderDefID = Spring.GetUnitDefID(builder.unitID)
     local builderDef = UnitDefs[builderDefID]
-    local builderName = builderDef and builderDef.name or "unknown"
-    Log('  Found builder %d: %s (ID: %d, distance: %.1f, range: %.1f)',
-        i, builderName, builder.unitID, builder.distance, builder.buildRange)
+    local builderName = builderDef and builderDef.name or 'unknown'
+    Log(
+      '  Found builder %d: %s (ID: %d, distance: %.1f, range: %.1f)',
+      i,
+      builderName,
+      builder.unitID,
+      builder.distance,
+      builder.buildRange
+    )
   end
 
   local reclaimOp = {
@@ -418,7 +591,9 @@ end
 
 -- Execute reclaim operations immediately (not queued)
 local function executeReclaimOperations()
-  if #reclaimQueue == 0 then return end
+  if #reclaimQueue == 0 then
+    return
+  end
 
   local operationsToRemove = {}
 
@@ -431,18 +606,28 @@ local function executeReclaimOperations()
     for _, builder in ipairs(builders) do
       -- Use the more accurate IsInBuildRange function from helpers.lua
       local inRange = IsInBuildRange(builder.unitID, operation.id)
-      
+
       -- Get range info for logging (with safety checks)
       local effectiveRange = Spring.GetUnitEffectiveBuildRange(builder.unitID, Spring.GetUnitDefID(operation.id)) or 0
       local separation = Spring.GetUnitSeparation(operation.id, builder.unitID, false, false) or 0
-      
+
       if inRange then
         table.insert(builderUnitIDs, builder.unitID)
-        Log('  Commanding builder %d to reclaim %s %d (separation: %.1f, effective range: %.1f)', 
-            builder.unitID, operation.type, operation.id, separation, effectiveRange)
+        Log(
+          '  Commanding builder %d to reclaim %s %d (separation: %.1f, effective range: %.1f)',
+          builder.unitID,
+          operation.type,
+          operation.id,
+          separation,
+          effectiveRange
+        )
       else
-        Log('  Builder %d too far (separation: %.1f > effective range: %.1f) - skipping', 
-            builder.unitID, separation, effectiveRange)
+        Log(
+          '  Builder %d too far (separation: %.1f > effective range: %.1f) - skipping',
+          builder.unitID,
+          separation,
+          effectiveRange
+        )
       end
     end
 
@@ -451,8 +636,13 @@ local function executeReclaimOperations()
       local reclaimCommand = {0, CMD.RECLAIM, CMD.OPT_SHIFT, targetID}
       Spring.GiveOrderToUnitArray(builderUnitIDs, CMD.INSERT, reclaimCommand, {'alt'})
 
-      Log('Issued immediate reclaim command to %d builders for %s %d (IDs: %s)',
-           #builderUnitIDs, operation.type, operation.id, table.concat(builderUnitIDs, ", "))
+      Log(
+        'Issued immediate reclaim command to %d builders for %s %d (IDs: %s)',
+        #builderUnitIDs,
+        operation.type,
+        operation.id,
+        table.concat(builderUnitIDs, ', ')
+      )
     else
       Log('No builders in range to execute reclaim for %s %d', operation.type, operation.id)
     end
@@ -469,50 +659,96 @@ end
 
 -- Update builder's current build position and trigger reclaiming for newly eligible builds
 local function updateBuilderPosition(builderID)
-  local commands = Spring.GetUnitCommands(builderID, -1) or {}
-  local oldPosition = builderCurrentBuild[builderID] or 0
+  if not builderID or not Spring.ValidUnitID(builderID) then
+    return
+  end
 
-  -- Simple approach: count build commands remaining in Spring's queue
-  -- The current build index is how many builds we've completed
-  local springBuildCount = 0
+  local commands = Spring.GetUnitCommands(builderID, -1) or {}
+  local oldBuildHash = builderCurrentBuildHash and builderCurrentBuildHash[builderID]
+
+  -- Find the first build command in Spring's queue (this is what the builder is currently working on)
+  local currentSpringBuildCmd = nil
+  local buildCommandCount = 0
   for _, cmd in ipairs(commands) do
     if cmd.id < 0 then -- Build command
-      springBuildCount = springBuildCount + 1
+      buildCommandCount = buildCommandCount + 1
+      if not currentSpringBuildCmd then
+        currentSpringBuildCmd = cmd
+      end
     end
   end
 
-  -- If we have fewer builds in queue than before, we've advanced
-  local lastBuildCount = builderLastSpringBuildCount[builderID] or 0
-  builderLastSpringBuildCount[builderID] = springBuildCount
-  
-  -- Only advance position if build count actually decreased (builds completed)
-  if springBuildCount < lastBuildCount then
-    local buildsCompleted = lastBuildCount - springBuildCount
-    local newPosition = oldPosition + buildsCompleted
-    builderCurrentBuild[builderID] = newPosition
-    
-    Log('Builder %d advanced from position %d to %d (%d builds completed, %d remaining in queue)',
-        builderID, oldPosition, newPosition, buildsCompleted, springBuildCount)
+  if debugMode and buildCommandCount > 0 then
+    Log(
+      'Builder %d has %d build commands in Spring queue, first is: %s',
+      builderID,
+      buildCommandCount,
+      currentSpringBuildCmd and UnitDefs[-currentSpringBuildCmd.id].name or 'none'
+    )
+  end
+
+  local newBuildHash = nil
+  if currentSpringBuildCmd then
+    -- Create a temporary build command object to generate hash
+    local tempBuildCmd = {
+      id = currentSpringBuildCmd.id,
+      params = currentSpringBuildCmd.params
+    }
+    newBuildHash = createBuildingHash(tempBuildCmd)
+  end
+
+  -- Check if we've advanced to a different build
+  if newBuildHash ~= oldBuildHash then
+    if not builderCurrentBuildHash then
+      builderCurrentBuildHash = {}
+    end
+    builderCurrentBuildHash[builderID] = newBuildHash
+
+    -- Mark the previous build as completed
+    if oldBuildHash then
+      if not builderCompletedBuilds then
+        builderCompletedBuilds = {}
+      end
+      if not builderCompletedBuilds[builderID] then
+        builderCompletedBuilds[builderID] = {}
+      end
+      builderCompletedBuilds[builderID][oldBuildHash] = true
+      Log(
+        'Builder %d completed build: %s, now working on: %s',
+        builderID,
+        oldBuildHash:sub(1, 20) .. '...',
+        newBuildHash and (newBuildHash:sub(1, 20) .. '...') or 'none'
+      )
+    end
 
     -- Check if we need to start reclaiming for newly eligible builds
     if unitBuildQueues[builderID] and unitBuildQueues[builderID].buildCmds then
       local newlyEligibleBuilds = {}
-      
+
+      -- Get all build hashes for this builder in order
+      local allBuildHashes = {}
+      for _, cmd in ipairs(unitBuildQueues[builderID].buildCmds) do
+        if cmd.hash then
+          table.insert(allBuildHashes, cmd.hash)
+        end
+      end
+
       for _, buildCmd in ipairs(unitBuildQueues[builderID].buildCmds) do
         -- Only trigger reclaim for builds that:
         -- 1. Are newly eligible (within current+next range)
         -- 2. Have blocking units
         -- 3. Haven't already been marked for reclaim
-        if shouldReclaimForBuild(builderID, buildCmd.buildIndex) 
-           and buildCmd.blockingUnits and #buildCmd.blockingUnits > 0 
-           and not buildCmd.needsReclaim then
-          
-          Log('Triggering delayed reclaim for newly eligible build at index %d', buildCmd.buildIndex)
+        if
+          shouldReclaimForBuild(builderID, buildCmd.hash, allBuildHashes) and buildCmd.blockingUnits and
+            #buildCmd.blockingUnits > 0 and
+            not buildCmd.needsReclaim
+         then
+          Log('Triggering delayed reclaim for newly eligible build: %s', buildCmd.hash:sub(1, 20) .. '...')
           buildCmd.needsReclaim = true -- Mark as now needing reclaim
           table.insert(newlyEligibleBuilds, buildCmd)
         end
       end
-      
+
       -- Queue reclaim operations for newly eligible builds
       for _, buildCmd in ipairs(newlyEligibleBuilds) do
         for _, blockingUnitID in ipairs(buildCmd.blockingUnits) do
@@ -522,7 +758,7 @@ local function updateBuilderPosition(builderID)
           end
         end
       end
-      
+
       if #newlyEligibleBuilds > 0 then
         Log('Executing delayed reclaim operations for %d newly eligible builds', #newlyEligibleBuilds)
         executeReclaimOperations()
@@ -569,7 +805,7 @@ function widget:CommandNotify(id, params, options)
         if processedCommands[commandKey] and (currentTime - processedCommands[commandKey]) < 1.0 then
           Log('  DUPLICATE COMMAND DETECTED - Ignoring: %s', commandKey)
           Log('=== END COMMAND NOTIFY ===')
-          return true  -- Block duplicate
+          return true -- Block duplicate
         end
 
         -- Mark this command as processed
@@ -604,25 +840,31 @@ function widget:CommandNotify(id, params, options)
               -- Initialize builder state
               if not unitBuildQueues[selectedUnitID] then
                 unitBuildQueues[selectedUnitID] = {buildCmds = {}}
-                builderCurrentBuild[selectedUnitID] = 0
-                builderBuildIndex[selectedUnitID] = 0
-                builderLastSpringBuildCount[selectedUnitID] = 0
+                builderCompletedBuilds[selectedUnitID] = {}
               end
 
-              -- Create the build command with sequence tracking
+              -- Create the build command with hash-based tracking
               globalSequenceCounter = globalSequenceCounter + 1
-              local buildIndex = builderBuildIndex[selectedUnitID]
-              builderBuildIndex[selectedUnitID] = buildIndex + 1
-              
+
               local buildCmd = {
                 id = id,
                 params = params,
                 options = options,
                 timestamp = Spring.GetGameSeconds(),
                 blockingUnits = {}, -- Will be populated below
-                sequence = globalSequenceCounter, -- For order preservation
-                buildIndex = buildIndex -- Position in builder's queue
+                sequence = globalSequenceCounter -- For order preservation
               }
+
+              -- Create hash for this build command
+              buildCmd.hash = createBuildingHash(buildCmd)
+              if not buildCmd.hash then
+                Log('ERROR: Failed to create hash for build command - this will cause builds to be lost!')
+                Log('  Build ID: %d, params: [%s]', id, params and table.concat(params, ', ') or 'nil')
+                -- Continue anyway to avoid losing the build completely
+                buildCmd.hash =
+                  string.format('fallback_%d_%d_%s', selectedUnitID, globalSequenceCounter, tostring(os.time()))
+                Log('  Using fallback hash: %s', buildCmd.hash)
+              end
 
               -- Add blocking units to this specific build command
               for _, blockingUnit in ipairs(detectedBlockingUnits) do
@@ -631,12 +873,20 @@ function widget:CommandNotify(id, params, options)
 
               -- Add to the queue
               table.insert(unitBuildQueues[selectedUnitID].buildCmds, buildCmd)
-              
+
+              -- Get all build hashes for this builder in order (for shouldReclaimForBuild)
+              local allBuildHashes = {}
+              for _, cmd in ipairs(unitBuildQueues[selectedUnitID].buildCmds) do
+                if cmd.hash then
+                  table.insert(allBuildHashes, cmd.hash)
+                end
+              end
+
               -- Only reclaim if this is current or next build
-              if shouldReclaimForBuild(selectedUnitID, buildIndex) then
-                Log('  IMMEDIATE RECLAIM: Build at index %d needs reclaiming', buildIndex)
+              if shouldReclaimForBuild(selectedUnitID, buildCmd.hash, allBuildHashes) then
+                Log('  IMMEDIATE RECLAIM: Build %s needs reclaiming', buildCmd.hash:sub(1, 20) .. '...')
                 buildCmd.needsReclaim = true -- Mark for immediate reclaim
-                
+
                 -- Actually queue reclaim operations for immediate builds only
                 for _, blockingUnit in ipairs(detectedBlockingUnits) do
                   local ux, _, uz = Spring.GetUnitPosition(blockingUnit.unitID)
@@ -647,14 +897,21 @@ function widget:CommandNotify(id, params, options)
                   end
                 end
               else
-                Log('  DEFERRED RECLAIM: Build at index %d is too far ahead, deferring reclaim (current: %d)', 
-                    buildIndex, builderCurrentBuild[selectedUnitID] or 0)
-                buildCmd.needsReclaim = false -- Mark as deferred
                 -- NO reclaim operations queued - truly deferred!
+                Log(
+                  '  DEFERRED RECLAIM: Build %s is too far ahead, deferring reclaim',
+                  buildCmd.hash:sub(1, 20) .. '...'
+                )
+                buildCmd.needsReclaim = false -- Mark as deferred
               end
 
-              Log('  Queued BLOCKED build command for unit %d: index %d (total: %d commands, %d blockers)',
-                  selectedUnitID, buildIndex, #unitBuildQueues[selectedUnitID].buildCmds, #buildCmd.blockingUnits)
+              Log(
+                '  Queued BLOCKED build command for unit %d: hash %s (total: %d commands, %d blockers)',
+                selectedUnitID,
+                buildCmd.hash:sub(1, 20) .. '...',
+                #unitBuildQueues[selectedUnitID].buildCmds,
+                #buildCmd.blockingUnits
+              )
               buildQueued = true
             end
 
@@ -670,9 +927,11 @@ function widget:CommandNotify(id, params, options)
                     end
                   end
                 end
-                if hasImmediateReclaims then break end
+                if hasImmediateReclaims then
+                  break
+                end
               end
-              
+
               if hasImmediateReclaims then
                 Log('Executing reclaim operations for immediate builds only')
                 executeReclaimOperations()
@@ -696,7 +955,10 @@ function widget:CommandNotify(id, params, options)
 
             -- Check if any selected unit has blocked builds in queue
             for _, selectedUnitID in ipairs(selectedUnits) do
-              if unitBuildQueues[selectedUnitID] and unitBuildQueues[selectedUnitID].buildCmds and #unitBuildQueues[selectedUnitID].buildCmds > 0 then
+              if
+                unitBuildQueues[selectedUnitID] and unitBuildQueues[selectedUnitID].buildCmds and
+                  #unitBuildQueues[selectedUnitID].buildCmds > 0
+               then
                 hasActiveBlockedBuilds = true
                 break
               end
@@ -709,22 +971,36 @@ function widget:CommandNotify(id, params, options)
               for _, selectedUnitID in ipairs(selectedUnits) do
                 if unitBuildQueues[selectedUnitID] then
                   globalSequenceCounter = globalSequenceCounter + 1
-                  local buildIndex = builderBuildIndex[selectedUnitID]
-                  builderBuildIndex[selectedUnitID] = buildIndex + 1
-                  
+
                   local buildCmd = {
                     id = id,
                     params = params,
                     options = options,
                     timestamp = Spring.GetGameSeconds(),
                     blockingUnits = {}, -- No blocking units
-                    sequence = globalSequenceCounter, -- For order preservation
-                    buildIndex = buildIndex -- Position in builder's queue
+                    sequence = globalSequenceCounter -- For order preservation
                   }
 
+                  -- Create hash for this build command
+                  buildCmd.hash = createBuildingHash(buildCmd)
+                  if not buildCmd.hash then
+                    Log(
+                      'ERROR: Failed to create hash for non-blocked build command - this will cause builds to be lost!'
+                    )
+                    Log('  Build ID: %d, params: [%s]', id, params and table.concat(params, ', ') or 'nil')
+                    -- Continue anyway to avoid losing the build completely
+                    buildCmd.hash =
+                      string.format('fallback_%d_%d_%s', selectedUnitID, globalSequenceCounter, tostring(os.time()))
+                    Log('  Using fallback hash: %s', buildCmd.hash)
+                  end
+
                   table.insert(unitBuildQueues[selectedUnitID].buildCmds, buildCmd)
-                  Log('  Queued NON-BLOCKED build command for unit %d: index %d (total: %d commands)', 
-                      selectedUnitID, buildIndex, #unitBuildQueues[selectedUnitID].buildCmds)
+                  Log(
+                    '  Queued NON-BLOCKED build command for unit %d: hash %s (total: %d commands)',
+                    selectedUnitID,
+                    buildCmd.hash:sub(1, 20) .. '...',
+                    #unitBuildQueues[selectedUnitID].buildCmds
+                  )
                 end
               end
 
@@ -761,9 +1037,8 @@ function widget:KeyPress(key, mods, isRepeat)
   elseif key == KEYSYMS.F15 then
     -- Clear all widget state
     unitBuildQueues = {}
-    builderCurrentBuild = {}
-    builderBuildIndex = {}
-    builderLastSpringBuildCount = {}
+    builderCurrentBuildHash = {}
+    builderCompletedBuilds = {}
     reclaimQueue = {}
     processedCommands = {}
     globalSequenceCounter = 0
@@ -774,7 +1049,6 @@ function widget:KeyPress(key, mods, isRepeat)
   return false
 end
 
-
 function widget:GameFrame(gameFrame)
   -- Update builder positions every 10 frames (~1/3 second) to check for advancement
   if gameFrame % 10 == 0 then
@@ -784,9 +1058,36 @@ function widget:GameFrame(gameFrame)
       end
     end
   end
-  
+
+  -- Debug: Show stuck builds every 30 frames (once per second) if debug mode is on
+  if debugMode and gameFrame % 30 == 0 then
+    for builderID, queue in pairs(unitBuildQueues) do
+      if queue.buildCmds and #queue.buildCmds > 0 then
+        local blockedCount = 0
+        local unblockedCount = 0
+        for _, cmd in ipairs(queue.buildCmds) do
+          if cmd.blockingUnits and #cmd.blockingUnits > 0 then
+            blockedCount = blockedCount + 1
+          else
+            unblockedCount = unblockedCount + 1
+          end
+        end
+
+        if unblockedCount > 0 then
+          Log(
+            'DEBUG: Builder %d has %d unblocked builds waiting (total: %d blocked, %d unblocked)',
+            builderID,
+            unblockedCount,
+            blockedCount,
+            unblockedCount
+          )
+        end
+      end
+    end
+  end
+
   -- Clean up old processed commands every 30 seconds to prevent memory leaks
-  if gameFrame % 900 == 0 then  -- 30 seconds at 30fps
+  if gameFrame % 900 == 0 then -- 30 seconds at 30fps
     local currentTime = Spring.GetGameSeconds()
     local keysToRemove = {}
 
@@ -808,7 +1109,12 @@ end
 
 -- Unit lifecycle management
 function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
-  Log('=== UNIT DESTROYED: %d (DefID: %s, Team: %d) ===', unitID, unitDefID and UnitDefs[unitDefID].name or "unknown", unitTeam)
+  Log(
+    '=== UNIT DESTROYED: %d (DefID: %s, Team: %d) ===',
+    unitID,
+    unitDefID and UnitDefs[unitDefID].name or 'unknown',
+    unitTeam
+  )
 
   -- Debug: Show current build queues with blocking info
   Log('Current build queues before processing:')
@@ -822,8 +1128,14 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
         for i, cmd in ipairs(queue.buildCmds) do
           local blockerCount = cmd.blockingUnits and #cmd.blockingUnits or 0
           local blockerList = cmd.blockingUnits and table.concat(cmd.blockingUnits, ', ') or 'none'
-          Log('    Command %d (seq: %d): %s, blocked by %d units (%s)', 
-              i, cmd.sequence or 0, UnitDefs[-cmd.id].name, blockerCount, blockerList)
+          Log(
+            '    Command %d (seq: %d): %s, blocked by %d units (%s)',
+            i,
+            cmd.sequence or 0,
+            UnitDefs[-cmd.id].name,
+            blockerCount,
+            blockerList
+          )
         end
       end
     end
@@ -840,12 +1152,14 @@ function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
     Log('Cleaning up build queue for destroyed unit %d (had %d commands)', unitID, queueSize)
     unitBuildQueues[unitID] = nil
   end
-  
+
   -- Clean up position tracking
-  builderCurrentBuild[unitID] = nil
-  builderBuildIndex[unitID] = nil
-  builderLastSpringBuildCount[unitID] = nil
-  builderLastSpringBuildCount[unitID] = nil
+  if builderCurrentBuildHash then
+    builderCurrentBuildHash[unitID] = nil
+  end
+  if builderCompletedBuilds then
+    builderCompletedBuilds[unitID] = nil
+  end
 
   Log('=== END UNIT DESTROYED ===')
 end
@@ -856,9 +1170,13 @@ function widget:UnitGiven(unitID, unitDefID, unitTeam, oldTeam)
     Log('Cleaning up build queue for transferred unit %d', unitID)
     unitBuildQueues[unitID] = nil
   end
-  builderCurrentBuild[unitID] = nil
-  builderBuildIndex[unitID] = nil
-  builderLastSpringBuildCount[unitID] = nil
+  -- Clean up position tracking
+  if builderCurrentBuildHash then
+    builderCurrentBuildHash[unitID] = nil
+  end
+  if builderCompletedBuilds then
+    builderCompletedBuilds[unitID] = nil
+  end
 end
 
 function widget:UnitTaken(unitID, unitDefID, unitTeam, newTeam)
@@ -867,9 +1185,13 @@ function widget:UnitTaken(unitID, unitDefID, unitTeam, newTeam)
     Log('Cleaning up build queue for taken unit %d', unitID)
     unitBuildQueues[unitID] = nil
   end
-  builderCurrentBuild[unitID] = nil
-  builderBuildIndex[unitID] = nil
-  builderLastSpringBuildCount[unitID] = nil
+  -- Clean up position tracking
+  if builderCurrentBuildHash then
+    builderCurrentBuildHash[unitID] = nil
+  end
+  if builderCompletedBuilds then
+    builderCompletedBuilds[unitID] = nil
+  end
 end
 
 function widget:Initialize()
@@ -885,4 +1207,3 @@ end
 function widget:Shutdown()
   Log('JIT Build Queue Reclaim Widget shutting down')
 end
-
