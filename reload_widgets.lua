@@ -21,6 +21,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		Spring.SendCommands('enablewidget Reload Widgets')
 		Spring.SendCommands('disablewidget Animated Pacman')
 		Spring.SendCommands('enablewidget Animated Pacman')
+		Spring.SendCommands('disablewidget Raptor Stats Panel With Eco Attraction')
+		Spring.SendCommands('enablewidget Raptor Stats Panel With Eco Attraction')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then

@@ -861,8 +861,15 @@ function widget:MouseMove(_, _, dx, dy)
 	end
 end
 
+local function isMouseWithinPanel(x, y)
+	if not x or not y then
+		x, y = Spring.GetMouseState()
+	end
+	return x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale)
+end
+
 function widget:MousePress(x, y)
-	if x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale) then
+	if isMouseWithinPanel(x, y) then
 		isMovingWindow = true
 	end
 	return isMovingWindow
@@ -893,6 +900,7 @@ function widget:LanguageChanged()
 	refreshMarqueeMessage = true
 	updatePanel = true
 end
+local isCtrlDown = false
 
 function widget:KeyPress(key, mods, isRepeat)
 	if isRepeat then
@@ -903,4 +911,33 @@ function widget:KeyPress(key, mods, isRepeat)
 		updatePanel = true
 		return
 	end
+	if mods.ctrl then
+		isCtrlDown = true
+	end
+end
+
+function widget:KeyRelease(key)
+	if key == KEYSYMS.LCTRL then
+		isCtrlDown = false
+	end
+end
+
+-- on ctrl +mouse wheel up/down, change the scale of the panel (customScale)
+function widget:MouseWheel(up, value)
+	-- is mouse within panel
+	if isCtrlDown and isMouseWithinPanel() then
+		customScale = customScale + (up and 0.02 or -0.02)
+		vsx, vsy = Spring.GetViewGeometry()
+
+		font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+		font2 = WG['fonts'].getFont(fontfile2)
+		font2:SetTextColor(1, 1, 1, 1)
+		font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+
+		viewSizeX, viewSizeY = vsx, vsy
+		widgetScale = (0.75 + (viewSizeX * viewSizeY / 10000000)) * customScale
+		updatePanel = true
+		return true
+	end
+	return false
 end
