@@ -19,10 +19,8 @@ function widget:KeyPress(key, mods, isRepeat)
 	if key == KEYSYMS.R and mods['ctrl'] then
 		Spring.SendCommands('disablewidget Reload Widgets')
 		Spring.SendCommands('enablewidget Reload Widgets')
-		Spring.SendCommands('disablewidget Smart Constructor Positioning')
-		Spring.SendCommands('enablewidget Smart Constructor Positioning')
-		Spring.SendCommands('disablewidget CMD JAOT Build Queue Reclaim')
-		Spring.SendCommands('enablewidget CMD JAOT Build Queue Reclaim')
+		Spring.SendCommands('disablewidget Animated Pacman')
+		Spring.SendCommands('enablewidget Animated Pacman')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then

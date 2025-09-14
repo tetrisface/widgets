@@ -29,7 +29,7 @@ local buildIDCounter = 0 -- Simple counter for generating unique build IDs
 -- Timing and performance
 local RECLAIM_AHEAD_DISTANCE = 5000
 local MAX_RECLAIM_OPERATIONS = 8 -- Max simultaneous reclaim operations (increased for more builders)
-local debugMode = true
+local debugMode = false
 
 -- Simplified logging function
 local function Log(message, ...)
