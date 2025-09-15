@@ -79,8 +79,8 @@ local colors = {
 
 local panelFontSize = 14
 local waveFontSize = 36
-local customScale = 1
-local widgetScale = customScale
+local panelScale = 1
+local screenScale = 1
 local w = 300
 local h = 210
 local panelMarginX = 30
@@ -325,8 +325,8 @@ local function UpdatePlayerEcoAttractionRender()
 end
 
 local function updatePos(x, y)
-	local x0 = (viewSizeX * 0.94) - (w * widgetScale) / 2
-	local y0 = (viewSizeY * 0.89) - (h * widgetScale) / 2
+	local x0 = (viewSizeX * 0.94) - (w * panelScale) / 2
+	local y0 = (viewSizeY * 0.89) - (h * panelScale) / 2
 	x1 = x0 < x and x0 or x
 	y1 = y0 < y and y0 or y
 
@@ -392,7 +392,7 @@ local function CreatePanelDisplayList()
 
 	gl.PushMatrix()
 	gl.Translate(x1, y1, 0)
-	gl.Scale(widgetScale, widgetScale, 1)
+	gl.Scale(panelScale, panelScale, 1)
 	gl.CallList(displayList)
 	font:Begin()
 	font:SetTextColor(1, 1, 1, 1)
@@ -470,7 +470,7 @@ local function CreatePanelDisplayList()
 			printBossInfo('Healths:', bossInfoMarginX, PanelRow(row))
 			row = row + 1
 			local rowWidthPixels = bossInfoMarginX + 10
-			local maxRowWidthPixels = w*widgetScale - 50
+			local maxRowWidthPixels = w*panelScale - 50
 			local healthH = panelFontSize+0.4
 			for _, health in ipairs(bossInfo.healths) do
 				local newRowWidthPixels = rowWidthPixels + font3:GetTextWidth(health.string) * panelFontSize
@@ -571,7 +571,7 @@ function widget:DrawScreen()
 			font2:Begin()
 			font2:SetTextColor(1, 1, 1, 1)
 			for i, message in ipairs(marqueeMessage) do
-				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * widgetScale), waveFontSize * widgetScale, 'co')
+				font2:Print(message, viewSizeX / 2, waveY - (WaveRow(i) * screenScale), waveFontSize * screenScale, 'co')
 			end
 			font2:End()
 		else
@@ -666,6 +666,10 @@ function widget:Initialize()
 	playerEcoAttractionsRaw = {}
 	Spring.SendCommands('disablewidget Raptor Stats Panel')
 	widget:ViewResize()
+	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+	font2 = WG['fonts'].getFont(fontfile2)
+	font2:SetTextColor(1, 1, 1, 1)
+	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
 	displayList = gl.CreateList(function()
 		gl.Blending(true)
@@ -841,7 +845,7 @@ function widget:IsAbove(x, y)
 
 	local bottomY = y1 + PanelRow(nPanelRows + 1)
 	local wasAboveBossInfo = isAboveBossInfo
-	isAboveBossInfo = x > x1 and x < x1 + (w * widgetScale) and y < y1 and y > math.max(0, bottomY)
+	isAboveBossInfo = x > x1 and x < x1 + (w * panelScale) and y < y1 and y > math.max(0, bottomY)
 
 	if isAboveBossInfo then
 		for _, health in ipairs(bossInfo.healths) do
@@ -865,7 +869,7 @@ local function isMouseWithinPanel(x, y)
 	if not x or not y then
 		x, y = Spring.GetMouseState()
 	end
-	return x > x1 and x < x1 + (w * widgetScale) and y > y1 and y < y1 + (h * widgetScale)
+	return x > x1 and x < x1 + (w * panelScale) and y > y1 and y < y1 + (h * panelScale)
 end
 
 function widget:MousePress(x, y)
@@ -882,17 +886,13 @@ end
 function widget:ViewResize()
 	vsx, vsy = Spring.GetViewGeometry()
 
-	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
-	font2 = WG['fonts'].getFont(fontfile2)
-	font2:SetTextColor(1, 1, 1, 1)
-	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
-
 	x1 = math.floor(x1 - viewSizeX)
 	y1 = math.floor(y1 - viewSizeY)
 	viewSizeX, viewSizeY = vsx, vsy
-	widgetScale = (0.75 + (viewSizeX * viewSizeY / 10000000)) * customScale
-	x1 = viewSizeX + x1 + ((x1 / 2) * (widgetScale - 1))
-	y1 = viewSizeY + y1 + ((y1 / 2) * (widgetScale - 1))
+	screenScale = (0.75 + (viewSizeX * viewSizeY / 10000000))
+	panelScale = screenScale * panelScale
+	x1 = viewSizeX + x1 + ((x1 / 2) * (panelScale - 1))
+	y1 = viewSizeY + y1 + ((y1 / 2) * (panelScale - 1))
 	updatePanel = true
 end
 
@@ -926,7 +926,7 @@ end
 function widget:MouseWheel(up, value)
 	-- is mouse within panel
 	if isCtrlDown and isMouseWithinPanel() then
-		customScale = customScale + (up and 0.02 or -0.02)
+		panelScale = panelScale + (up and 0.02 or -0.02)
 		vsx, vsy = Spring.GetViewGeometry()
 
 		font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
@@ -935,7 +935,6 @@ function widget:MouseWheel(up, value)
 		font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
 		viewSizeX, viewSizeY = vsx, vsy
-		widgetScale = (0.75 + (viewSizeX * viewSizeY / 10000000)) * customScale
 		updatePanel = true
 		return true
 	end

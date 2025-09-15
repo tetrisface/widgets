@@ -19,8 +19,10 @@ function widget:KeyPress(key, mods, isRepeat)
 	if key == KEYSYMS.R and mods['ctrl'] then
 		Spring.SendCommands('disablewidget Reload Widgets')
 		Spring.SendCommands('enablewidget Reload Widgets')
-		Spring.SendCommands('disablewidget CMD JAOT Build Queue Reclaim')
-		Spring.SendCommands('enablewidget CMD JAOT Build Queue Reclaim')
+		-- Spring.SendCommands('disablewidget CMD JAOT Build Queue Reclaim')
+		-- Spring.SendCommands('enablewidget CMD JAOT Build Queue Reclaim')
+		Spring.SendCommands('disablewidget Raptor Stats Panel With Eco Attraction')
+		Spring.SendCommands('enablewidget Raptor Stats Panel With Eco Attraction')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then
