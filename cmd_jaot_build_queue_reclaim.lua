@@ -16,7 +16,7 @@ local logEntries = {}
 local maxLogEntries = 30
 
 -- JIT Reclaim System Configuration
-local JIT_RECLAIM_ENABLED = true
+local enabled = true
 
 -- JIT Reclaim System State
 local unitBuildQueues = {} -- unitID -> {buildCmds = {buildID -> buildCmd}, orderedBuilds = {buildID1, buildID2, ...}}
@@ -32,6 +32,7 @@ local MAX_RECLAIM_OPERATIONS = 8 -- Max simultaneous reclaim operations (increas
 local debugMode = false
 
 -- Simplified logging function
+
 local function Log(message, ...)
   if not debugMode then
     return
@@ -49,7 +50,19 @@ local function Log(message, ...)
   Spring.Echo(fullMessage)
 end
 
--- JIT Reclaim System Functions
+local function LogAll(message, ...)
+  local timestamp = string.format('%.2f', Spring.GetGameSeconds())
+  local fullMessage = string.format('[%s] %s', timestamp, string.format(message, ...))
+
+  -- Add to log entries for on-screen display
+  table.insert(logEntries, {message = fullMessage, time = Spring.GetGameSeconds()})
+  if #logEntries > maxLogEntries then
+    table.remove(logEntries, 1)
+  end
+
+  -- Always echo to console
+  Spring.Echo(fullMessage)
+end
 
 -- Generate a unique build ID
 local function generateBuildID(builderID)
@@ -673,7 +686,7 @@ function widget:CommandNotify(id, params, options)
           local detectedBlockingUnits = findBlockingUnitsInFootprint(unitDefID, x, z, facing or 0)
           Log('  Manually detected %d blocking units', #detectedBlockingUnits)
 
-          if JIT_RECLAIM_ENABLED then
+          if enabled then
             -- Get selected units and queue command for each
             local selectedUnits = Spring.GetSelectedUnits()
             local buildQueued = false
@@ -734,7 +747,7 @@ function widget:CommandNotify(id, params, options)
         elseif canBuild == 2 then
           Log('  *** BUILD WILL NOT BE BLOCKED ***')
 
-          if JIT_RECLAIM_ENABLED then
+          if enabled then
             -- Even for non-blocked builds, we need to queue them if we're managing build sequences
             local selectedUnits = Spring.GetSelectedUnits()
             local hasActiveQueuedBuilds = false
@@ -810,18 +823,21 @@ end
 
 function widget:KeyPress(key, mods, isRepeat)
   if key == KEYSYMS.F14 then
-    JIT_RECLAIM_ENABLED = not JIT_RECLAIM_ENABLED
-    Log('JIT Reclaim %s', JIT_RECLAIM_ENABLED and 'ENABLED' or 'DISABLED')
+    enabled = not enabled
+    LogAll('JIT Reclaim %s', enabled and 'ENABLED' or 'DISABLED')
     return true
   elseif key == KEYSYMS.F15 then
-    -- Clear all widget state
-    unitBuildQueues = {}
-    reclaimQueue = {}
-    processedCommands = {}
-    globalSequenceCounter = 0
-    builderCurrentBuildID = {}
-    buildIDCounter = 0
-    Log('=== ALL STATE CLEARED ===')
+
+    -- Clear widget state for all selected units
+    local selectedUnits = Spring.GetSelectedUnits()
+    for _, unitID in ipairs(selectedUnits) do
+      unitBuildQueues[unitID] = nil
+      reclaimQueue[unitID] = nil
+      -- processedCommands[unitID] = nil
+      -- globalSequenceCounter = 0
+      builderCurrentBuildID[unitID] = nil
+    end
+    LogAll('=== ALL STATE CLEARED for %s ===', selectedUnits)
     return true
   end
   return false
@@ -1087,8 +1103,4 @@ function widget:Initialize()
   Log('- Only reclaims for current and next builds when builder actually reaches them')
   Log('- No more queue reversal - unblocked builds wait their turn in the sequence')
   Log('Press F14 to toggle JIT reclaiming, F15 to clear all state')
-end
-
-function widget:Shutdown()
-  Log('JIT Build Queue Reclaim Widget shutting down')
 end

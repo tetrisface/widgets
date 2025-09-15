@@ -165,8 +165,8 @@ local function initGL4()
   vsSrc = vsSrc:gsub("//__ENGINEUNIFORMBUFFERDEFS__", engineUniformBufferDefs)
 
   shieldShader = gl.LuaShader({
-    vertex   = vsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
-    fragment = fsSrc:gsub('//__DEFINES__', gl.LuaShader.CreateShaderDefinesString(shaderConfig)),
+    vertex   = vsSrc:gsub('//__DEFINES__', ''),
+    fragment = fsSrc:gsub('//__DEFINES__', ''),
     uniformInt = {
       heightmapTex = 0,
       maskMode     = 0,
