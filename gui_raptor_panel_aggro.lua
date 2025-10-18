@@ -403,6 +403,16 @@ local function CreatePanelDisplayList()
 	gl.Translate(x1, y1, 0)
 	gl.Scale(panelScale, panelScale, 1)
 	gl.CallList(displayList)
+
+	-- Safety check for font
+	if not font then
+		if WG['fonts'] then
+			font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+		else
+			font = gl.LoadFont('fonts/FreeSansBold.otf', 16, 2, 1.5)
+		end
+	end
+
 	font:Begin()
 	font:SetTextColor(1, 1, 1, 1)
 	if stage == stageGrace and isRaptors then
@@ -504,6 +514,16 @@ local function CreatePanelDisplayList()
 			local rowWidthPixels = bossInfoMarginX + 10
 			local maxRowWidthPixels = w * panelScale - 50
 			local healthH = panelFontSize + 0.4
+
+			-- Safety check for font3
+			if not font3 then
+				if WG['fonts'] then
+					font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+				else
+					font3 = gl.LoadFont('fonts/FreeSansBold.otf', 14, 2, 1.5)
+				end
+			end
+
 			for _, health in ipairs(bossInfo.healths) do
 				local newRowWidthPixels = rowWidthPixels + font3:GetTextWidth(health.string) * panelFontSize
 				if newRowWidthPixels > maxRowWidthPixels then
@@ -592,6 +612,15 @@ function widget:DrawScreen()
 		if waveY > 0 then
 			if refreshMarqueeMessage or not marqueeMessage then
 				marqueeMessage = getMarqueeMessage(messageArgs)
+			end
+
+			-- Safety check for font2
+			if not font2 then
+				if WG['fonts'] then
+					font2 = WG['fonts'].getFont(fontfile2)
+				else
+					font2 = gl.LoadFont('fonts/FreeSansBold.otf', 20, 2, 1.5)
+				end
 			end
 
 			font2:Begin()
@@ -698,10 +727,18 @@ function widget:Initialize()
 	playerEcoAttractionsRaw = {}
 	Spring.SendCommands('disablewidget Raptor Stats Panel')
 	widget:ViewResize()
-	font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
-	font2 = WG['fonts'].getFont(fontfile2)
-	font2:SetTextColor(1, 1, 1, 1)
-	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+
+	-- Initialize fonts with proper error checking
+	if WG['fonts'] then
+		font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+		font2 = WG['fonts'].getFont(fontfile2)
+		font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+	else
+		-- Fallback if fonts widget is not available
+		font = gl.LoadFont('fonts/FreeSansBold.otf', 16, 2, 1.5)
+		font2 = gl.LoadFont('fonts/FreeSansBold.otf', 20, 2, 1.5)
+		font3 = gl.LoadFont('fonts/FreeSansBold.otf', 14, 2, 1.5)
+	end
 
 	displayList =
 		gl.CreateList(
@@ -945,6 +982,14 @@ function widget:ViewResize()
 	panelScale = screenScale * panelScale
 	x1 = viewSizeX + x1 + ((x1 / 2) * (panelScale - 1))
 	y1 = viewSizeY + y1 + ((y1 / 2) * (panelScale - 1))
+
+	-- Reinitialize fonts on view resize
+	if WG['fonts'] then
+		font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+		font2 = WG['fonts'].getFont(fontfile2)
+		font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+	end
+
 	updatePanel = true
 end
 
@@ -981,10 +1026,12 @@ function widget:MouseWheel(up, value)
 		panelScale = panelScale + (up and 0.02 or -0.02)
 		vsx, vsy = Spring.GetViewGeometry()
 
-		font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
-		font2 = WG['fonts'].getFont(fontfile2)
-		font2:SetTextColor(1, 1, 1, 1)
-		font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+		-- Reinitialize fonts with proper error checking
+		if WG['fonts'] then
+			font = WG['fonts'].getFont(nil, nil, 0.4, 1.76)
+			font2 = WG['fonts'].getFont(fontfile2)
+			font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
+		end
 
 		viewSizeX, viewSizeY = vsx, vsy
 		updatePanel = true
