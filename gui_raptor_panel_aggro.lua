@@ -15,7 +15,7 @@ function widget:GetInfo()
 		layer = -9,
 		enabled = true,
 		gist = 'https://gist.githubusercontent.com/tetrisface/2f99f5a5b179e3ac42e7e63825880713/raw/gui_raptor_panel_aggro.lua',
-		version = 2,
+		version = 2
 	}
 end
 
@@ -27,8 +27,12 @@ local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
 local fontfile2 = 'fonts/' .. Spring.GetConfigString('bar_font2', 'Exo2-SemiBold.otf')
-local bossDefName = isRaptors and ('raptor_queen_' .. modOptions.raptor_difficulty ) or ('scavengerbossv4_'.. modOptions.scav_difficulty ..'_scav')
-local totalBossHealth = UnitDefNames[bossDefName] and UnitDefs[UnitDefNames[bossDefName].id] and UnitDefs[UnitDefNames[bossDefName].id].health or (1250000 * 1.5)
+local bossDefName =
+	isRaptors and ('raptor_queen_' .. modOptions.raptor_difficulty) or
+	('scavengerbossv4_' .. modOptions.scav_difficulty .. '_scav')
+local totalBossHealth =
+	UnitDefNames[bossDefName] and UnitDefs[UnitDefNames[bossDefName].id] and UnitDefs[UnitDefNames[bossDefName].id].health or
+	(1250000 * 1.5)
 
 local rules = {
 	'raptorDifficulty',
@@ -41,40 +45,39 @@ local rules = {
 	'raptorQueenHealth',
 	'raptorQueensKilled',
 	'raptorQueenTime',
-	'raptorTechAnger',
+	'raptorTechAnger'
 }
 
 local nilDefaultRules = {
-	['raptorQueensKilled'] = true,
+	['raptorQueensKilled'] = true
 }
 
 local colors = {
-	{ 1.000000, 0.783599, 0.109804 }, -- yellow_light
-	{ 0.929830, 0.521569, 0.352523 }, -- orange_light
-	{ 0.920358, 0.533527, 0.526701 }, -- red_light
-	{ 0.899288, 0.539928, 0.713886 }, -- magenta_light
-	{ 0.708966, 0.718865, 0.883190 }, -- violet_light
-	{ 0.468691, 0.724225, 0.903858 }, -- blue_light
-	{ 0.362407, 0.833672, 0.798029 }, -- cyan_light
-	{ 0.869282, 1.000000, 0.000000 }, -- green_light
-	{ 0.435189, 0.160785, 0.047164 }, -- orange_dark
-	{ 0.553861, 0.101186, 0.093198 }, -- red_dark
-	{ 0.087730, 0.320904, 0.484819 }, -- blue_dark
-	{ 0.419, 0.294, 0.580 }, -- lavender_dark
-	{ 0.180, 0.360, 0.278 }, -- forest_dark
-	{ 0.549, 0.270, 0.160 }, -- clay_dark
-	{ 0.208, 0.380, 0.388 }, -- steel_dark
-	{ 0.470, 0.360, 0.470 }, -- mauve_dark
-	{ 0.388, 0.321, 0.156 }, -- brass_dark
-
-	{ 0.709804, 0.537255, 0.000000 }, -- yellow
-	{ 0.796078, 0.294118, 0.086275 }, -- orange
-	{ 0.862745, 0.196078, 0.184314 }, -- red
-	{ 0.827451, 0.211765, 0.509804 }, -- magenta
-	{ 0.423529, 0.443137, 0.768627 }, -- violet
-	{ 0.149020, 0.545098, 0.823529 }, -- blue
-	{ 0.164706, 0.631373, 0.596078 }, -- cyan
-	{ 0.521569, 0.600000, 0.000000 }, -- green
+	{1.000000, 0.783599, 0.109804}, -- yellow_light
+	{0.929830, 0.521569, 0.352523}, -- orange_light
+	{0.920358, 0.533527, 0.526701}, -- red_light
+	{0.899288, 0.539928, 0.713886}, -- magenta_light
+	{0.708966, 0.718865, 0.883190}, -- violet_light
+	{0.468691, 0.724225, 0.903858}, -- blue_light
+	{0.362407, 0.833672, 0.798029}, -- cyan_light
+	{0.869282, 1.000000, 0.000000}, -- green_light
+	{0.435189, 0.160785, 0.047164}, -- orange_dark
+	{0.553861, 0.101186, 0.093198}, -- red_dark
+	{0.087730, 0.320904, 0.484819}, -- blue_dark
+	{0.419, 0.294, 0.580}, -- lavender_dark
+	{0.180, 0.360, 0.278}, -- forest_dark
+	{0.549, 0.270, 0.160}, -- clay_dark
+	{0.208, 0.380, 0.388}, -- steel_dark
+	{0.470, 0.360, 0.470}, -- mauve_dark
+	{0.388, 0.321, 0.156}, -- brass_dark
+	{0.709804, 0.537255, 0.000000}, -- yellow
+	{0.796078, 0.294118, 0.086275}, -- orange
+	{0.862745, 0.196078, 0.184314}, -- red
+	{0.827451, 0.211765, 0.509804}, -- magenta
+	{0.423529, 0.443137, 0.768627}, -- violet
+	{0.149020, 0.545098, 0.823529}, -- blue
+	{0.164706, 0.631373, 0.596078}, -- cyan
+	{0.521569, 0.600000, 0.000000} -- green
 }
 
 local panelFontSize = 14
@@ -206,10 +209,9 @@ local function PlayerName(teamID)
 			end
 		end
 	elseif #playerList == 1 then
-		playerName = select(1,Spring.GetPlayerInfo(playerList[1]))
+		playerName = select(1, Spring.GetPlayerInfo(playerList[1]))
 	else
 		_, playerName = Spring.GetAIInfo(teamID)
-
 	end
 
 	if playerName and playerName ~= '' then
@@ -240,7 +242,7 @@ local function PlayerEcoAttractionsAggregation()
 				name = playerName,
 				teamID = teamID,
 				me = myTeamId == teamID,
-				forced = false,
+				forced = false
 			}
 		end
 	end
@@ -273,7 +275,8 @@ local function Interpolate(value, inMin, inMax, outMin, outMax)
 end
 
 local function UpdatePlayerEcoAttractionRender()
-	local maxRows = isRaptors and ((RaptorStage() == stageGrace and 4 or 3) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
+	local maxRows =
+		isRaptors and ((RaptorStage() == stageGrace and 4 or 3) + (Spring.GetMyTeamID() == raptorsTeamID and 1 or 0)) or 6
 	local playerEcoAttractions, sum = PlayerEcoAttractionsAggregation()
 
 	if sum == 0 then
@@ -316,7 +319,7 @@ local function UpdatePlayerEcoAttractionRender()
 				red = 1,
 				green = greenBlue,
 				blue = greenBlue,
-				alpha = playerEcoAttraction.forced and 0.6 or alpha,
+				alpha = playerEcoAttraction.forced and 0.6 or alpha
 			}
 			nPlayerEcoAttractionsRender = nPlayerEcoAttractionsRender + 1
 			playerEcoAttractionsRender[nPlayerEcoAttractionsRender] = playerEcoAttraction
@@ -352,13 +355,19 @@ local function DrawPlayerAttractions(stage)
 	local isMultiBosses = nBosses > 1 and gameInfo.raptorQueensKilled
 	-- stageMain is with the two angers % and the timer (2 rows)
 	local row = isRaptors and ((stage == stageMain or (stage == stageBoss and isMultiBosses)) and 3 or 2) or 1
-	font:Print((isRaptors and 'Player' or 'Raptor') ..' Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
+	font:Print((isRaptors and 'Player' or 'Raptor') .. ' Eco Attractions:', panelMarginX, PanelRow(row), panelFontSize)
 	for i = 1, #playerEcoAttractionsRender do
 		local playerEcoAttraction = playerEcoAttractionsRender[i]
-		font:SetTextColor(playerEcoAttraction.color.red, playerEcoAttraction.color.green, playerEcoAttraction.color.blue, playerEcoAttraction.color.alpha)
+		font:SetTextColor(
+			playerEcoAttraction.color.red,
+			playerEcoAttraction.color.green,
+			playerEcoAttraction.color.blue,
+			playerEcoAttraction.color.alpha
+		)
 
 		local namePosX = i >= 7 - row and 80 or panelMarginX + 11
-		local attractionFractionStringWidth = math.floor(0.5 + font:GetTextWidth(playerEcoAttraction.fractionString) * panelFontSize)
+		local attractionFractionStringWidth =
+			math.floor(0.5 + font:GetTextWidth(playerEcoAttraction.fractionString) * panelFontSize)
 		local valuesRightX = panelMarginX + 220
 		local valuesLeftX = panelMarginX + 145
 		local rowY = PanelRow(row + i)
@@ -397,18 +406,28 @@ local function CreatePanelDisplayList()
 	font:Begin()
 	font:SetTextColor(1, 1, 1, 1)
 	if stage == stageGrace and isRaptors then
-		printPanel(I18N('ui.raptors.gracePeriod', { time = '' }), panelMarginX, PanelRow(1))
+		printPanel(I18N('ui.raptors.gracePeriod', {time = ''}), panelMarginX, PanelRow(1))
 		local timeText = string.formatTime(((currentTime - gameInfo.raptorGracePeriod) * -1) - 0.5)
 		printPanel(timeText, panelMarginX + 220 - font:GetTextWidth(timeText) * panelFontSize, PanelRow(1))
 	elseif stage == stageMain and isRaptors then
-		local hatchEvolutionString = I18N('ui.raptors.queenAngerWithTech', {
-			anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)),
-			techAnger = gameInfo.raptorTechAnger,
-		})
-		printPanel(hatchEvolutionString, panelMarginX, PanelRow(1), panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59))
+		local hatchEvolutionString =
+			I18N(
+			'ui.raptors.queenAngerWithTech',
+			{
+				anger = math.min(100, math.floor(0.5 + gameInfo.raptorQueenAnger)),
+				techAnger = gameInfo.raptorTechAnger
+			}
+		)
+		printPanel(
+			hatchEvolutionString,
+			panelMarginX,
+			PanelRow(1),
+			panelFontSize - Interpolate(font:GetTextWidth(hatchEvolutionString) * panelFontSize, 234, 244, 0, 0.59)
+		)
 
-		printPanel(I18N('ui.raptors.queenETA', { count = nBosses, time = '' }):gsub('%.', ''), panelMarginX, PanelRow(2))
-		local gain = gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
+		printPanel(I18N('ui.raptors.queenETA', {count = nBosses, time = ''}):gsub('%.', ''), panelMarginX, PanelRow(2))
+		local gain =
+			gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
 		local time = string.formatTime((100 - gameInfo.raptorQueenAnger) / gain)
 		printPanel(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2))
 
@@ -418,12 +437,20 @@ local function CreatePanelDisplayList()
 		end
 	elseif stage == stageBoss then
 		if isRaptors then
-			printPanel(I18N('ui.raptors.queenHealth', { count = nBosses, health = '' }):gsub('%%', ''), panelMarginX, PanelRow(1))
+			printPanel(I18N('ui.raptors.queenHealth', {count = nBosses, health = ''}):gsub('%%', ''), panelMarginX, PanelRow(1))
 			local healthText = tostring(gameInfo.raptorQueenHealth)
-			printPanel(gameInfo.raptorQueenHealth .. '%', panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize, PanelRow(1))
+			printPanel(
+				gameInfo.raptorQueenHealth .. '%',
+				panelMarginX + 210 - font:GetTextWidth(healthText) * panelFontSize,
+				PanelRow(1)
+			)
 
 			if nBosses > 1 and gameInfo.raptorQueensKilled then
-				printPanel(Spring.I18N('ui.raptors.queensKilled', { nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses }), panelMarginX, PanelRow(2))
+				printPanel(
+					Spring.I18N('ui.raptors.queensKilled', {nKilled = gameInfo.raptorQueensKilled, nTotal = nBosses}),
+					panelMarginX,
+					PanelRow(2)
+				)
 			end
 		end
 
@@ -448,7 +475,12 @@ local function CreatePanelDisplayList()
 
 			row = row + 1
 
-			printBossInfo('Player '.. (isRaptors and 'Queen' or 'Boss') .. ' Damage: ('.. (isAboveBossInfo and 'absolute' or 'relative') .. ')', bossInfoMarginX, PanelRow(row))
+			printBossInfo(
+				'Player ' ..
+					(isRaptors and 'Queen' or 'Boss') .. ' Damage: (' .. (isAboveBossInfo and 'absolute' or 'relative') .. ')',
+				bossInfoMarginX,
+				PanelRow(row)
+			)
 			for i, damage in ipairs(bossInfo.playerDamages) do
 				row = row + 1
 				printBossInfo(damage.name, bossInfoMarginX + 10, PanelRow(row))
@@ -470,8 +502,8 @@ local function CreatePanelDisplayList()
 			printBossInfo('Healths:', bossInfoMarginX, PanelRow(row))
 			row = row + 1
 			local rowWidthPixels = bossInfoMarginX + 10
-			local maxRowWidthPixels = w*panelScale - 50
-			local healthH = panelFontSize+0.4
+			local maxRowWidthPixels = w * panelScale - 50
+			local healthH = panelFontSize + 0.4
 			for _, health in ipairs(bossInfo.healths) do
 				local newRowWidthPixels = rowWidthPixels + font3:GetTextWidth(health.string) * panelFontSize
 				if newRowWidthPixels > maxRowWidthPixels then
@@ -479,14 +511,8 @@ local function CreatePanelDisplayList()
 					rowWidthPixels = bossInfoMarginX + 10
 				end
 				font3:SetTextColor(health.color[1], health.color[2], health.color[3], 1)
-				font3:Print(
-					health.string,
-					rowWidthPixels,
-					PanelRow(row),
-					healthH,
-					'o'
-				)
-				rowWidthPixels = rowWidthPixels + font3:GetTextWidth('XXX   ')* panelFontSize
+				font3:Print(health.string, rowWidthPixels, PanelRow(row), healthH, 'o')
+				rowWidthPixels = rowWidthPixels + font3:GetTextWidth('XXX   ') * panelFontSize
 			end
 			font3:SetTextColor(1, 1, 1, 1)
 			nPanelRows = row
@@ -501,7 +527,7 @@ local function CreatePanelDisplayList()
 			endless = ' (' .. I18N('ui.raptors.difficulty.endless') .. ')'
 		end
 		local difficultyCaption = I18N('ui.raptors.difficulty.' .. modOptions.raptor_difficulty)
-		font:Print(I18N('ui.raptors.mode', { mode = difficultyCaption }) .. endless, 80, h - 170, panelFontSize)
+		font:Print(I18N('ui.raptors.mode', {mode = difficultyCaption}) .. endless, 80, h - 170, panelFontSize)
 	end
 	font:End()
 
@@ -515,15 +541,15 @@ local function getMarqueeMessage(raptorEventArgs)
 		messages[1] = I18N('ui.raptors.firstWave1')
 		messages[2] = I18N('ui.raptors.firstWave2')
 	elseif raptorEventArgs.type == 'queen' then
-		messages[1] = I18N('ui.raptors.queenIsAngry1', { count = nBosses })
+		messages[1] = I18N('ui.raptors.queenIsAngry1', {count = nBosses})
 		messages[2] = I18N('ui.raptors.queenIsAngry2')
 	elseif raptorEventArgs.type == 'airWave' then
-		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
+		messages[1] = I18N('ui.raptors.wave1', {waveNumber = raptorEventArgs.waveCount})
 		messages[2] = I18N('ui.raptors.airWave1')
-		messages[3] = I18N('ui.raptors.airWave2', { unitCount = raptorEventArgs.number })
+		messages[3] = I18N('ui.raptors.airWave2', {unitCount = raptorEventArgs.number})
 	elseif raptorEventArgs.type == 'wave' then
-		messages[1] = I18N('ui.raptors.wave1', { waveNumber = raptorEventArgs.waveCount })
-		messages[2] = I18N('ui.raptors.wave2', { unitCount = raptorEventArgs.number })
+		messages[1] = I18N('ui.raptors.wave1', {waveNumber = raptorEventArgs.waveCount})
+		messages[2] = I18N('ui.raptors.wave2', {unitCount = raptorEventArgs.number})
 	end
 
 	refreshMarqueeMessage = false
@@ -533,7 +559,7 @@ end
 
 local function getResistancesMessage()
 	local messages = {}
-	messages[1] = I18N('ui.raptors.resistanceUnits', { count = nBosses })
+	messages[1] = I18N('ui.raptors.resistanceUnits', {count = nBosses})
 	for i = 1, #resistancesTable do
 		local attackerName = UnitDefs[resistancesTable[i]].name
 		messages[i + 1] = I18N('units.names.' .. attackerName)
@@ -596,7 +622,10 @@ local function UpdateRules()
 end
 
 function RaptorEvent(raptorEventArgs)
-	if raptorEventArgs.type == 'firstWave' or (raptorEventArgs.type == 'queen' and Spring.DiffTimers(Spring.GetTimer(), bossToastTimer) > 20) then
+	if
+		raptorEventArgs.type == 'firstWave' or
+			(raptorEventArgs.type == 'queen' and Spring.DiffTimers(Spring.GetTimer(), bossToastTimer) > 20)
+	 then
 		showMarqueeMessage = true
 		refreshMarqueeMessage = true
 		messageArgs = raptorEventArgs
@@ -615,7 +644,10 @@ function RaptorEvent(raptorEventArgs)
 		end
 	end
 
-	if (raptorEventArgs.type == 'wave' or raptorEventArgs.type == 'airWave') and useWaveMsg and gameInfo.raptorQueenAnger <= 99 then
+	if
+		(raptorEventArgs.type == 'wave' or raptorEventArgs.type == 'airWave') and useWaveMsg and
+			gameInfo.raptorQueenAnger <= 99
+	 then
 		waveCount = waveCount + 1
 		raptorEventArgs.waveCount = waveCount
 		showMarqueeMessage = true
@@ -671,12 +703,15 @@ function widget:Initialize()
 	font2:SetTextColor(1, 1, 1, 1)
 	font3 = WG['fonts'].getFont(nil, nil, 0.3, 3)
 
-	displayList = gl.CreateList(function()
-		gl.Blending(true)
-		gl.Color(1, 1, 1, 1)
-		gl.Texture(panelTexture)
-		gl.TexRect(0, 0, w, h)
-	end)
+	displayList =
+		gl.CreateList(
+		function()
+			gl.Blending(true)
+			gl.Color(1, 1, 1, 1)
+			gl.Texture(panelTexture)
+			gl.TexRect(0, 0, w, h)
+		end
+	)
 
 	widgetHandler:RegisterGlobal('RaptorEvent', RaptorEvent)
 	UpdateRules()
@@ -724,7 +759,7 @@ end
 
 function widget:Shutdown()
 	if hasRaptorEvent then
-		Spring.SendCommands({ 'luarules HasRaptorEvent 0' })
+		Spring.SendCommands({'luarules HasRaptorEvent 0'})
 	end
 
 	if guiPanel then
@@ -756,7 +791,7 @@ local function UpdateBossInfo()
 		return
 	end
 	bossInfoRaw = Json.decode(Spring.GetGameRulesParam('pveBossInfo'))
-	bossInfo = { resistances = {}, playerDamages = {}, healths = {}, labelMaxLength = 0 }
+	bossInfo = {resistances = {}, playerDamages = {}, healths = {}, labelMaxLength = 0}
 
 	local i = 0
 	for defID, resistance in pairs(bossInfoRaw.resistances) do
@@ -773,7 +808,7 @@ local function UpdateBossInfo()
 					raw = resistance.percent,
 					damage = resistance.damage,
 					stringPercent = string.format('%.0f%%', resistance.percent * 100),
-					stringAbsolute = string.formatSI(resistance.damage),
+					stringAbsolute = string.formatSI(resistance.damage)
 				}
 			)
 		end
@@ -788,7 +823,12 @@ local function UpdateBossInfo()
 		damage = math.max(damage, 1)
 		table.insert(
 			bossInfo.playerDamages,
-			{ name = name, raw = damage, stringAbsolute = string.formatSI(damage), stringRelative = string.format('%.1fX', damage / totalBossHealth) }
+			{
+				name = name,
+				raw = damage,
+				stringAbsolute = string.formatSI(damage),
+				stringRelative = string.format('%.1fX', damage / totalBossHealth)
+			}
 		)
 	end
 	table.sort(bossInfo.playerDamages, sortRawDamageDescNameAsc)
@@ -797,17 +837,23 @@ local function UpdateBossInfo()
 	x1 = screenOverflowX > 0 and x1 - screenOverflowX or x1
 
 	for queenID, status in pairs(bossInfoRaw.statuses) do
-		table.insert(bossInfo.healths, {
-			id = tonumber(queenID),
-			name = tonumber(queenID),
-			raw = status.health / status.maxHealth,
-			string = string.format('%.0f%%', (status.health / status.maxHealth) * 100),
-			isDead = status.isDead,
-		})
+		table.insert(
+			bossInfo.healths,
+			{
+				id = tonumber(queenID),
+				name = tonumber(queenID),
+				raw = status.health / status.maxHealth,
+				string = string.format('%.0f%%', (status.health / status.maxHealth) * 100),
+				isDead = status.isDead
+			}
+		)
 	end
-	table.sort(bossInfo.healths, function(a, b)
-		return a.id < b.id
-	end)
+	table.sort(
+		bossInfo.healths,
+		function(a, b)
+			return a.id < b.id
+		end
+	)
 
 	local colorsTemp = table.copy(colors)
 	for _, health in ipairs(bossInfo.healths) do
@@ -828,7 +874,7 @@ end
 
 function widget:GameFrame(n)
 	if not hasRaptorEvent and n > 1 then
-		Spring.SendCommands({ 'luarules HasRaptorEvent 1' })
+		Spring.SendCommands({'luarules HasRaptorEvent 1'})
 		hasRaptorEvent = true
 	end
 	if n % 30 == 17 then
@@ -850,7 +896,13 @@ function widget:IsAbove(x, y)
 	if isAboveBossInfo then
 		for _, health in ipairs(bossInfo.healths) do
 			if not health.isDead and not recentlyKilledQueens[health.id] then
-				WG['ObjectSpotlight'].addSpotlight('unit', 'me', health.id, { health.color[1], health.color[2], health.color[3], 1 }, { duration = 3 })
+				WG['ObjectSpotlight'].addSpotlight(
+					'unit',
+					'me',
+					health.id,
+					{health.color[1], health.color[2], health.color[3], 1},
+					{duration = 3}
+				)
 			end
 		end
 	end
