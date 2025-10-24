@@ -1,0 +1,134 @@
+<rml>
+<head>
+    <title>Strategic Construction Tracker</title>
+    <link rel="stylesheet" href="strategic_construction_tracker.rcss" type="text/rcss" />
+</head>
+<body id="strategic-construction-tracker-widget">
+    <div id="strategic-panel" class="panel" data-model="strategic_construction_tracker" onmouseup="widget:OnDragEnd(event)">
+        <!-- Title Bar -->
+        <div class="title-bar" id="title-bar">
+            <handle move_target="strategic-panel">
+                <div class="title-content">
+                    <texture class="title-icon" src="icons/worker.png"/>
+                    <span class="title-text">SCT</span>
+                </div>
+                <div class="collapse-button" onclick="widget:ToggleCollapsed(event)">
+                    {{collapse_symbol}}
+                </div>
+            </handle>
+        </div>
+
+        <!-- Category Filters -->
+        <div class="category-filters" data-if="!collapsed">
+            <div data-for="category : categories" class="category-filter" data-class-active="category.active" data-attr-data-category="category.id" onclick="widget:ToggleCategoryFilter(event)">
+                <texture class="category-icon" data-attr-src="category.icon"/>
+                <div class="category-progress-bar">
+                    <div class="category-progress-fill" data-attr-style="'width: ' + (category.progress * 100) + '%'"></div>
+                </div>
+                <span class="category-count">{{category.count}}</span>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="content-area" data-if="!collapsed">
+            <!-- Team List -->
+            <div id="team-list" class="team-list">
+                <div data-for="team : teams" class="team-row" id="team-row-{{team.id}}">
+                    <!-- Team Header Row -->
+                    <div class="team-header-row">
+                        <div class="team-accent" data-style-background-color="team.accent_color"></div>
+                        <span class="team-name">{{team.name}}</span>
+                    </div>
+
+                    <!-- Icon Row -->
+                    <div class="team-icon-row">
+                        <div class="team-accent" data-style-background-color="team.accent_color"></div>
+                        <div class="icon-list">
+                            <div data-for="icon : team.aggregated_icons" class="icon-wrapper">
+                                <texture class="team-unit-icon" data-attr-src="icon.icon_path"/>
+                                <span class="icon-count-badge" data-if="icon.count > 1">{{icon.count}}</span>
+                            </div>
+                        </div>
+                        <!-- Aggregate Progress Grid -->
+                        <div class="team-progress-container">
+                            <div class="progress-grid">
+                                <div class="progress-background">
+                                    <div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div>
+                                    <div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div>
+                                </div>
+                                <div class="progress-foreground">
+                                    <div data-for="square : team.avg_progress_squares" class="filled" data-style-background-color="team.accent_color"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hover-menu-container" data-attr-id="'hover-menu-container-' + team.id">
+                        <!-- Header -->
+                        <div class="hover-menu-header" data-style-border-left-color="team.accent_color">
+                            <span class="hover-menu-team-name">{{team.name}}</span>
+                            <!-- Commander Info -->
+                            <div class="commander-info" data-if="team.has_commander" onclick="widget:SelectConstruction(event)">
+                                <span class="unit-id" style="display: none;">{{team.commander_id}}</span>
+                                <span class="is-completed" style="display: none;">false</span>
+                                <texture class="commander-icon" data-attr-src="'#' + team.commander_def_id"/>
+                                <div class="commander-health-bar">
+                                    <div class="commander-health-fill" data-attr-style="'width: ' + (team.commander_health * 100) + '%'"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Scrollable Content -->
+                        <div class="hover-menu-content" data-attr-id="'hover-menu-' + team.id" data-style-border-left-color="team.accent_color">
+                            <!-- Active Constructions Section -->
+                            <div class="hover-menu-section" data-if="team.has_active">
+                                <div class="hover-menu-section-title">Active</div>
+                                <div data-for="construction : team.active_constructions" class="construction-detail" onclick="widget:SelectConstruction(event)">
+                                    <span class="unit-id" style="display: none;">{{construction.unit_id}}</span>
+                                    <span class="is-completed" style="display: none;">{{construction.is_completed}}</span>
+                                    <texture class="detail-buildpic" data-attr-src="'#' + construction.unit_def_id"/>
+                                    <div class="detail-info">
+                                        <span class="detail-unit-name">{{construction.unit_name}}</span>
+                                        <div class="detail-progress">
+                                            <div class="progress-grid">
+                                                <div class="progress-background">
+                                                    <div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div>
+                                                    <div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div><div class="empty"></div>
+                                                </div>
+                                                <div class="progress-foreground">
+                                                    <div data-for="square : construction.progress_squares" class="filled" data-style-background-color="team.accent_color"></div>
+                                                </div>
+                                            </div>
+                                            <span class="progress-text">{{construction.progress_percent}}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Completed Section -->
+                            <div class="hover-menu-section" data-if="team.has_completed">
+                                <div class="hover-menu-section-header">
+                                    <div class="hover-menu-section-title">Completed</div>
+                                    <span class="completed-count">{{team.completed_count}}</span>
+                                </div>
+                                <!-- Unique completed constructions -->
+                                <div data-for="construction : team.unique_completed" class="construction-detail completed" onclick="widget:SelectConstruction(event)">
+                                    <span class="unit-def-id" style="display: none;">{{construction.unit_def_id}}</span>
+                                    <span class="team-id" style="display: none;">{{team.id}}</span>
+                                    <span class="is-completed" style="display: none;">true</span>
+                                    <texture class="detail-buildpic" data-attr-src="'#' + construction.unit_def_id"/>
+                                    <div class="detail-info">
+                                        <span class="detail-unit-name">{{construction.unit_name}}</span>
+                                        <div class="detail-progress">
+                                            <span class="completed-type-count" data-if="construction.count > 1">×{{construction.count}}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

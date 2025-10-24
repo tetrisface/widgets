@@ -1,0 +1,582 @@
+/* Strategic Construction Tracker */
+
+body, div {
+    display: block;
+}
+
+#strategic-construction-tracker-widget {
+    width: 150dp;
+    min-height: 45dp;
+    display: flex;
+}
+
+.panel {
+    position: absolute;
+    width: 150dp;
+    min-height: 45dp;
+    background-color: #0D0D0DEB;
+    font-family: Exo 2;
+}
+
+.title-bar {
+    height: 25dp;
+    background-color: #1A1F26CC;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 8dp;
+}
+
+.title-bar handle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+    cursor: move;
+}
+
+.title-content {
+    display: flex;
+    align-items: center;
+}
+
+.title-icon {
+    width: 16dp;
+    height: 16dp;
+    margin-right: 6dp;
+}
+
+.title-text {
+    color: #CCE6FF;
+    font-size: 12dp;
+    font-weight: bold;
+}
+
+.collapse-button {
+    color: #8099B3CC;
+    font-size: 14dp;
+    cursor: pointer;
+    padding: 2dp 4dp;
+}
+
+.collapse-button:hover {
+    color: #CCE6FF;
+}
+
+.collapse-button:active {
+    color: #FFFFFF;
+}
+
+.content-area {
+    padding: 4dp;
+    padding-top: 1dp;
+}
+
+.empty-state {
+    margin: 0 -8dp;
+}
+
+.empty-text {
+    color: #999999;
+    font-size: 11dp;
+    text-align: center;
+    padding: 8dp;
+}
+
+/* Team List */
+.team-list {
+    margin-bottom: 0dp;
+}
+
+.team-row {
+    margin-top: 0dp;
+    margin-bottom: 1dp;
+    position: relative;
+    cursor: pointer;
+}
+
+.team-row:hover {
+    background-color: #262E38E6;
+}
+
+/* Team Header Row */
+.team-header-row {
+    height: 14dp;
+    line-height: 16dp;
+    display: flex;
+    align-items: center;
+    padding: 0;
+    margin-top: 0;
+}
+
+.team-accent {
+    width: 4dp;
+    height: 100%;
+    margin-right: 6dp;
+    flex-shrink: 0;
+}
+
+.team-name {
+    margin-top: 1dp;
+    color: white;
+    font-size: 11dp;
+    font-weight: bold;
+    flex: 1;
+}
+
+/* Icon Row */
+.team-icon-row {
+    height: 18dp;
+    display: flex;
+    align-items: center;
+    padding: 0;
+    gap: 1dp;
+    flex-wrap: nowrap;
+}
+
+.icon-list {
+    display: flex;
+    gap: 1dp;
+    flex: 1;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.icon-wrapper {
+    width: 18dp;
+    height: 18dp;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.team-unit-icon {
+    width: 16dp;
+    height: 16dp;
+    flex-shrink: 0;
+}
+
+.icon-count-badge {
+    position: absolute;
+    bottom: -1dp;
+    right: -1dp;
+    color: #CCE6FF;
+    font-size: 8dp;
+    font-weight: bold;
+    line-height: 9dp;
+    min-width: 9dp;
+    height: 9dp;
+    padding: 0 2dp;
+    background-color: #0D0D0DEB;
+    text-align: center;
+    border-width: 1dp;
+    border-color: #1A1F26;
+}
+
+.count-badge {
+    color: #CCE6FF;
+    font-size: 10dp;
+    font-weight: bold;
+    padding: 0 4dp;
+    background-color: #1A1F26CC;
+}
+
+.team-progress-container {
+    display: flex;
+    align-items: center;
+    gap: 6dp;
+    flex-shrink: 0;
+}
+
+.unit-name {
+    font-weight: bold;
+    flex: 1;
+}
+
+.progress-container {
+    display: flex;
+    align-items: center;
+    margin-left: 8dp;
+    gap: 6dp;
+}
+
+.progress-grid {
+    width: 35dp;  /* (6dp * 5) + (1dp gap * 4) = 35dp total for 5 squares per row */
+    height: 13dp; /* (6dp * 2) + (1dp gap * 1) = 13dp */
+    min-width: 35dp;
+    min-height: 13dp;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.progress-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 35dp;
+    height: 13dp;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1dp;
+    z-index: 1;
+}
+
+.progress-foreground {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 35dp;
+    height: 13dp;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1dp;
+    z-index: 2;
+}
+
+.empty {
+    background-color: #333333;
+    width: 6dp;
+    height: 6dp;
+    flex-shrink: 0;
+}
+
+.filled {
+    background-color: #4A90E2;
+    width: 6dp;
+    height: 6dp;
+    flex-shrink: 0;
+}
+
+.progress-text {
+    color: #D9F2FF;
+    font-size: 10dp;
+    min-width: 30dp;
+    text-align: right;
+}
+
+/* Hover Menu Container */
+.hover-menu-container {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -40dp;
+    margin-left: 0dp;
+    background-color: #0D0D0DEB;
+    border-width: 1dp;
+    border-color: #1A1F26;
+    min-width: 220dp;
+    max-width: 280dp;
+    z-index: 1000;
+    flex-direction: column;
+}
+
+.team-row:hover .hover-menu-container {
+    display: flex;
+}
+
+.hover-menu-container:hover {
+    display: flex;
+}
+
+/* Hover Menu Header */
+.hover-menu-header {
+    background-color: #151B22;
+    border-left-width: 3dp;
+    padding: 6dp 8dp;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.hover-menu-team-name {
+    color: #CCE6FF;
+    font-size: 12dp;
+    font-weight: bold;
+    flex: 1;
+}
+
+/* Commander Info */
+.commander-info {
+    display: flex;
+    align-items: center;
+    gap: 4dp;
+    cursor: pointer;
+    padding: 2dp 4dp;
+    background-color: #0F1419;
+    border-radius: 2dp;
+}
+
+.commander-info:hover {
+    background-color: #1A2129;
+}
+
+.commander-icon {
+    width: 20dp;
+    height: 20dp;
+    flex-shrink: 0;
+}
+
+.commander-health-bar {
+    width: 40dp;
+    height: 6dp;
+    background-color: #0D0D0D;
+    border-width: 1dp;
+    border-color: #1A1F26;
+    position: relative;
+    overflow: hidden;
+}
+
+.commander-health-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background-color: #4CAF50;
+    transition: width 0.3s;
+}
+
+/* Hover Menu Content (scrollable) */
+.hover-menu-content {
+    border-left-width: 3dp;
+    padding: 8dp;
+    padding-left: 8dp;
+    max-height: 360dp;
+    overflow-y: auto;
+    flex-direction: column;
+}
+
+.team-row:hover .hover-menu-content,
+.hover-menu-content:hover {
+    display: flex;
+}
+
+/* Hover Menu Sections */
+.hover-menu-section {
+    margin-bottom: 8dp;
+    flex-shrink: 0;
+    min-height: 0;
+}
+
+.hover-menu-section:last-child {
+    margin-bottom: 0;
+}
+
+.hover-menu-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4dp;
+    padding-bottom: 2dp;
+}
+
+.hover-menu-section-title {
+    color: #8099B3CC;
+    font-size: 10dp;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.completed-count {
+    color: #CCE6FF;
+    font-size: 10dp;
+    font-weight: bold;
+    padding: 0 4dp;
+    background-color: #1A1F26CC;
+}
+
+/* Construction Detail Rows */
+.construction-detail {
+    display: flex;
+    align-items: center;
+    padding: 4dp;
+    margin-bottom: 2dp;
+    cursor: pointer;
+    background-color: #0F1419;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.construction-detail:hover {
+    background-color: #151B22;
+}
+
+.construction-detail:last-child {
+    margin-bottom: 0;
+}
+
+.detail-buildpic {
+    width: 36dp;
+    height: 36dp;
+    margin-right: 8dp;
+    flex-shrink: 0;
+}
+
+.detail-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-unit-name {
+    color: #CCE6FF;
+    font-size: 11dp;
+    font-weight: bold;
+    margin-bottom: 3dp;
+}
+
+.detail-progress {
+    display: flex;
+    align-items: center;
+    gap: 6dp;
+}
+
+/* Completed Construction Styling */
+.construction-detail.completed {
+    opacity: 0.7;
+    background-color: #0A0E13;
+}
+
+.construction-detail.completed:hover {
+    opacity: 0.9;
+    background-color: #0F1419;
+}
+
+.completed-type-count {
+    color: #CCE6FF;
+    font-size: 10dp;
+    font-weight: bold;
+    margin-left: 4dp;
+}
+
+.title-bar:hover {
+    background-color: #222932CC;
+}
+
+.title-bar:active {
+    background-color: #293340CC;
+}
+
+/* Category Filters */
+.category-filters {
+    display: flex;
+    gap: 1dp;
+    padding: 2dp 4dp 3dp 4dp;
+    background-color: #0D0D0DEB;
+}
+
+.category-filter {
+    flex: 1;
+    height: 20dp;
+    padding: 0;
+    background-color: #0F1419;
+    border-width: 0dp;
+    cursor: pointer;
+    position: relative;
+}
+
+.category-filter:hover {
+    background-color: #151B22;
+}
+
+.category-filter.active {
+    background-color: #1A2129;
+}
+
+.category-filter.active:hover {
+    background-color: #1F262F;
+}
+
+.category-icon {
+    width: 16dp;
+    height: 16dp;
+    position: absolute;
+    top: 0dp;
+    left: 0dp;
+}
+
+.category-filter .category-icon {
+    opacity: 0.3;
+}
+
+.category-filter:hover .category-icon {
+    opacity: 0.5;
+}
+
+.category-filter.active .category-icon {
+    opacity: 0.9;
+}
+
+.category-count {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10dp;
+    font-weight: bold;
+    line-height: 12dp;
+}
+
+.category-filter .category-count {
+    color: #6A7A8A;
+}
+
+.category-filter:hover .category-count {
+    color: #8A9AAA;
+}
+
+.category-filter.active .category-count {
+    color: #CCE6FF;
+}
+
+.category-progress-bar {
+    position: absolute;
+    bottom: 0dp;
+    left: 0dp;
+    right: 0dp;
+    height: 3dp;
+    background-color: #0D0D0D;
+}
+
+.category-progress-fill {
+    height: 100%;
+    background-color: #3A4A5A;
+    transition: width 0.3s;
+}
+
+.category-filter.active .category-progress-fill {
+    background-color: #4A90E2;
+}
+
+/* Scrollbar styles for hover menu content */
+.hover-menu-content scrollbarvertical {
+    width: 10dp;
+    margin-right: 2dp;
+}
+
+.hover-menu-content scrollbarvertical slidertrack {
+    background-color: #0F1419;
+    border-width: 1dp;
+    border-color: #1A1F26;
+}
+
+.hover-menu-content scrollbarvertical sliderbar {
+    background-color: #2A3340;
+    border-width: 1dp;
+    border-color: #3A4350;
+    min-height: 20dp;
+}
+
+.hover-menu-content scrollbarvertical sliderbar:hover {
+    background-color: #3A4350;
+}
+
+.hover-menu-content scrollbarvertical sliderbar:active {
+    background-color: #4A5360;
+}
+
+.hover-menu-content scrollbarvertical sliderarrowdec,
+.hover-menu-content scrollbarvertical sliderarrowinc {
+    display: none;
+}
