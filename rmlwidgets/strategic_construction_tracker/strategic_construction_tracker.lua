@@ -37,8 +37,8 @@ local CATEGORY_ICONS = {
 	build = "LuaUI/Images/groupicons/builder.png",
 }
 
--- Important buildings/units to track
-local TRACKED_BUILDINGS_LIST = {
+-- Base list of important buildings/units to track (T2 and strategic units)
+local t2TrackedBuildings = {
     -- === FUSION PLANTS ===
     "armfus", "corfus", "legfus",
     "armafus", "corafus", "legafus",
@@ -116,10 +116,84 @@ local TRACKED_BUILDINGS_LIST = {
     "armbanth", "corkarg", "armraz", "corsb",
 }
 
-local TRACKED_BUILDINGS = {}
-for _, unitName in ipairs(TRACKED_BUILDINGS_LIST) do
-    TRACKED_BUILDINGS[unitName] = true
+-- Function to dynamically identify T3/T4 units and other strategic units
+local function BuildComprehensiveTrackedList()
+    local trackedUnits = {}
+    
+    -- Start with the base T2 list
+    for _, unitName in ipairs(t2TrackedBuildings) do
+        trackedUnits[unitName] = true
+    end
+    
+    -- Scan all UnitDefs to find T3/T4 units and other strategic units
+    for unitDefID, unitDef in pairs(UnitDefs) do
+        if unitDef and unitDef.name then
+            local shouldTrack = false
+            
+            -- Check for T3/T4 units based on various criteria
+            if unitDef.customParams then
+                local unitgroup = unitDef.customParams.unitgroup or ""
+                local techlevel = unitDef.customParams.techlevel or ""
+                local description = unitDef.customParams.description or ""
+                
+                -- T3/T4 units typically have techlevel 3 or 4
+                if techlevel == "3" or techlevel == "4" then
+                    shouldTrack = true
+                end
+                
+                -- Experimental units (often T3/T4)
+                if unitgroup:match("experimental") or unitgroup:match("t3") or unitgroup:match("t4") then
+                    shouldTrack = true
+                end
+                
+                -- Strategic units based on unitgroup patterns
+                if unitgroup:match("nuke") or unitgroup:match("silo") or unitgroup:match("gantry") or 
+                   unitgroup:match("fusion") or unitgroup:match("plasma") or unitgroup:match("artillery") or
+                   unitgroup:match("anti") or unitgroup:match("shield") or unitgroup:match("jammer") then
+                    shouldTrack = true
+                end
+            end
+            
+            -- Additional criteria for strategic units
+            if not shouldTrack then
+                -- High cost units (typically strategic)
+                if unitDef.metalCost and unitDef.metalCost > 5000 then
+                    shouldTrack = true
+                end
+                
+                -- High energy cost units
+                if unitDef.energyCost and unitDef.energyCost > 50000 then
+                    shouldTrack = true
+                end
+                
+                -- Long build time units (typically strategic)
+                if unitDef.buildTime and unitDef.buildTime > 3000 then
+                    shouldTrack = true
+                end
+                
+                -- Units with special abilities
+                if unitDef.customParams and (
+                    unitDef.customParams.teleporter or 
+                    unitDef.customParams.teleport or
+                    unitDef.customParams.cloak or
+                    unitDef.customParams.stealth or
+                    unitDef.customParams.shield
+                ) then
+                    shouldTrack = true
+                end
+            end
+            
+            if shouldTrack then
+                trackedUnits[unitDef.name] = true
+            end
+        end
+    end
+    
+    return trackedUnits
 end
+
+-- This will be populated during initialization with the comprehensive list
+local TRACKED_BUILDINGS = {}
 
 -- Dynamically build unitgroup to category mapping from UnitDefs
 local UNITGROUP_TO_CATEGORY = {}
@@ -335,6 +409,9 @@ end
 
 function widget:Initialize()
     Spring.Echo(WIDGET_NAME .. ": Initializing widget...")
+
+    -- Build comprehensive tracked buildings list (T2 + T3 + T4 + strategic units)
+    TRACKED_BUILDINGS = BuildComprehensiveTrackedList()
 
     BuildCategoryMappings()
     local count = 0
