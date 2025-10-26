@@ -13,11 +13,9 @@ end
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitPosition = Spring.GetUnitPosition
-local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GiveOrderToUnitArray = Spring.GiveOrderToUnitArray
 local GetUnitTeam = Spring.GetUnitTeam
 local GetMyTeamID = Spring.GetMyTeamID
-local GetUnitSeparation = Spring.GetUnitSeparation
 local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitsInRectangle = Spring.GetUnitsInRectangle
 local GetUnitIsBeingBuilt = Spring.GetUnitIsBeingBuilt
@@ -45,6 +43,15 @@ Spring.I18N.set("en.ui.orderMenu.auto_replace_tooltip", "Automatically reclaim b
 local factions = { "arm", "cor", "leg" }
 
 local reclaimableTargets = {
+	-- wind
+	"win",
+	"wint2",
+	-- metal makers
+	"makr",
+	"fmkr",
+	"mmkr",
+	"uwmmm",
+	-- nanos
 	"nanotc",
 	"nanotcplat",
 	"nanotct2",
