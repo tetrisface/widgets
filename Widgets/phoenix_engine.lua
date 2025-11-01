@@ -1,12 +1,12 @@
 function widget:GetInfo()
 	return {
-		name = "Phoenix Engine",
-		desc = "Automatically reclaims blocking units when placing buildings over them.",
-		author = "timuela",
-		date = "2025-10-02",
+		name = 'Phoenix Engine',
+		desc = 'Automatically reclaims blocking units when placing buildings over them.',
+		author = 'timuela',
+		date = '2025-10-02',
 		layer = 0,
 		enabled = true,
-		handler = true,
+		handler = true
 	}
 end
 
@@ -28,43 +28,43 @@ local CMD_OPT_SHIFT = CMD.OPT_SHIFT
 local CMD_AUTO_REPLACE = 28341
 local CMD_AUTO_REPLACE_DESCRIPTION = {
 	id = CMD_AUTO_REPLACE,
-	type = (CMDTYPE or { ICON_MODE = 5 }).ICON_MODE,
-	name = "Auto Replace",
+	type = (CMDTYPE or {ICON_MODE = 5}).ICON_MODE,
+	name = 'Auto Replace',
 	cursor = nil,
-	action = "auto_replace",
-	params = { 1, "auto_replace_off", "auto_replace_on" },
+	action = 'auto_replace',
+	params = {1, 'auto_replace_off', 'auto_replace_on'}
 }
 
-Spring.I18N.set("en.ui.orderMenu.auto_replace_off", "Auto Replace Off")
-Spring.I18N.set("en.ui.orderMenu.auto_replace_on", "Auto Replace On")
-Spring.I18N.set("en.ui.orderMenu.auto_replace_tooltip", "Automatically reclaim blocking units when placing buildings")
+Spring.I18N.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
+Spring.I18N.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
+Spring.I18N.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
 
 -- Target definitions
-local factions = { "arm", "cor", "leg" }
+local factions = {'arm', 'cor', 'leg'}
 
 local reclaimableTargets = {
 	-- wind
-	"win",
-	"wint2",
+	'win',
+	'wint2',
 	-- metal makers
-	"makr",
-	"fmkr",
-	"mmkr",
-	"uwmmm",
+	'makr',
+	'fmkr',
+	'mmkr',
+	'uwmmm',
 	-- nanos
-	"nanotc",
-	"nanotcplat",
-	"nanotct2",
-	"nanotc2plat",
-	"nanotct3",
-	"wint2",
-	"afus",
+	'nanotc',
+	'nanotcplat',
+	'nanotct2',
+	'nanotc2plat',
+	'nanotct3',
+	'wint2',
+	'afus'
 }
 local buildableTypes = {
-	"afust3",
-	"mmkrt3",
-	"adveconvt3",
-	"flak",
+	'afust3',
+	'mmkrt3',
+	'adveconvt3',
+	'flak'
 }
 
 local TARGET_UNITDEF_NAMES = {}
@@ -75,7 +75,7 @@ for _, faction in ipairs(factions) do
 		table.insert(TARGET_UNITDEF_NAMES, faction .. reclaimableTarget)
 	end
 end
-for _, faction in ipairs({ "arm", "cor", "leg" }) do
+for _, faction in ipairs({'arm', 'cor', 'leg'}) do
 	for _, buildableType in ipairs(buildableTypes) do
 		table.insert(BUILDABLE_UNITDEF_NAMES, faction .. buildableType)
 	end
@@ -116,10 +116,14 @@ local MAX_RECLAIM_RETRIES = 200
 
 -- States
 local AUTO_REPLACE_ENABLED, builderPipelines, buildOrderCounter = {}, {}, 0
-local nanoCache = { turrets = {}, lastUpdate = 0, needsUpdate = true }
+local nanoCache = {turrets = {}, lastUpdate = 0, needsUpdate = true}
 local visualIndicators = {}
-local ALT = { "alt" }
-local CMD_CACHE = { 0, CMD_RECLAIM, CMD_OPT_SHIFT, 0 }
+local ALT = {'alt'}
+local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
+
+-- Sequential execution tracking (from JAOT widget)
+local builderCurrentBuildID = {} -- builderID -> current build order (sequence number)
+local RECLAIM_SEQUENTIAL_MODE = true -- Enable sequential reclaim (only reclaim for current + next builds)
 
 local function getPipelineSize(unitDefID)
 	local unitDef = UnitDefs[unitDefID]
@@ -148,8 +152,11 @@ local function getBuilderPipeline(builderID)
 			buildingsUnderConstruction = {},
 			reclaimStarted = {},
 			reclaimRetries = {},
-			lastReclaimAttempt = {},
+			lastReclaimAttempt = {}
 		}
+		if RECLAIM_SEQUENTIAL_MODE then
+			builderCurrentBuildID[builderID] = nil -- Will be set to first build's order
+		end
 	end
 	return builderPipelines[builderID]
 end
@@ -162,7 +169,7 @@ local function updateNanoCache()
 		if buildDist then
 			local x, _, z = GetUnitPosition(uid)
 			if x then
-				nanoCache.turrets[uid] = { x = x, z = z, buildDist = buildDist }
+				nanoCache.turrets[uid] = {x = x, z = z, buildDist = buildDist}
 			end
 		end
 	end
@@ -190,7 +197,7 @@ end
 -- Visual indicator functions
 local function addVisualIndicator(builderID, x, z, areaX, areaZ)
 	visualIndicators[builderID] = visualIndicators[builderID] or {}
-	table.insert(visualIndicators[builderID], { x, z, areaX, areaZ })
+	table.insert(visualIndicators[builderID], {x, z, areaX, areaZ})
 end
 
 local function removeVisualIndicator(builderID, x, z)
@@ -216,7 +223,8 @@ end
 local function findBlockersAtPosition(x, z, xsize, zsize, facing)
 	local blockers = {}
 	local areaX, areaZ =
-		(facing == 1 or facing == 3) and zsize * 4 or xsize * 4, (facing == 1 or facing == 3) and xsize * 4 or zsize * 4
+		(facing == 1 or facing == 3) and zsize * 4 or xsize * 4,
+		(facing == 1 or facing == 3) and xsize * 4 or zsize * 4
 
 	for _, uid in ipairs(GetUnitsInRectangle(x - areaX, z - areaZ, x + areaX, z + areaZ)) do
 		if TARGET_UNITDEF_IDS[GetUnitDefID(uid)] and GetUnitTeam(uid) == GetMyTeamID() then
@@ -274,15 +282,34 @@ local function shouldRetryReclaim(pipeline, order, currentFrame)
 	return (currentFrame - lastAttempt) >= RECLAIM_RETRY_DELAY and retries < MAX_RECLAIM_RETRIES
 end
 
+-- Check if we should reclaim for this build order (only for current + next builds in sequential mode)
+local function shouldReclaimForBuild(builderID, buildOrder)
+	if not RECLAIM_SEQUENTIAL_MODE then
+		return true -- Reclaim for all builds in non-sequential mode
+	end
+
+	local currentBuildOrder = builderCurrentBuildID[builderID]
+
+	-- If no current build set yet, initialize to this build and allow reclaim
+	if currentBuildOrder == nil then
+		builderCurrentBuildID[builderID] = buildOrder
+		return true
+	end
+
+	-- Only reclaim for current build or next build (one ahead)
+	local shouldReclaim = (buildOrder <= currentBuildOrder + 1)
+
+	return shouldReclaim
+end
+
 local function isBuildComplete(constructionInfo)
 	local wx, wz = constructionInfo.position[1], constructionInfo.position[2]
 	local hx, hz = constructionInfo.footprint[1], constructionInfo.footprint[2]
 	for _, uid in ipairs(GetUnitsInRectangle(wx - hx, wz - hz, wx + hx, wz + hz)) do
 		if
-			GetUnitDefID(uid) == constructionInfo.unitDefID
-			and GetUnitTeam(uid) == GetMyTeamID()
-			and not GetUnitIsBeingBuilt(uid)
-		then
+			GetUnitDefID(uid) == constructionInfo.unitDefID and GetUnitTeam(uid) == GetMyTeamID() and
+				not GetUnitIsBeingBuilt(uid)
+		 then
 			return true
 		end
 	end
@@ -320,9 +347,12 @@ function widget:GameFrame(n)
 		if not AUTO_REPLACE_ENABLED[builderID] or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
 			builderPipelines[builderID] = nil
 		else
-			table.sort(pipeline.pendingBuilds, function(a, b)
-				return a.order < b.order
-			end)
+			table.sort(
+				pipeline.pendingBuilds,
+				function(a, b)
+					return a.order < b.order
+				end
+			)
 
 			-- Get pipeline size for the first pending build
 			local currentPipelineSize = DEFAULT_PIPELINE_SIZE
@@ -333,26 +363,27 @@ function widget:GameFrame(n)
 			end
 
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
-				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] =
-					table.remove(pipeline.pendingBuilds, 1)
+				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
 			end
 			local i = 1
 			while i <= #pipeline.currentlyProcessing do
 				local p = pipeline.currentlyProcessing[i]
 				local bx, bz = p.params[1], p.params[3]
 				local shouldStart = not pipeline.reclaimStarted[p.order]
-				local shouldRetry = pipeline.reclaimStarted[p.order]
-					and shouldRetryReclaim(pipeline, p.order, currentFrame)
+				local shouldRetry = pipeline.reclaimStarted[p.order] and shouldRetryReclaim(pipeline, p.order, currentFrame)
+
+				-- Check if we should reclaim for this build order (sequential mode)
+				local shouldReclaimForThisBuild = shouldReclaimForBuild(builderID, p.order)
 
 				-- Handle reclaim retry logic
-				if shouldRetry then
+				if shouldRetry and shouldReclaimForThisBuild then
 					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing)
 					if #blockers > 0 then
 						pipeline.reclaimRetries[p.order] = (pipeline.reclaimRetries[p.order] or 0) + 1
 						giveReclaimOrdersFromNanos(blockers)
 						pipeline.lastReclaimAttempt[p.order] = currentFrame
 					end
-				elseif shouldStart then
+				elseif shouldStart and shouldReclaimForThisBuild then
 					giveReclaimOrdersFromNanos(p.blockers)
 					pipeline.reclaimStarted[p.order] = true
 					pipeline.lastReclaimAttempt[p.order] = currentFrame
@@ -366,6 +397,10 @@ function widget:GameFrame(n)
 						clearPipelineOrder(pipeline, p.order)
 						removeVisualIndicator(builderID, bx, bz)
 						table.remove(pipeline.currentlyProcessing, i)
+						-- Advance the current build ID after this build completes
+						if RECLAIM_SEQUENTIAL_MODE then
+							builderCurrentBuildID[builderID] = p.order + 1
+						end
 					else
 						i = i + 1
 					end
@@ -375,11 +410,11 @@ function widget:GameFrame(n)
 					if #blockers == 0 then
 						local aliveBuilders = getAliveBuilders(p.builders)
 						if #aliveBuilders > 0 then
-							GiveOrderToUnitArray(aliveBuilders, p.cmdID, p.params, { "shift" })
+							GiveOrderToUnitArray(aliveBuilders, p.cmdID, p.params, {'shift'})
 							pipeline.buildingsUnderConstruction[p.order] = {
-								position = { bx, bz },
-								footprint = { p.xsize / 2, p.zsize / 2 },
-								unitDefID = -p.cmdID,
+								position = {bx, bz},
+								footprint = {p.xsize / 2, p.zsize / 2},
+								unitDefID = -p.cmdID
 							}
 						else
 							clearPipelineOrder(pipeline, p.order)
@@ -417,7 +452,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 		checkUnits(true)
 		return true
 	end
-	if type(cmdID) ~= "number" or cmdID >= 0 or not isAutoReplaceEnabledForSelection() then
+	if type(cmdID) ~= 'number' or cmdID >= 0 or not isAutoReplaceEnabledForSelection() then
 		return false
 	end
 
@@ -460,7 +495,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 		zsize = zsize,
 		facing = facing,
 		order = buildOrderCounter,
-		blockers = blockers,
+		blockers = blockers
 	}
 	addVisualIndicator(assignedBuilderID, bx, bz, buildingAreaX, buildingAreaZ)
 	return true
@@ -473,6 +508,7 @@ widget.UnitDestroyed = function(_, unitID)
 		clearAllVisualIndicators(unitID)
 		builderPipelines[unitID] = nil
 	end
+	builderCurrentBuildID[unitID] = nil
 	if nanoCache.turrets[unitID] then
 		nanoCache.needsUpdate = true
 	end
@@ -492,14 +528,20 @@ widget.UnitGiven = function(_, unitID, unitDefID)
 end
 
 function widget:Initialize()
-	widgetHandler.actionHandler:AddAction(self, "auto_replace", function()
-		checkUnits(true)
-	end, nil, "p")
+	widgetHandler.actionHandler:AddAction(
+		self,
+		'auto_replace',
+		function()
+			checkUnits(true)
+		end,
+		nil,
+		'p'
+	)
 	nanoCache.needsUpdate = true
 end
 
 function widget:Shutdown()
-	widgetHandler.actionHandler:RemoveAction(self, "auto_replace", "p")
+	widgetHandler.actionHandler:RemoveAction(self, 'auto_replace', 'p')
 	builderPipelines, buildOrderCounter, AUTO_REPLACE_ENABLED = {}, 0, {}
 	visualIndicators = {}
 end
@@ -524,30 +566,36 @@ function widget:DrawWorld()
 			local x, z, areaX, areaZ = ind[1], ind[2], ind[3], ind[4]
 			local x1, z1, x2, z2 = x - areaX, z - areaZ, x + areaX, z + areaZ
 			local y = Spring.GetGroundHeight(x, z) + HEIGHT_OFFSET
-			gl.BeginEnd(GL.LINE_LOOP, function()
-				gl.Vertex(x1, y, z1)
-				gl.Vertex(x2, y, z1)
-				gl.Vertex(x2, y, z2)
-				gl.Vertex(x1, y, z2)
-			end)
-			gl.BeginEnd(GL.LINES, function()
-				gl.Vertex(x1, y, z1)
-				gl.Vertex(x1 + CORNER_SIZE, y, z1)
-				gl.Vertex(x1, y, z1)
-				gl.Vertex(x1, y, z1 + CORNER_SIZE)
-				gl.Vertex(x2, y, z1)
-				gl.Vertex(x2 - CORNER_SIZE, y, z1)
-				gl.Vertex(x2, y, z1)
-				gl.Vertex(x2, y, z1 + CORNER_SIZE)
-				gl.Vertex(x2, y, z2)
-				gl.Vertex(x2 - CORNER_SIZE, y, z2)
-				gl.Vertex(x2, y, z2)
-				gl.Vertex(x2, y, z2 - CORNER_SIZE)
-				gl.Vertex(x1, y, z2)
-				gl.Vertex(x1 + CORNER_SIZE, y, z2)
-				gl.Vertex(x1, y, z2)
-				gl.Vertex(x1, y, z2 - CORNER_SIZE)
-			end)
+			gl.BeginEnd(
+				GL.LINE_LOOP,
+				function()
+					gl.Vertex(x1, y, z1)
+					gl.Vertex(x2, y, z1)
+					gl.Vertex(x2, y, z2)
+					gl.Vertex(x1, y, z2)
+				end
+			)
+			gl.BeginEnd(
+				GL.LINES,
+				function()
+					gl.Vertex(x1, y, z1)
+					gl.Vertex(x1 + CORNER_SIZE, y, z1)
+					gl.Vertex(x1, y, z1)
+					gl.Vertex(x1, y, z1 + CORNER_SIZE)
+					gl.Vertex(x2, y, z1)
+					gl.Vertex(x2 - CORNER_SIZE, y, z1)
+					gl.Vertex(x2, y, z1)
+					gl.Vertex(x2, y, z1 + CORNER_SIZE)
+					gl.Vertex(x2, y, z2)
+					gl.Vertex(x2 - CORNER_SIZE, y, z2)
+					gl.Vertex(x2, y, z2)
+					gl.Vertex(x2, y, z2 - CORNER_SIZE)
+					gl.Vertex(x1, y, z2)
+					gl.Vertex(x1 + CORNER_SIZE, y, z2)
+					gl.Vertex(x1, y, z2)
+					gl.Vertex(x1, y, z2 - CORNER_SIZE)
+				end
+			)
 		end
 	end
 

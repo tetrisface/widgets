@@ -498,9 +498,13 @@ function widget:DrawScreen()
         totalEOut = totalEOut + ((unitWindMin + unitWindMax) / 2) * mult
       end
 
-      if (totalEOut * avgCR + totalMOut > 0) then
-        local avgSec = (uDef.metalCost + uDef.energyCost * avgCR) / (totalEOut * avgCR + totalMOut)
-        local currSec = (uDef.metalCost + uDef.energyCost * curAvgEffi) / (totalEOut * curAvgEffi + totalMOut)
+      -- Calculate total metal equivalent output (metal directly + energy converted to metal)
+      local totalMetalEquivalentOut = totalMOut + (totalEOut * avgCR)
+      local totalMetalEquivalentOutCurrent = totalMOut + (totalEOut * curAvgEffi)
+      
+      if (totalMetalEquivalentOut > 0) then
+        local avgSec = (uDef.metalCost + uDef.energyCost * avgCR) / totalMetalEquivalentOut
+        local currSec = (uDef.metalCost + uDef.energyCost * curAvgEffi) / totalMetalEquivalentOutCurrent
 
         DrawText('Average: ', format('%i sec (%i min %i sec)', avgSec, avgSec / 60, avgSec % 60))
         if (curAvgEffi > 0) then
