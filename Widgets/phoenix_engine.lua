@@ -32,10 +32,11 @@ local CMD_AUTO_REPLACE_DESCRIPTION = {
 	name = 'Auto Replace',
 	cursor = nil,
 	action = 'auto_replace',
-	params = {1, 'auto_replace_off', 'auto_replace_on'}
+	params = {2, 'auto_replace_off', 'auto_replace_strict', 'auto_replace_on'}
 }
 
 Spring.I18N.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
+Spring.I18N.set('en.ui.orderMenu.auto_replace_strict', 'Auto Replace Strict')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
 
@@ -60,6 +61,7 @@ local reclaimableTargets = {
 	'wint2',
 	'afus'
 }
+
 local buildableTypes = {
 	'afust3',
 	'mmkrt3',
@@ -81,11 +83,27 @@ for _, faction in ipairs({'arm', 'cor', 'leg'}) do
 	end
 end
 
-local TARGET_UNITDEF_IDS, builderDefs, NANO_DEFS, BUILDABLE_UNITDEF_IDS = {}, {}, {}, {}
+local TARGET_UNITDEF_IDS,
+	builderDefs,
+	NANO_DEFS,
+	BUILDABLE_UNITDEF_IDS,
+	NEVER_RECLAIMABLE_UNITDEF_IDS,
+	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}
+
 for _, name in ipairs(TARGET_UNITDEF_NAMES) do
 	local def = UnitDefNames and UnitDefNames[name]
 	if def then
 		TARGET_UNITDEF_IDS[def.id] = true
+	end
+end
+
+for _, target in ipairs({'gate', 'gatet3'}) do
+	for _, faction in ipairs(factions) do
+		local name = faction .. target
+		local def = UnitDefNames and UnitDefNames[name]
+		if def then
+			NEVER_RECLAIMABLE_UNITDEF_IDS[def.id] = true
+		end
 	end
 end
 
@@ -96,12 +114,52 @@ for _, name in ipairs(BUILDABLE_UNITDEF_NAMES) do
 	end
 end
 
+-- Function to detect economical buildings (from gui_spectator_hud.lua)
+local function isEconomicalBuilding(unitDefID, unitDef)
+
+	if not unitDef.isBuilding then
+		return false
+	end
+
+	-- Check if unitgroup is metal or energy
+	if
+		(unitDef.customParams and unitDef.customParams.unitgroup == 'metal') or
+			(unitDef.customParams and unitDef.customParams.unitgroup == 'energy')
+	 then
+		return true
+	end
+
+	-- Check if it's a nano turret (builder but not factory and not mobile)
+	if unitDef.isBuilder and not unitDef.isFactory and not unitDef.canMove then
+		return true
+	end
+
+	-- Check if it's an energy converter (metal maker)
+	if unitDef.customParams and unitDef.customParams.energyconv_capacity and unitDef.customParams.energyconv_efficiency then
+		return true
+	end
+
+	-- Check if it produces resources (metal extraction, energy production)
+	if (unitDef.extractsMetal and unitDef.extractsMetal > 0) or
+		(unitDef.energyMake and unitDef.energyMake > 0) or
+		(unitDef.energyUpkeep and unitDef.energyUpkeep < 0) then
+		return true
+	end
+
+	return false
+end
+
 for uDefID, uDef in pairs(UnitDefs) do
 	if uDef.isBuilder then
 		builderDefs[uDefID] = true
 	end
 	if uDef.isBuilder and not uDef.canMove and not uDef.isFactory then
 		NANO_DEFS[uDefID] = uDef.buildDistance or 0
+	end
+
+	-- Build economical buildings mapping
+	if isEconomicalBuilding(uDefID, uDef) then
+		ECONOMICAL_UNITDEF_IDS[uDefID] = true
 	end
 end
 
@@ -115,6 +173,7 @@ local RECLAIM_RETRY_DELAY = 150
 local MAX_RECLAIM_RETRIES = 200
 
 -- States
+-- AUTO_REPLACE_ENABLED stores mode: 0 = off, 1 = strict (restricted list), 2 = on (all economical buildings)
 local AUTO_REPLACE_ENABLED, builderPipelines, buildOrderCounter = {}, {}, 0
 local nanoCache = {turrets = {}, lastUpdate = 0, needsUpdate = true}
 local visualIndicators = {}
@@ -220,17 +279,32 @@ local function clearAllVisualIndicators(builderID)
 	visualIndicators[builderID] = nil
 end
 
-local function findBlockersAtPosition(x, z, xsize, zsize, facing)
+local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID)
 	local blockers = {}
 	local areaX, areaZ =
 		(facing == 1 or facing == 3) and zsize * 4 or xsize * 4,
 		(facing == 1 or facing == 3) and xsize * 4 or zsize * 4
 
+	local mode = AUTO_REPLACE_ENABLED[builderID] or 0
+
 	for _, uid in ipairs(GetUnitsInRectangle(x - areaX, z - areaZ, x + areaX, z + areaZ)) do
-		if TARGET_UNITDEF_IDS[GetUnitDefID(uid)] and GetUnitTeam(uid) == GetMyTeamID() then
-			local ux, _, uz = GetUnitPosition(uid)
-			if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
-				blockers[#blockers + 1] = uid
+		if GetUnitTeam(uid) == GetMyTeamID() then
+			local unitDefID = GetUnitDefID(uid)
+			local canReclaim = false
+
+			if mode == 1 then
+				-- Mode 1 (strict): only reclaim targets in TARGET_UNITDEF_IDS
+				canReclaim = TARGET_UNITDEF_IDS[unitDefID] == true
+			elseif mode == 2 then
+				-- Mode 2 (on): reclaim all economical buildings (but never reclaim gates)
+				canReclaim = ECONOMICAL_UNITDEF_IDS[unitDefID] == true and NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID] ~= true
+			end
+
+			if canReclaim then
+				local ux, _, uz = GetUnitPosition(uid)
+				if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
+					blockers[#blockers + 1] = uid
+				end
 			end
 		end
 	end
@@ -253,11 +327,11 @@ local function checkUnits(update)
 			found = true
 			if update then
 				local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
-				local wasEnabled = AUTO_REPLACE_ENABLED[id]
-				AUTO_REPLACE_ENABLED[id] = (mode ~= 0) and true or nil
+				local wasEnabled = (AUTO_REPLACE_ENABLED[id] or 0) ~= 0
+				AUTO_REPLACE_ENABLED[id] = (mode ~= 0) and mode or nil
 
 				-- Clear visual indicators when toggling off
-				if wasEnabled and not AUTO_REPLACE_ENABLED[id] then
+				if wasEnabled and (AUTO_REPLACE_ENABLED[id] or 0) == 0 then
 					clearAllVisualIndicators(id)
 				end
 			end
@@ -268,7 +342,7 @@ end
 
 local function isAutoReplaceEnabledForSelection()
 	for _, id in ipairs(GetSelectedUnits()) do
-		if builderDefs[GetUnitDefID(id)] and AUTO_REPLACE_ENABLED[id] then
+		if builderDefs[GetUnitDefID(id)] and (AUTO_REPLACE_ENABLED[id] or 0) ~= 0 then
 			return true
 		end
 	end
@@ -344,7 +418,7 @@ function widget:GameFrame(n)
 
 	local currentFrame = Spring.GetGameFrame()
 	for builderID, pipeline in pairs(builderPipelines) do
-		if not AUTO_REPLACE_ENABLED[builderID] or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
+		if (AUTO_REPLACE_ENABLED[builderID] or 0) == 0 or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
 			builderPipelines[builderID] = nil
 		else
 			table.sort(
@@ -377,16 +451,19 @@ function widget:GameFrame(n)
 
 				-- Handle reclaim retry logic
 				if shouldRetry and shouldReclaimForThisBuild then
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing)
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
 					if #blockers > 0 then
 						pipeline.reclaimRetries[p.order] = (pipeline.reclaimRetries[p.order] or 0) + 1
 						giveReclaimOrdersFromNanos(blockers)
 						pipeline.lastReclaimAttempt[p.order] = currentFrame
 					end
 				elseif shouldStart and shouldReclaimForThisBuild then
-					giveReclaimOrdersFromNanos(p.blockers)
-					pipeline.reclaimStarted[p.order] = true
-					pipeline.lastReclaimAttempt[p.order] = currentFrame
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
+					if #blockers > 0 then
+						giveReclaimOrdersFromNanos(blockers)
+						pipeline.reclaimStarted[p.order] = true
+						pipeline.lastReclaimAttempt[p.order] = currentFrame
+					end
 				end
 
 				-- Check if building is under construction
@@ -406,7 +483,7 @@ function widget:GameFrame(n)
 					end
 				else
 					-- Check if ready to build
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing)
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
 					if #blockers == 0 then
 						local aliveBuilders = getAliveBuilders(p.builders)
 						if #aliveBuilders > 0 then
@@ -434,8 +511,9 @@ end
 function widget:CommandsChanged()
 	local found_mode = 0
 	for _, id in ipairs(GetSelectedUnits()) do
-		if AUTO_REPLACE_ENABLED[id] then
-			found_mode = 1
+		local mode = AUTO_REPLACE_ENABLED[id] or 0
+		if mode ~= 0 then
+			found_mode = mode
 			break
 		end
 	end
@@ -448,7 +526,8 @@ end
 function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if cmdID == CMD_AUTO_REPLACE then
 		local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
-		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = (mode + 1) % 2
+		-- Cycle through 3 modes: 0 -> 1 -> 2 -> 0
+		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = (mode + 1) % 3
 		checkUnits(true)
 		return true
 	end
@@ -471,18 +550,18 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	end
 	local xsize, zsize = buildingDef.xsize, buildingDef.zsize
 	local facing = cmdParams[4] or 0
-	local blockers, buildingAreaX, buildingAreaZ = findBlockersAtPosition(bx, bz, xsize, zsize, facing)
-	if #blockers == 0 then
-		return false
-	end
 	local assignedBuilderID = nil
 	for _, builderID in ipairs(GetSelectedUnits()) do
-		if AUTO_REPLACE_ENABLED[builderID] then
+		if (AUTO_REPLACE_ENABLED[builderID] or 0) ~= 0 then
 			assignedBuilderID = builderID
 			break
 		end
 	end
 	if not assignedBuilderID then
+		return false
+	end
+	local blockers, buildingAreaX, buildingAreaZ = findBlockersAtPosition(bx, bz, xsize, zsize, facing, assignedBuilderID)
+	if #blockers == 0 then
 		return false
 	end
 	buildOrderCounter = buildOrderCounter + 1
