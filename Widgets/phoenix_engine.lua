@@ -10,6 +10,8 @@ function widget:GetInfo()
 	}
 end
 
+VFS.Include('luaui/Headers/keysym.h.lua')
+
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitPosition = Spring.GetUnitPosition
@@ -32,12 +34,18 @@ local CMD_AUTO_REPLACE_DESCRIPTION = {
 	name = 'Auto Replace',
 	cursor = nil,
 	action = 'auto_replace',
-	params = {2, 'auto_replace_off', 'auto_replace_strict', 'auto_replace_on'}
+	params = {2, 'auto_replace_off', 'auto_replace_strict', 'auto_replace_on', 'replace_everything'}
 }
+
+local MODE_AUTO_REPLACE_OFF = 0
+local MODE_AUTO_REPLACE_STRICT = 1
+local MODE_AUTO_REPLACE_ON = 2
+local MODE_REPLACE_EVERYTHING = 3
 
 Spring.I18N.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_strict', 'Auto Replace Strict')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
+Spring.I18N.set('en.ui.orderMenu.replace_everything', 'Replace Everything')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
 
 -- Target definitions
@@ -69,8 +77,35 @@ local buildableTypes = {
 	'flak'
 }
 
+local reclaimPriorityOrderNames = {
+	'afust3_200',
+	'afust3',
+	'mmkrt3',
+	'adveconvt3',
+	'afust2',
+	'adveconvt2',
+	'nanotct3',
+	'nanotc3plat',
+	'nanotct2',
+	'nanotc2plat',
+	'nanotc',
+	'nanotcplat',
+	'wint2',
+	'win',
+}
+
+-- add _scav postfix for all items
+local scavEntries = {}
+for _, name in ipairs(reclaimPriorityOrderNames) do
+	table.insert(scavEntries, name .. '_scav')
+end
+for _, scavName in ipairs(scavEntries) do
+	table.insert(reclaimPriorityOrderNames, scavName)
+end
+
 local TARGET_UNITDEF_NAMES = {}
 local BUILDABLE_UNITDEF_NAMES = {}
+local reclaimPriorityOrder = {}
 
 for _, faction in ipairs(factions) do
 	for _, reclaimableTarget in ipairs(reclaimableTargets) do
@@ -81,7 +116,14 @@ for _, faction in ipairs({'arm', 'cor', 'leg'}) do
 	for _, buildableType in ipairs(buildableTypes) do
 		table.insert(BUILDABLE_UNITDEF_NAMES, faction .. buildableType)
 	end
+	for _, placingPrio in ipairs(reclaimPriorityOrderNames) do
+		if UnitDefNames[faction .. placingPrio] then
+			table.insert(reclaimPriorityOrder, UnitDefNames[faction .. placingPrio].id)
+		end
+	end
 end
+
+reclaimPriorityOrder = table.invert(reclaimPriorityOrder)
 
 local TARGET_UNITDEF_IDS,
 	builderDefs,
@@ -164,7 +206,7 @@ for uDefID, uDef in pairs(UnitDefs) do
 end
 
 -- Configuration
-local RESTRICT_BUILDABLE = true
+local RESTRICT_BUILDABLE = false
 local DEFAULT_PIPELINE_SIZE = 3
 local MEDIUM_PIPELINE_SIZE = 6
 local SMALL_PIPELINE_SIZE = 20
@@ -180,9 +222,16 @@ local visualIndicators = {}
 local ALT = {'alt'}
 local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
 
--- Sequential execution tracking (from JAOT widget)
-local builderCurrentBuildID = {} -- builderID -> current build order (sequence number)
-local RECLAIM_SEQUENTIAL_MODE = true -- Enable sequential reclaim (only reclaim for current + next builds)
+-- Sequential execution tracking
+local RECLAIM_SEQUENTIAL_MODE = true -- Enable sequential reclaim (only reclaim for first 2 positions in queue)
+
+local function UnitDefHasShield(unitDefID)
+	return UnitDefs[unitDefID] and (UnitDefs[unitDefID].hasShield)
+end
+
+local function UnitDefTechLevel(unitDefID)
+	return UnitDefs[unitDefID] and UnitDefs[unitDefID].customParams and UnitDefs[unitDefID].customParams.techlevel and tonumber(UnitDefs[unitDefID].customParams.techlevel) or 1
+end
 
 local function getPipelineSize(unitDefID)
 	local unitDef = UnitDefs[unitDefID]
@@ -213,9 +262,6 @@ local function getBuilderPipeline(builderID)
 			reclaimRetries = {},
 			lastReclaimAttempt = {}
 		}
-		if RECLAIM_SEQUENTIAL_MODE then
-			builderCurrentBuildID[builderID] = nil -- Will be set to first build's order
-		end
 	end
 	return builderPipelines[builderID]
 end
@@ -279,31 +325,44 @@ local function clearAllVisualIndicators(builderID)
 	visualIndicators[builderID] = nil
 end
 
-local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID)
+local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, placedUnitDefID)
 	local blockers = {}
 	local areaX, areaZ =
 		(facing == 1 or facing == 3) and zsize * 4 or xsize * 4,
 		(facing == 1 or facing == 3) and xsize * 4 or zsize * 4
 
-	local mode = AUTO_REPLACE_ENABLED[builderID] or 0
+	local mode = AUTO_REPLACE_ENABLED[builderID] or MODE_AUTO_REPLACE_ON
 
 	for _, uid in ipairs(GetUnitsInRectangle(x - areaX, z - areaZ, x + areaX, z + areaZ)) do
 		if GetUnitTeam(uid) == GetMyTeamID() then
 			local unitDefID = GetUnitDefID(uid)
-			local canReclaim = false
 
-			if mode == 1 then
-				-- Mode 1 (strict): only reclaim targets in TARGET_UNITDEF_IDS
-				canReclaim = TARGET_UNITDEF_IDS[unitDefID] == true
-			elseif mode == 2 then
-				-- Mode 2 (on): reclaim all economical buildings (but never reclaim gates)
-				canReclaim = ECONOMICAL_UNITDEF_IDS[unitDefID] == true and NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID] ~= true
-			end
+			-- Never reclaim the same building type we're trying to place
+			if not (placedUnitDefID and unitDefID == placedUnitDefID) then
+				local canReclaim = false
 
-			if canReclaim then
-				local ux, _, uz = GetUnitPosition(uid)
-				if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
-					blockers[#blockers + 1] = uid
+				if RESTRICT_BUILDABLE or mode == MODE_REPLACE_EVERYTHING then
+					if not (UnitDefHasShield(unitDefID) and UnitDefTechLevel(unitDefID) >= 3) then
+						canReclaim = true
+					end
+				elseif mode == MODE_AUTO_REPLACE_STRICT then
+					-- Mode 1 (strict): only reclaim targets in TARGET_UNITDEF_IDS
+					canReclaim = TARGET_UNITDEF_IDS[unitDefID] == true
+				elseif mode == MODE_AUTO_REPLACE_ON then
+					-- Mode 2 (on): reclaim all economical buildings (but never reclaim gates)
+					canReclaim = (
+						ECONOMICAL_UNITDEF_IDS[unitDefID] == true
+							or
+							(reclaimPriorityOrder[placedUnitDefID] or 0) < (reclaimPriorityOrder[unitDefID] or 0)
+						)
+						and not NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID]
+				end
+
+				if canReclaim then
+					local ux, _, uz = GetUnitPosition(uid)
+					if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
+						blockers[#blockers + 1] = uid
+					end
 				end
 			end
 		end
@@ -327,11 +386,11 @@ local function checkUnits(update)
 			found = true
 			if update then
 				local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
-				local wasEnabled = (AUTO_REPLACE_ENABLED[id] or 0) ~= 0
-				AUTO_REPLACE_ENABLED[id] = (mode ~= 0) and mode or nil
+				local wasEnabled = (AUTO_REPLACE_ENABLED[id] or MODE_AUTO_REPLACE_ON) ~= MODE_AUTO_REPLACE_OFF
+				AUTO_REPLACE_ENABLED[id] = (mode ~= MODE_AUTO_REPLACE_OFF) and mode or nil
 
 				-- Clear visual indicators when toggling off
-				if wasEnabled and (AUTO_REPLACE_ENABLED[id] or 0) == 0 then
+				if wasEnabled and AUTO_REPLACE_ENABLED[id] == MODE_AUTO_REPLACE_OFF then
 					clearAllVisualIndicators(id)
 				end
 			end
@@ -342,7 +401,7 @@ end
 
 local function isAutoReplaceEnabledForSelection()
 	for _, id in ipairs(GetSelectedUnits()) do
-		if builderDefs[GetUnitDefID(id)] and (AUTO_REPLACE_ENABLED[id] or 0) ~= 0 then
+		if builderDefs[GetUnitDefID(id)] and (AUTO_REPLACE_ENABLED[id] or 2) ~= 0 then
 			return true
 		end
 	end
@@ -356,24 +415,14 @@ local function shouldRetryReclaim(pipeline, order, currentFrame)
 	return (currentFrame - lastAttempt) >= RECLAIM_RETRY_DELAY and retries < MAX_RECLAIM_RETRIES
 end
 
--- Check if we should reclaim for this build order (only for current + next builds in sequential mode)
-local function shouldReclaimForBuild(builderID, buildOrder)
+-- Check if we should reclaim for this build based on position in processing queue
+local function shouldReclaimForBuild(builderID, buildOrder, positionInQueue)
 	if not RECLAIM_SEQUENTIAL_MODE then
 		return true -- Reclaim for all builds in non-sequential mode
 	end
 
-	local currentBuildOrder = builderCurrentBuildID[builderID]
-
-	-- If no current build set yet, initialize to this build and allow reclaim
-	if currentBuildOrder == nil then
-		builderCurrentBuildID[builderID] = buildOrder
-		return true
-	end
-
-	-- Only reclaim for current build or next build (one ahead)
-	local shouldReclaim = (buildOrder <= currentBuildOrder + 1)
-
-	return shouldReclaim
+	-- Only reclaim for first 2 positions in the processing queue (current + next)
+	return positionInQueue <= 2
 end
 
 local function isBuildComplete(constructionInfo)
@@ -418,7 +467,7 @@ function widget:GameFrame(n)
 
 	local currentFrame = Spring.GetGameFrame()
 	for builderID, pipeline in pairs(builderPipelines) do
-		if (AUTO_REPLACE_ENABLED[builderID] or 0) == 0 or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
+		if (AUTO_REPLACE_ENABLED[builderID] or 2) == 0 or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
 			builderPipelines[builderID] = nil
 		else
 			table.sort(
@@ -436,6 +485,8 @@ function widget:GameFrame(n)
 				currentPipelineSize = getPipelineSize(-pipeline.currentlyProcessing[1].cmdID)
 			end
 
+			Spring.Echo('currentPipelineSize', currentPipelineSize, 'pendingBuilds', #pipeline.pendingBuilds, 'currentlyProcessing', #pipeline.currentlyProcessing)
+
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
 			end
@@ -443,22 +494,23 @@ function widget:GameFrame(n)
 			while i <= #pipeline.currentlyProcessing do
 				local p = pipeline.currentlyProcessing[i]
 				local bx, bz = p.params[1], p.params[3]
+				local buildingDefIDBeingPlaced = -p.cmdID
 				local shouldStart = not pipeline.reclaimStarted[p.order]
 				local shouldRetry = pipeline.reclaimStarted[p.order] and shouldRetryReclaim(pipeline, p.order, currentFrame)
 
-				-- Check if we should reclaim for this build order (sequential mode)
-				local shouldReclaimForThisBuild = shouldReclaimForBuild(builderID, p.order)
+				-- Check if we should reclaim for this build based on position in queue
+				local shouldReclaimForThisBuild = shouldReclaimForBuild(builderID, p.order, i)
 
 				-- Handle reclaim retry logic
 				if shouldRetry and shouldReclaimForThisBuild then
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
 					if #blockers > 0 then
 						pipeline.reclaimRetries[p.order] = (pipeline.reclaimRetries[p.order] or 0) + 1
 						giveReclaimOrdersFromNanos(blockers)
 						pipeline.lastReclaimAttempt[p.order] = currentFrame
 					end
 				elseif shouldStart and shouldReclaimForThisBuild then
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
 					if #blockers > 0 then
 						giveReclaimOrdersFromNanos(blockers)
 						pipeline.reclaimStarted[p.order] = true
@@ -474,16 +526,12 @@ function widget:GameFrame(n)
 						clearPipelineOrder(pipeline, p.order)
 						removeVisualIndicator(builderID, bx, bz)
 						table.remove(pipeline.currentlyProcessing, i)
-						-- Advance the current build ID after this build completes
-						if RECLAIM_SEQUENTIAL_MODE then
-							builderCurrentBuildID[builderID] = p.order + 1
-						end
 					else
 						i = i + 1
 					end
 				else
 					-- Check if ready to build
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID)
+					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
 					if #blockers == 0 then
 						local aliveBuilders = getAliveBuilders(p.builders)
 						if #aliveBuilders > 0 then
@@ -509,10 +557,10 @@ end
 
 -- Command handling
 function widget:CommandsChanged()
-	local found_mode = 0
+	local found_mode = MODE_AUTO_REPLACE_ON
 	for _, id in ipairs(GetSelectedUnits()) do
-		local mode = AUTO_REPLACE_ENABLED[id] or 0
-		if mode ~= 0 then
+		local mode = AUTO_REPLACE_ENABLED[id] or MODE_AUTO_REPLACE_ON
+		if mode ~= MODE_AUTO_REPLACE_OFF then
 			found_mode = mode
 			break
 		end
@@ -527,7 +575,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if cmdID == CMD_AUTO_REPLACE then
 		local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
 		-- Cycle through 3 modes: 0 -> 1 -> 2 -> 0
-		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = (mode + 1) % 3
+		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = (mode + 1) % #CMD_AUTO_REPLACE_DESCRIPTION.params
 		checkUnits(true)
 		return true
 	end
@@ -552,7 +600,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	local facing = cmdParams[4] or 0
 	local assignedBuilderID = nil
 	for _, builderID in ipairs(GetSelectedUnits()) do
-		if (AUTO_REPLACE_ENABLED[builderID] or 0) ~= 0 then
+		if (AUTO_REPLACE_ENABLED[builderID] or 2) ~= 0 then
 			assignedBuilderID = builderID
 			break
 		end
@@ -560,7 +608,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if not assignedBuilderID then
 		return false
 	end
-	local blockers, buildingAreaX, buildingAreaZ = findBlockersAtPosition(bx, bz, xsize, zsize, facing, assignedBuilderID)
+	local blockers, buildingAreaX, buildingAreaZ = findBlockersAtPosition(bx, bz, xsize, zsize, facing, assignedBuilderID, buildingDefID)
 	if #blockers == 0 then
 		return false
 	end
@@ -587,7 +635,6 @@ widget.UnitDestroyed = function(_, unitID)
 		clearAllVisualIndicators(unitID)
 		builderPipelines[unitID] = nil
 	end
-	builderCurrentBuildID[unitID] = nil
 	if nanoCache.turrets[unitID] then
 		nanoCache.needsUpdate = true
 	end
@@ -681,4 +728,11 @@ function widget:DrawWorld()
 	gl.LineWidth(1)
 	gl.Color(1, 1, 1, 1)
 	gl.PopAttrib()
+end
+
+function widget:KeyPress(key, modifier, isRepeat)
+	if key == KEYSYMS.F14 then
+		RESTRICT_BUILDABLE = not RESTRICT_BUILDABLE
+		Spring.Echo('REPLACE ALL ', not RESTRICT_BUILDABLE)
+	end
 end

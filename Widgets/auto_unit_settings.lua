@@ -168,7 +168,9 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 	--   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
 	end
 
-	if def.canStockpile and not lraa[unitDefID] and def.isBuilding and unitID ~= nil and type(unitID) == 'number' then
+	if def.canStockpile and not lraa[unitDefID] and def.isBuilding and unitID ~= nil and type(unitID) == 'number'
+	and not def.name:find 'Launcher'
+	 then
 		Spring.GiveOrderToUnit(unitID, CMD.REPEAT, {1}, 0)
 		Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, {'ctrl', 'shift', 'right'})
 		Spring.GiveOrderToUnit(unitID, CMD.STOCKPILE, {}, 0)
