@@ -47,12 +47,10 @@ i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.action .. '_tooltip', 
 
 local BUILDER_DEFS = {}
 local NANO_DEFS = {}
-local BT_DEFS = {}
 local MAX_DISTANCE = 0
 local HOLO_PLACERS = {}
 
 for unit_def_id, unit_def in pairs(UnitDefs) do
-    BT_DEFS[unit_def_id] = unit_def.buildTime
     if unit_def.isBuilder and not unit_def.isFactory then
         if #unit_def.buildOptions > 0 then
             BUILDER_DEFS[unit_def_id] = unit_def.buildSpeed
@@ -90,7 +88,7 @@ local HOLO_THRESHOLDS = {
 }
 
 local function checkUnits(update)
-    local mode = 0
+    local defaultMode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
     local num_hp = 0
     local num_builders = 0
 
@@ -109,13 +107,13 @@ local function checkUnits(update)
 
     if num_builders > 0 then
         if update then
-            local mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
+
             for i = 1, #ids do
-                if mode == 0 then
+                if defaultMode == 0 then
                     HOLO_PLACERS[ids[i]] = nil
                 else
                     HOLO_PLACERS[ids[i]] = HOLO_PLACERS[ids[i]] or {}
-                    HOLO_PLACERS[ids[i]].threshold = HOLO_THRESHOLDS[mode]
+                    HOLO_PLACERS[ids[i]].threshold = HOLO_THRESHOLDS[defaultMode]
                 end
             end
         end
