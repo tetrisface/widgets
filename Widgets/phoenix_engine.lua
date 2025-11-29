@@ -28,24 +28,19 @@ local CMD_OPT_SHIFT = CMD.OPT_SHIFT
 
 -- Command definitions
 local CMD_AUTO_REPLACE = 28341
+local MODE_AUTO_REPLACE_OFF = 0
+local MODE_AUTO_REPLACE_ON = 1
 local CMD_AUTO_REPLACE_DESCRIPTION = {
 	id = CMD_AUTO_REPLACE,
 	type = (CMDTYPE or {ICON_MODE = 5}).ICON_MODE,
 	name = 'Auto Replace',
 	cursor = nil,
 	action = 'auto_replace',
-	params = {2, 'auto_replace_off', 'auto_replace_strict', 'auto_replace_on', 'replace_everything'}
+	params = {1, 'auto_replace_off', 'auto_replace_on'}
 }
 
-local MODE_AUTO_REPLACE_OFF = 0
-local MODE_AUTO_REPLACE_STRICT = 1
-local MODE_AUTO_REPLACE_ON = 2
-local MODE_REPLACE_EVERYTHING = 3
-
 Spring.I18N.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
-Spring.I18N.set('en.ui.orderMenu.auto_replace_strict', 'Auto Replace Strict')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
-Spring.I18N.set('en.ui.orderMenu.replace_everything', 'Replace Everything')
 Spring.I18N.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
 
 -- Target definitions
@@ -125,6 +120,9 @@ end
 
 reclaimPriorityOrder = table.invert(reclaimPriorityOrder)
 
+-- Build equality groups: maps unitDefID -> set of equivalent unitDefIDs (same building, different factions)
+local UNIT_EQUALITY_GROUPS = {}
+
 local TARGET_UNITDEF_IDS,
 	builderDefs,
 	NANO_DEFS,
@@ -157,7 +155,7 @@ for _, name in ipairs(BUILDABLE_UNITDEF_NAMES) do
 end
 
 -- Function to detect economical buildings (from gui_spectator_hud.lua)
-local function isEconomicalBuilding(unitDefID, unitDef)
+local function IsEconomicalBuilding(unitDefID, unitDef)
 	if not unitDef.isBuilding then
 		return false
 	end
@@ -191,6 +189,16 @@ local function isEconomicalBuilding(unitDefID, unitDef)
 	return false
 end
 
+local function UnitDefHasShield(unitDefID)
+	return UnitDefs[unitDefID] and (UnitDefs[unitDefID].hasShield)
+end
+
+local function UnitDefTechLevel(unitDefID)
+	return UnitDefs[unitDefID] and UnitDefs[unitDefID].customParams and UnitDefs[unitDefID].customParams.techlevel and
+		tonumber(UnitDefs[unitDefID].customParams.techlevel) or
+		1
+end
+
 for uDefID, uDef in pairs(UnitDefs) do
 	if uDef.isBuilder then
 		builderDefs[uDefID] = true
@@ -200,13 +208,51 @@ for uDefID, uDef in pairs(UnitDefs) do
 	end
 
 	-- Build economical buildings mapping
-	if isEconomicalBuilding(uDefID, uDef) then
+	if IsEconomicalBuilding(uDefID, uDef) then
 		ECONOMICAL_UNITDEF_IDS[uDefID] = true
 	end
 end
 
+-- Build equality groups table - links faction equivalents together
+-- First, create a temp mapping: baseName -> {faction defIDs}
+local baseNameToDefIDs = {}
+for uDefID, uDef in pairs(UnitDefs) do
+	if uDef.isBuilding then
+		local name = uDef.name
+		-- Extract base name by removing faction prefix (arm, cor, leg)
+		local baseName = name
+		if name:sub(1, 3) == 'arm' then
+			baseName = name:sub(4)
+		elseif name:sub(1, 3) == 'cor' then
+			baseName = name:sub(4)
+		elseif name:sub(1, 3) == 'leg' then
+			baseName = name:sub(4)
+		end
+
+		if baseName ~= name then -- Only process if a faction prefix was found
+			if not baseNameToDefIDs[baseName] then
+				baseNameToDefIDs[baseName] = {}
+			end
+			table.insert(baseNameToDefIDs[baseName], uDefID)
+		end
+	end
+end
+
+-- Now build the equality groups: each unitDefID maps to a set of its equivalents
+for baseName, defIDs in pairs(baseNameToDefIDs) do
+	if #defIDs > 1 then -- Only create groups if multiple factions have this building
+		for _, defID in ipairs(defIDs) do
+			UNIT_EQUALITY_GROUPS[defID] = {}
+			for _, otherDefID in ipairs(defIDs) do
+				if otherDefID ~= defID then
+					UNIT_EQUALITY_GROUPS[defID][otherDefID] = true
+				end
+			end
+		end
+	end
+end
+
 -- Configuration
-local RESTRICT_BUILDABLE = false
 local DEFAULT_PIPELINE_SIZE = 3
 local MEDIUM_PIPELINE_SIZE = 6
 local SMALL_PIPELINE_SIZE = 20
@@ -215,24 +261,79 @@ local RECLAIM_RETRY_DELAY = 150
 local MAX_RECLAIM_RETRIES = 200
 
 -- States
--- AUTO_REPLACE_ENABLED stores mode: 0 = off, 1 = strict (restricted list), 2 = on (all economical buildings)
+-- AUTO_REPLACE_ENABLED stores mode: 0 = off, 1 = on
 local AUTO_REPLACE_ENABLED, builderPipelines, buildOrderCounter = {}, {}, 0
 local nanoCache = {turrets = {}, lastUpdate = 0, needsUpdate = true}
 local visualIndicators = {}
 local ALT = {'alt'}
 local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
+local F14_MODIFIER_ACTIVE = false
 
 -- Sequential execution tracking
 local RECLAIM_SEQUENTIAL_MODE = true -- Enable sequential reclaim (only reclaim for first 2 positions in queue)
 
-local function UnitDefHasShield(unitDefID)
-	return UnitDefs[unitDefID] and (UnitDefs[unitDefID].hasShield)
+-- Helper functions
+local function getReclaimPriority(unitDefID)
+	return reclaimPriorityOrder[unitDefID]
 end
 
-local function UnitDefTechLevel(unitDefID)
-	return UnitDefs[unitDefID] and UnitDefs[unitDefID].customParams and UnitDefs[unitDefID].customParams.techlevel and
-		tonumber(UnitDefs[unitDefID].customParams.techlevel) or
-		1
+local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifierActive)
+	-- Never replace: same unit
+	if existingUnitDefID == placingUnitDefID then
+		return false
+	end
+
+	-- Never replace: faction equivalents (different faction, same building)
+	if UNIT_EQUALITY_GROUPS[existingUnitDefID] and UNIT_EQUALITY_GROUPS[existingUnitDefID][placingUnitDefID] then
+		return false
+	end
+
+	local existingDef = UnitDefs[existingUnitDefID]
+	if not existingDef then
+		return false
+	end
+
+	-- Never replace: non-buildings (moving units)
+	if existingDef.canMove then
+		return false
+	end
+
+	-- Never replace: gates
+	if NEVER_RECLAIMABLE_UNITDEF_IDS[existingUnitDefID] then
+		return false
+	end
+
+	-- Never replace: T3+ shields
+	if UnitDefHasShield(existingUnitDefID) and UnitDefTechLevel(existingUnitDefID) >= 3 then
+		return false
+	end
+
+	-- Mode-specific rules
+	if mode == MODE_AUTO_REPLACE_OFF then
+		if not modifierActive then
+			-- Mode 0, no modifier: Never replace
+			return false
+		else
+			-- Mode 0 + modifier: Keep simple for future expansion
+			-- For now, keep it off
+			return false
+		end
+	elseif mode == MODE_AUTO_REPLACE_ON then
+		if not modifierActive then
+			-- Mode 2, no modifier: Replace economical buildings including nanos
+			return (ECONOMICAL_UNITDEF_IDS[existingUnitDefID] == true or
+				(getReclaimPriority(placingUnitDefID) or 0) < (getReclaimPriority(existingUnitDefID) or 0))
+		else
+			-- Mode 2 + modifier: Replace almost everything EXCEPT nanos
+			if NANO_DEFS[existingUnitDefID] then
+				return false
+			end
+			-- Replace all buildings that aren't shields/gates/nanos
+			return true
+		end
+	end
+
+	return false
 end
 
 local function getPipelineSize(unitDefID)
@@ -257,6 +358,7 @@ end
 local function getBuilderPipeline(builderID)
 	if not builderPipelines[builderID] then
 		builderPipelines[builderID] = {
+			builderID = builderID,
 			pendingBuilds = {},
 			currentlyProcessing = {},
 			buildingsUnderConstruction = {},
@@ -339,30 +441,10 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 		if GetUnitTeam(uid) == GetMyTeamID() then
 			local unitDefID = GetUnitDefID(uid)
 
-			-- Never reclaim the same building type we're trying to place
-			if not (placedUnitDefID and unitDefID == placedUnitDefID) then
-				local canReclaim = false
-
-				if RESTRICT_BUILDABLE or mode == MODE_REPLACE_EVERYTHING then
-					if not (UnitDefHasShield(unitDefID) and UnitDefTechLevel(unitDefID) >= 3) then
-						canReclaim = true
-					end
-				elseif mode == MODE_AUTO_REPLACE_STRICT then
-					-- Mode 1 (strict): only reclaim targets in TARGET_UNITDEF_IDS
-					canReclaim = TARGET_UNITDEF_IDS[unitDefID] == true
-				elseif mode == MODE_AUTO_REPLACE_ON then
-					-- Mode 2 (on): reclaim all economical buildings (but never reclaim gates)
-					canReclaim =
-						(ECONOMICAL_UNITDEF_IDS[unitDefID] == true or
-						(reclaimPriorityOrder[placedUnitDefID] or 0) < (reclaimPriorityOrder[unitDefID] or 0)) and
-						not NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID]
-				end
-
-				if canReclaim then
-					local ux, _, uz = GetUnitPosition(uid)
-					if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
-						blockers[#blockers + 1] = uid
-					end
+			if canReplaceUnit(unitDefID, placedUnitDefID, mode, F14_MODIFIER_ACTIVE) then
+				local ux, _, uz = GetUnitPosition(uid)
+				if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
+					blockers[#blockers + 1] = uid
 				end
 			end
 		end
@@ -387,10 +469,10 @@ local function checkUnits(update)
 			if update then
 				local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
 				local wasEnabled = (AUTO_REPLACE_ENABLED[id] or MODE_AUTO_REPLACE_ON) ~= MODE_AUTO_REPLACE_OFF
-				AUTO_REPLACE_ENABLED[id] = (mode ~= MODE_AUTO_REPLACE_OFF) and mode or nil
+				AUTO_REPLACE_ENABLED[id] = mode
 
 				-- Clear visual indicators when toggling off
-				if wasEnabled and AUTO_REPLACE_ENABLED[id] == MODE_AUTO_REPLACE_OFF then
+				if wasEnabled and mode == MODE_AUTO_REPLACE_OFF then
 					clearAllVisualIndicators(id)
 				end
 			end
@@ -401,7 +483,7 @@ end
 
 local function isAutoReplaceEnabledForSelection()
 	for _, id in ipairs(GetSelectedUnits()) do
-		if builderDefs[GetUnitDefID(id)] and (AUTO_REPLACE_ENABLED[id] or 2) ~= 0 then
+		if builderDefs[GetUnitDefID(id)] and (AUTO_REPLACE_ENABLED[id] or MODE_AUTO_REPLACE_ON) ~= MODE_AUTO_REPLACE_OFF then
 			return true
 		end
 	end
@@ -415,14 +497,37 @@ local function shouldRetryReclaim(pipeline, order, currentFrame)
 	return (currentFrame - lastAttempt) >= RECLAIM_RETRY_DELAY and retries < MAX_RECLAIM_RETRIES
 end
 
+-- Count how many build commands a builder has in their actual queue
+local function countBuilderQueuedBuilds(builderID)
+	local commands = Spring.GetUnitCommands(builderID, -1)
+	if not commands then
+		return 0
+	end
+	
+	local count = 0
+	for _, cmd in ipairs(commands) do
+		-- Negative command IDs are build commands
+		if cmd.id < 0 then
+			count = count + 1
+		end
+	end
+	return count
+end
+
 -- Check if we should reclaim for this build based on position in processing queue
-local function shouldReclaimForBuild(builderID, buildOrder, positionInQueue)
+local function shouldReclaimForBuild(pipeline, buildOrder, positionInQueue)
 	if not RECLAIM_SEQUENTIAL_MODE then
 		return true -- Reclaim for all builds in non-sequential mode
 	end
 
-	-- Only reclaim for first 2 positions in the processing queue (current + next)
-	return positionInQueue <= 2
+	-- Get builder's actual queue length (non-blocked builds that went through)
+	local queuedBuilds = countBuilderQueuedBuilds(pipeline.builderID)
+	
+	-- Total position = queued non-blocked builds + position in our blocked pipeline
+	local effectivePosition = queuedBuilds + positionInQueue
+	
+	-- Only reclaim for first 2 positions overall
+	return effectivePosition <= 2
 end
 
 local function isBuildComplete(constructionInfo)
@@ -456,6 +561,35 @@ local function clearPipelineOrder(pipeline, order)
 	pipeline.lastReclaimAttempt[order] = nil
 end
 
+local function cleanupPipelineForBuilder(builderID)
+	local pipeline = builderPipelines[builderID]
+	if not pipeline then
+		return
+	end
+	
+	-- Clear all visual indicators for this builder
+	clearAllVisualIndicators(builderID)
+	
+	-- Clean up all tracking
+	for order, _ in pairs(pipeline.reclaimStarted) do
+		clearPipelineOrder(pipeline, order)
+	end
+	
+	-- Clear all positions from visual indicators
+	for _, p in ipairs(pipeline.pendingBuilds) do
+		local bx, bz = p.params[1], p.params[3]
+		removeVisualIndicator(builderID, bx, bz)
+	end
+	for _, p in ipairs(pipeline.currentlyProcessing) do
+		local bx, bz = p.params[1], p.params[3]
+		removeVisualIndicator(builderID, bx, bz)
+	end
+	
+	-- Remove the pipeline
+	builderPipelines[builderID] = nil
+end
+
+
 -- Main game frame processing
 function widget:GameFrame(n)
 	if nanoCache.needsUpdate or (n - nanoCache.lastUpdate) >= NANO_CACHE_UPDATE_INTERVAL then
@@ -467,7 +601,10 @@ function widget:GameFrame(n)
 
 	local currentFrame = Spring.GetGameFrame()
 	for builderID, pipeline in pairs(builderPipelines) do
-		if (AUTO_REPLACE_ENABLED[builderID] or 2) == 0 or (#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0) then
+		if
+			(AUTO_REPLACE_ENABLED[builderID] or MODE_AUTO_REPLACE_ON) == MODE_AUTO_REPLACE_OFF or
+				(#pipeline.pendingBuilds + #pipeline.currentlyProcessing == 0)
+		 then
 			builderPipelines[builderID] = nil
 		else
 			table.sort(
@@ -497,6 +634,7 @@ function widget:GameFrame(n)
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
 			end
+			
 			local i = 1
 			while i <= #pipeline.currentlyProcessing do
 				local p = pipeline.currentlyProcessing[i]
@@ -506,7 +644,7 @@ function widget:GameFrame(n)
 				local shouldRetry = pipeline.reclaimStarted[p.order] and shouldRetryReclaim(pipeline, p.order, currentFrame)
 
 				-- Check if we should reclaim for this build based on position in queue
-				local shouldReclaimForThisBuild = shouldReclaimForBuild(builderID, p.order, i)
+				local shouldReclaimForThisBuild = shouldReclaimForBuild(pipeline, p.order, i)
 
 				-- Handle reclaim retry logic
 				if shouldRetry and shouldReclaimForThisBuild then
@@ -566,8 +704,8 @@ end
 function widget:CommandsChanged()
 	local found_mode = MODE_AUTO_REPLACE_ON
 	for _, id in ipairs(GetSelectedUnits()) do
-		local mode = AUTO_REPLACE_ENABLED[id] or MODE_AUTO_REPLACE_ON
-		if mode ~= MODE_AUTO_REPLACE_OFF then
+		local mode = AUTO_REPLACE_ENABLED[id]
+		if mode then
 			found_mode = mode
 			break
 		end
@@ -581,19 +719,31 @@ end
 function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if cmdID == CMD_AUTO_REPLACE then
 		local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
-		-- Cycle through 3 modes: 0 -> 1 -> 2 -> 0
-		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = (mode + 1) % #CMD_AUTO_REPLACE_DESCRIPTION.params
+		Spring.Echo('Phoenix Engine: Button clicked, current mode:', mode)
+		-- Cycle through modes like holo_place does
+		local n_modes = #CMD_AUTO_REPLACE_DESCRIPTION.params - 1
+		mode = (mode + 1) % n_modes
+		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = mode
+		Spring.Echo('Phoenix Engine: New mode:', CMD_AUTO_REPLACE_DESCRIPTION.params[1])
 		checkUnits(true)
 		return true
 	end
+	
+	-- Handle CMD.STOP - clear pipeline for selected builders
+	if cmdID == CMD.STOP then
+		for _, builderID in ipairs(GetSelectedUnits()) do
+			if builderPipelines[builderID] then
+				cleanupPipelineForBuilder(builderID)
+			end
+		end
+		return false -- Let the stop command through
+	end
+	
 	if type(cmdID) ~= 'number' or cmdID >= 0 or not isAutoReplaceEnabledForSelection() then
 		return false
 	end
 
 	local buildingDefID = -cmdID
-	if RESTRICT_BUILDABLE and not BUILDABLE_UNITDEF_IDS[buildingDefID] then
-		return false
-	end
 	local bx, by, bz = tonumber(cmdParams[1]), tonumber(cmdParams[2]), tonumber(cmdParams[3])
 	if not (bx and by and bz) then
 		return false
@@ -607,7 +757,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	local facing = cmdParams[4] or 0
 	local assignedBuilderID = nil
 	for _, builderID in ipairs(GetSelectedUnits()) do
-		if (AUTO_REPLACE_ENABLED[builderID] or 2) ~= 0 then
+		if (AUTO_REPLACE_ENABLED[builderID] or MODE_AUTO_REPLACE_ON) ~= MODE_AUTO_REPLACE_OFF then
 			assignedBuilderID = builderID
 			break
 		end
@@ -633,6 +783,13 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 		blockers = blockers
 	}
 	addVisualIndicator(assignedBuilderID, bx, bz, buildingAreaX, buildingAreaZ)
+
+	-- Reset F14 modifier after command is processed
+	if F14_MODIFIER_ACTIVE then
+		F14_MODIFIER_ACTIVE = false
+		Spring.Echo('Phoenix Engine Modifier: OFF (auto-reset)')
+	end
+
 	return true
 end
 
@@ -640,8 +797,7 @@ end
 widget.UnitDestroyed = function(_, unitID)
 	AUTO_REPLACE_ENABLED[unitID] = nil
 	if builderPipelines[unitID] then
-		clearAllVisualIndicators(unitID)
-		builderPipelines[unitID] = nil
+		cleanupPipelineForBuilder(unitID)
 	end
 	if nanoCache.turrets[unitID] then
 		nanoCache.needsUpdate = true
@@ -739,8 +895,12 @@ function widget:DrawWorld()
 end
 
 function widget:KeyPress(key, modifier, isRepeat)
+	if isRepeat then
+		return false
+	end
 	if key == KEYSYMS.F14 then
-		RESTRICT_BUILDABLE = not RESTRICT_BUILDABLE
-		Spring.Echo('REPLACE ALL ', not RESTRICT_BUILDABLE)
+		F14_MODIFIER_ACTIVE = not F14_MODIFIER_ACTIVE
+		Spring.Echo('Phoenix Engine Modifier: ', F14_MODIFIER_ACTIVE and 'ON' or 'OFF')
+		return true
 	end
 end

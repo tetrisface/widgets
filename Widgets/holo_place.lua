@@ -35,14 +35,23 @@ local CMD_HOLO_PLACE_DESCRIPTION = {
     name = 'Holo Place',
     cursor = nil,
     action = 'holo_place',
-    params = {1, 'holo_place_off', 'holo_place_ins', 'holo_place_unass', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
+    params = {
+        1,
+        'holo_place_off',
+        'holo_place_ins',
+        'holo_place_unass',
+        'holo_place_30',
+        'holo_place_60',
+        'holo_place_90'
+    }
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[2], 'Holo Place off')
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[3], 'Holo Place Ins')
-i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[4], 'Holo Place 30') -- don't use % sign, it breaks the UI for some reason
-i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[5], 'Holo Place 60')
-i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[6], 'Holo Place 90')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[4], 'Holo Place Unass')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[5], 'Holo Place 30') -- don't use % sign, it breaks the UI for some reason
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[6], 'Holo Place 60')
+i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[7], 'Holo Place 90')
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.action .. '_tooltip', 'Start next building if assisted')
 
 local BUILDER_DEFS = {}
@@ -82,7 +91,7 @@ end
 local HOLO_THRESHOLDS = {
     [0] = nil, -- off
     [1] = 0, -- instant
-    [2] = nil, -- unass (moves on regardless of assistance)
+    [2] = 0, -- unass (moves on regardless of assistance)
     [3] = 0.3, -- 30%
     [4] = 0.6, -- 60%
     [5] = 0.9 -- 90%
@@ -108,7 +117,6 @@ local function checkUnits(update)
 
     if num_builders > 0 then
         if update then
-
             for i = 1, #ids do
                 if defaultMode == 0 then
                     HOLO_PLACERS[ids[i]] = nil
@@ -173,6 +181,7 @@ function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
             mode = (mode + 1) % n_modes
         end
 
+        Spring.Echo('Holo Place: New mode:', mode)
         CMD_HOLO_PLACE_DESCRIPTION.params[1] = mode
         checkUnits(true)
         return true
@@ -195,7 +204,7 @@ function widget:GameFrame()
     for unit_id, builder in pairs(HOLO_PLACERS) do
         local target_id = GetUnitIsBuilding(unit_id)
         local is_unass_mode = builder.mode == 2
-        
+
         if builder.nt_id and target_id == builder.building_id then
             local building_id = GetUnitIsBuilding(builder.nt_id)
             local num_cmds = GetUnitCommands(builder.nt_id, 0)
@@ -224,7 +233,7 @@ function widget:GameFrame()
                     end
                 end
             end
-            
+
             -- Still attempt to get assistance (for all modes including unass)
             if target_id ~= builder.building_id then
                 local nt_ids = ntNearUnit(target_id)
