@@ -91,7 +91,7 @@ local reclaimPriorityOrderNames = {
 	'nanotc',
 	'nanotcplat',
 	'wint2',
-	'win',
+	'win'
 }
 
 -- add _scav postfix for all items
@@ -158,7 +158,6 @@ end
 
 -- Function to detect economical buildings (from gui_spectator_hud.lua)
 local function isEconomicalBuilding(unitDefID, unitDef)
-
 	if not unitDef.isBuilding then
 		return false
 	end
@@ -182,9 +181,10 @@ local function isEconomicalBuilding(unitDefID, unitDef)
 	end
 
 	-- Check if it produces resources (metal extraction, energy production)
-	if (unitDef.extractsMetal and unitDef.extractsMetal > 0) or
-		(unitDef.energyMake and unitDef.energyMake > 0) or
-		(unitDef.energyUpkeep and unitDef.energyUpkeep < 0) then
+	if
+		(unitDef.extractsMetal and unitDef.extractsMetal > 0) or (unitDef.energyMake and unitDef.energyMake > 0) or
+			(unitDef.energyUpkeep and unitDef.energyUpkeep < 0)
+	 then
 		return true
 	end
 
@@ -230,7 +230,9 @@ local function UnitDefHasShield(unitDefID)
 end
 
 local function UnitDefTechLevel(unitDefID)
-	return UnitDefs[unitDefID] and UnitDefs[unitDefID].customParams and UnitDefs[unitDefID].customParams.techlevel and tonumber(UnitDefs[unitDefID].customParams.techlevel) or 1
+	return UnitDefs[unitDefID] and UnitDefs[unitDefID].customParams and UnitDefs[unitDefID].customParams.techlevel and
+		tonumber(UnitDefs[unitDefID].customParams.techlevel) or
+		1
 end
 
 local function getPipelineSize(unitDefID)
@@ -350,12 +352,10 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 					canReclaim = TARGET_UNITDEF_IDS[unitDefID] == true
 				elseif mode == MODE_AUTO_REPLACE_ON then
 					-- Mode 2 (on): reclaim all economical buildings (but never reclaim gates)
-					canReclaim = (
-						ECONOMICAL_UNITDEF_IDS[unitDefID] == true
-							or
-							(reclaimPriorityOrder[placedUnitDefID] or 0) < (reclaimPriorityOrder[unitDefID] or 0)
-						)
-						and not NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID]
+					canReclaim =
+						(ECONOMICAL_UNITDEF_IDS[unitDefID] == true or
+						(reclaimPriorityOrder[placedUnitDefID] or 0) < (reclaimPriorityOrder[unitDefID] or 0)) and
+						not NEVER_RECLAIMABLE_UNITDEF_IDS[unitDefID]
 				end
 
 				if canReclaim then
@@ -485,7 +485,14 @@ function widget:GameFrame(n)
 				currentPipelineSize = getPipelineSize(-pipeline.currentlyProcessing[1].cmdID)
 			end
 
-			Spring.Echo('currentPipelineSize', currentPipelineSize, 'pendingBuilds', #pipeline.pendingBuilds, 'currentlyProcessing', #pipeline.currentlyProcessing)
+			Spring.Echo(
+				'currentPipelineSize',
+				currentPipelineSize,
+				'pendingBuilds',
+				#pipeline.pendingBuilds,
+				'currentlyProcessing',
+				#pipeline.currentlyProcessing
+			)
 
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
@@ -608,7 +615,8 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if not assignedBuilderID then
 		return false
 	end
-	local blockers, buildingAreaX, buildingAreaZ = findBlockersAtPosition(bx, bz, xsize, zsize, facing, assignedBuilderID, buildingDefID)
+	local blockers, buildingAreaX, buildingAreaZ =
+		findBlockersAtPosition(bx, bz, xsize, zsize, facing, assignedBuilderID, buildingDefID)
 	if #blockers == 0 then
 		return false
 	end
