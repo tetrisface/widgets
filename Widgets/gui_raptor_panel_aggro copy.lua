@@ -7,7 +7,7 @@ end
 
 function widget:GetInfo()
 	return {
-		name = 'Raptor Stats Panel With Eco Attraction',
+		name = 'Raptor Stats Panel With Eco Attraction orig',
 		desc = 'Shows statistics and progress when fighting vs Raptors',
 		author = 'quantum, tetrisface',
 		date = 'May 04, 2008',
@@ -129,16 +129,6 @@ local isExpanded = false
 local nPanelRows
 local bossInfo
 local recentlyKilledQueens = {}
-
--- ============================================================================
--- Queen ETA Smooth Countdown - Historical Tracking and Interpolation
--- ============================================================================
-local queenEta_history = {} -- Stores {time, anger, gain} data points
-local queenEta_maxHistorySize = 10 -- Keep last 10 data points
-local queenEta_lastAngerValue = nil -- Track last anger value to detect changes
-local queenEta_lastUpdateTime = nil -- Timestamp of last update
-local queenEta_lastStage = nil -- Track last stage to detect stage changes
--- ============================================================================
 
 local cachedPlayerNames
 if not cachedPlayerNames then
@@ -270,37 +260,6 @@ local function RaptorStage(currentTime)
 	end
 	return stage
 end
-
--- ============================================================================
--- Queen ETA Smooth Countdown - Interpolation Function
--- ============================================================================
-local function GetInterpolatedQueenAnger()
-	-- If we don't have any history, return the current value
-	if #queenEta_history < 1 then
-		return gameInfo.raptorQueenAnger or 0
-	end
-
-	local currentTime = Spring.GetGameSeconds()
-	local historySize = #queenEta_history
-	
-	-- Get the most recent data point
-	local lastPoint = queenEta_history[historySize]
-	
-	-- Use the CURRENT gain values (same as ETA calculation) to extrapolate forward
-	-- This ensures the anger and time calculations are perfectly in sync
-	local currentGain = (gameInfo.RaptorQueenAngerGain_Base or 0) + 
-	                    (gameInfo.RaptorQueenAngerGain_Aggression or 0) + 
-	                    (gameInfo.RaptorQueenAngerGain_Eco or 0)
-	
-	local timeSinceLastUpdate = currentTime - lastPoint.time
-	local interpolatedAnger = lastPoint.anger + (currentGain * timeSinceLastUpdate)
-	
-	-- Clamp between 0 and 100
-	interpolatedAnger = math.max(0, math.min(100, interpolatedAnger))
-	
-	return interpolatedAnger
-end
--- ============================================================================
 
 local function SortValueDesc(a, b)
 	return a.value > b.value
@@ -440,18 +399,6 @@ local function CreatePanelDisplayList()
 	local currentTime = Spring.GetGameSeconds()
 	local stage = RaptorStage(currentTime)
 
-	-- ============================================================================
-	-- Queen ETA Smooth Countdown - Reset History on Stage Change
-	-- ============================================================================
-	-- Reset history when transitioning between stages to prevent stale data
-	if isRaptors and queenEta_lastStage ~= nil and queenEta_lastStage ~= stage then
-		queenEta_history = {}
-		queenEta_lastAngerValue = nil
-		queenEta_lastUpdateTime = nil
-	end
-	queenEta_lastStage = stage
-	-- ============================================================================
-
 	gl.PushMatrix()
 	gl.Translate(x1, y1, 0)
 	gl.Scale(panelScale, panelScale, 1)
@@ -491,42 +438,8 @@ local function CreatePanelDisplayList()
 		printPanel(I18N('ui.raptors.queenETA', {count = nBosses, time = ''}):gsub('%.', ''), panelMarginX, PanelRow(2))
 		local gain =
 			gameInfo.RaptorQueenAngerGain_Base + gameInfo.RaptorQueenAngerGain_Aggression + gameInfo.RaptorQueenAngerGain_Eco
-		-- Use interpolated anger value for smooth countdown
-		local interpolatedAnger = GetInterpolatedQueenAnger()
-		local time = string.formatTime((100 - interpolatedAnger) / gain)
-		
-		-- Calculate and display time difference indicator
-		-- Compare current ETA vs baseline (no aggression/eco) ETA
-		local deltaText = ""
-		local deltaWidth = 0
-		local baseGainOnly = gameInfo.RaptorQueenAngerGain_Base or 0
-		if baseGainOnly > 0 and gain > 0 then
-			-- Calculate ETAs from current anger level
-			local currentETA = (100 - interpolatedAnger) / gain -- Current ETA with aggression/eco
-			local baselineETA = (100 - interpolatedAnger) / baseGainOnly -- Baseline ETA with no aggression/eco
-			
-			-- Time difference in seconds: positive = delayed (good), negative = sooner (bad)
-			local timeDifference = currentETA - baselineETA
-			
-			if math.abs(timeDifference) >= 1 then -- Only show if difference is at least 1 second
-				-- Format as +/-MM:SS or +/-HH:MM:SS
-				local sign = timeDifference >= 0 and "+" or "-"
-				deltaText = '(' .. sign .. string.formatTime(math.abs(timeDifference)) .. ')'
-				deltaWidth = font:GetTextWidth(deltaText) * panelFontSize * 0.85
-				-- Green for positive 	§(time increased/delayed), Red for negative (time decreased/sooner)
-				if timeDifference > 0 then
-					font:SetTextColor(0.6, 1, 0.6, 1) -- Green - good for players
-				else
-					font:SetTextColor(1, 0.6, 0.6, 1) -- Red - bad for players
-				end
-				local deltaXPos = panelMarginX + 205 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize - deltaWidth
-				font:Print(deltaText, deltaXPos, PanelRow(2), panelFontSize * 0.85)
-				font:SetTextColor(1, 1, 1, 1) -- Reset color
-			end
-		end
-		
-		local timeXPos = panelMarginX + 210 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize
-		printPanel(time, timeXPos, PanelRow(2))
+		local time = string.formatTime((100 - gameInfo.raptorQueenAnger) / gain)
+		printPanel(time, panelMarginX + 200 - font:GetTextWidth(time:gsub('(.*):.*$', '%1')) * panelFontSize, PanelRow(2))
 
 		if #currentlyResistantToNames > 0 then
 			currentlyResistantToNames = {}
@@ -733,41 +646,6 @@ local function UpdateRules()
 		local rule = rules[i]
 		gameInfo[rule] = Spring.GetGameRulesParam(rule) or (nilDefaultRules[rule] and nil or 0)
 	end
-
-	-- ============================================================================
-	-- Queen ETA Smooth Countdown - Record History
-	-- ============================================================================
-	-- Track anger value changes for interpolation
-	if isRaptors and gameInfo.raptorQueenAnger ~= nil then
-		local currentAnger = gameInfo.raptorQueenAnger
-		local currentTime = Spring.GetGameSeconds()
-
-		-- Only record if the value has changed or this is the first update
-		if queenEta_lastAngerValue == nil or queenEta_lastAngerValue ~= currentAnger then
-			local totalGain =
-				(gameInfo.RaptorQueenAngerGain_Base or 0) + (gameInfo.RaptorQueenAngerGain_Aggression or 0) +
-				(gameInfo.RaptorQueenAngerGain_Eco or 0)
-
-			-- Add new data point
-			table.insert(
-				queenEta_history,
-				{
-					time = currentTime,
-					anger = currentAnger,
-					gain = totalGain
-				}
-			)
-
-			-- Trim history if it exceeds max size
-			while #queenEta_history > queenEta_maxHistorySize do
-				table.remove(queenEta_history, 1)
-			end
-
-			queenEta_lastAngerValue = currentAnger
-			queenEta_lastUpdateTime = currentTime
-		end
-	end
-	-- ============================================================================
 
 	updatePanel = true
 end

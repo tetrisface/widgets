@@ -35,7 +35,7 @@ local CMD_HOLO_PLACE_DESCRIPTION = {
     name = 'Holo Place',
     cursor = nil,
     action = 'holo_place',
-    params = {1, 'holo_place_off', 'holo_place_ins', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
+    params = {1, 'holo_place_off', 'holo_place_ins', 'holo_place_unass', 'holo_place_30', 'holo_place_60', 'holo_place_90'}
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_HOLO_PLACE_DESCRIPTION.params[2], 'Holo Place off')
@@ -82,23 +82,24 @@ end
 local HOLO_THRESHOLDS = {
     [0] = nil, -- off
     [1] = 0, -- instant
-    [2] = 0.3, -- 30%
-    [3] = 0.6, -- 60%
-    [4] = 0.9 -- 90%
+    [2] = nil, -- unass (moves on regardless of assistance)
+    [3] = 0.3, -- 30%
+    [4] = 0.6, -- 60%
+    [5] = 0.9 -- 90%
 }
 
 local function checkUnits(update)
     local defaultMode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
-    local num_hp = 0
+    -- local num_hp = 0
     local num_builders = 0
 
     local ids = GetSelectedUnits()
     for i = 1, #ids do
         local def_id = GetUnitDefID(ids[i])
 
-        if HOLO_PLACERS[ids[i]] then
-            num_hp = num_hp + 1
-        end
+        -- if HOLO_PLACERS[ids[i]] then
+        --     num_hp = num_hp + 1
+        -- end
 
         if BUILDER_DEFS[def_id] then
             num_builders = num_builders + 1
@@ -114,6 +115,7 @@ local function checkUnits(update)
                 else
                     HOLO_PLACERS[ids[i]] = HOLO_PLACERS[ids[i]] or {}
                     HOLO_PLACERS[ids[i]].threshold = HOLO_THRESHOLDS[defaultMode]
+                    HOLO_PLACERS[ids[i]].mode = defaultMode
                 end
             end
         end
@@ -137,14 +139,19 @@ function widget:CommandsChanged()
     local found_mode = CMD_HOLO_PLACE_DESCRIPTION.params[1]
     for i = 1, #ids do
         local placer = HOLO_PLACERS[ids[i]]
-        if placer and placer.threshold then
-            for mode, threshold in pairs(HOLO_THRESHOLDS) do
-                if placer.threshold == threshold then
-                    found_mode = mode
-                    break
+        if placer then
+            if placer.mode then
+                found_mode = placer.mode
+                break
+            elseif placer.threshold then
+                for mode, threshold in pairs(HOLO_THRESHOLDS) do
+                    if placer.threshold == threshold then
+                        found_mode = mode
+                        break
+                    end
                 end
+                break
             end
-            break
         end
     end
     CMD_HOLO_PLACE_DESCRIPTION.params[1] = found_mode
@@ -187,6 +194,8 @@ end
 function widget:GameFrame()
     for unit_id, builder in pairs(HOLO_PLACERS) do
         local target_id = GetUnitIsBuilding(unit_id)
+        local is_unass_mode = builder.mode == 2
+        
         if builder.nt_id and target_id == builder.building_id then
             local building_id = GetUnitIsBuilding(builder.nt_id)
             local num_cmds = GetUnitCommands(builder.nt_id, 0)
@@ -203,25 +212,42 @@ function widget:GameFrame()
             else
                 builder.tick = builder.tick + 1
             end
-        elseif target_id and target_id ~= builder.building_id then
-            local nt_ids = ntNearUnit(target_id)
-            for i = 1, #nt_ids do
-                local nt_id = nt_ids[i]
-                local cmds = GetUnitCommands(nt_id, 2)
-                if (cmds[2] and cmds[2].id == CMD_FIGHT) or (cmds[1] and cmds[1].id == CMD_FIGHT) then
-                    -- Check wait status and if nano is already building before issuing order
-                    if not unitHasWait(nt_id) and not unitHasWait(unit_id) and not GetUnitIsBuilding(nt_id) then
-                        local _, _, tag = GetUnitCurrentCommand(unit_id)
-                        builder.nt_id = nt_id
-                        builder.tick = 0
-                        builder.building_id = target_id
-                        builder.cmd_tag = tag
-                        if not builder.threshold then
-                            builder.threshold = HOLO_THRESHOLDS[CMD_HOLO_PLACE_DESCRIPTION.params[1]] or 0.6
-                        end
-                        GiveOrderToUnit(nt_id, CMD_REPAIR, target_id, 0)
+        elseif target_id then
+            -- For unass mode, check threshold and move on regardless of assistance
+            if is_unass_mode then
+                local build_progress = select(5, Spring.GetUnitHealth(target_id)) or 0
+                local threshold = 0.6 -- default threshold for unass mode
+                if build_progress >= threshold then
+                    local _, _, tag = GetUnitCurrentCommand(unit_id)
+                    if tag then
+                        GiveOrderToUnit(unit_id, CMD_REMOVE, tag, 0)
                     end
-                    break
+                end
+            end
+            
+            -- Still attempt to get assistance (for all modes including unass)
+            if target_id ~= builder.building_id then
+                local nt_ids = ntNearUnit(target_id)
+                for i = 1, #nt_ids do
+                    local nt_id = nt_ids[i]
+                    local cmds = GetUnitCommands(nt_id, 2)
+                    if (cmds[2] and cmds[2].id == CMD_FIGHT) or (cmds[1] and cmds[1].id == CMD_FIGHT) then
+                        -- Check wait status and if nano is already building before issuing order
+                        if not unitHasWait(nt_id) and not unitHasWait(unit_id) and not GetUnitIsBuilding(nt_id) then
+                            local _, _, tag = GetUnitCurrentCommand(unit_id)
+                            builder.nt_id = nt_id
+                            builder.tick = 0
+                            builder.building_id = target_id
+                            builder.cmd_tag = tag
+                            if not builder.threshold then
+                                local mode = builder.mode or CMD_HOLO_PLACE_DESCRIPTION.params[1]
+                                builder.threshold = HOLO_THRESHOLDS[mode]
+                                builder.mode = mode
+                            end
+                            GiveOrderToUnit(nt_id, CMD_REPAIR, target_id, 0)
+                        end
+                        break
+                    end
                 end
             end
         end

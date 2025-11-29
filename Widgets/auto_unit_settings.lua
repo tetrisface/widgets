@@ -42,6 +42,58 @@ local resurrectorDefIds = {}
 local areaReclaimParams = {}
 local waitReclaimUnits = {}
 
+-- Command recording feature
+local CMD_TYPE_RECORD = 28344
+local CMD_TYPE_RECORD_DESCRIPTION = {
+	id = CMD_TYPE_RECORD,
+	type = (CMDTYPE or {ICON_MODE = 5}).ICON_MODE,
+	name = 'Type Record',
+	cursor = nil,
+	action = 'type_record',
+	params = {0, 'type_record_off', 'type_record_on'}
+}
+
+local RECORDING_ENABLED = {} -- [unitDefID] = true/false
+local RECORDED_COMMANDS = {} -- [unitDefID] = {sequence of commands}
+local PENDING_APPLICATIONS = {} -- [unitID] = {frame, unitDefID} for delayed application
+
+-- Apply recorded commands to a unit
+local function applyRecordedCommands(unitID, unitDefID)
+	if not Spring.ValidUnitID(unitID) then
+		return
+	end
+	
+	local recorded = RECORDED_COMMANDS[unitDefID]
+	if not recorded or #recorded == 0 then
+		return
+	end
+	
+	-- Build command array: STOP first, then recorded commands
+	local cmdArray = {{CMD.STOP, {}, {}}}
+	for i = 1, #recorded do
+		local cmd = recorded[i]
+		-- Convert options table to options array format
+		local options = {}
+		if cmd.options then
+			if cmd.options.alt then
+				table.insert(options, 'alt')
+			end
+			if cmd.options.ctrl then
+				table.insert(options, 'ctrl')
+			end
+			if cmd.options.shift then
+				table.insert(options, 'shift')
+			end
+			if cmd.options.right then
+				table.insert(options, 'right')
+			end
+		end
+		table.insert(cmdArray, {cmd.id, cmd.params or {}, options})
+	end
+	
+	Spring.GiveOrderArrayToUnit(unitID, cmdArray)
+end
+
 local function isFriendlyFiringDef(def)
 	return not (def.name == 'armthor' or def.name == 'armassimilator' or def.name:find 'corkarganeth' or
 		def.name:find 'legpede' or
@@ -78,6 +130,9 @@ function widget:Initialize()
 	resurrectorDefIds = {}
 	areaReclaimParams = {}
 	waitReclaimUnits = {}
+	RECORDING_ENABLED = {}
+	RECORDED_COMMANDS = {}
+	PENDING_APPLICATIONS = {}
 
 	if Spring.GetSpectatingState() or Spring.IsReplay() then
 		widgetHandler:RemoveWidget()
@@ -104,6 +159,15 @@ function widget:UnitFromFactory(unitID, unitDefID, unitTeam)
 	widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
+function widget:UnitCreated(unitID, unitDefID, unitTeam, builderID)
+	if unitTeam ~= myTeamId then
+		return
+	end
+	
+	-- Apply recorded commands if available
+	applyRecordedCommands(unitID, unitDefID)
+end
+
 -- function widget:UnitFinished(unitID, unitDefID, unitTeam)
 --   if unitTeam ~= myTeamId then
 --     return
@@ -121,6 +185,13 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 	if unitTeam ~= myTeamId then
 		return
 	end
+
+	-- Apply recorded commands if available
+	applyRecordedCommands(unitID, unitDefID)
+	
+	-- Schedule delayed application (+2 frames)
+	local currentFrame = Spring.GetGameFrame()
+	PENDING_APPLICATIONS[unitID] = {frame = currentFrame + 2, unitDefID = unitDefID}
 
 	-- log('created', UnitIdUnitDef(unitID).translatedHumanName, unitID)
 
@@ -189,6 +260,10 @@ function widget:UnitTaken(unitID, unitDefID, unitTeam, oldTeam)
 	widget:UnitFinished(unitID, unitDefID, unitTeam)
 end
 
+function widget:UnitDestroyed(unitID, unitDefID, unitTeam)
+	PENDING_APPLICATIONS[unitID] = nil
+end
+
 function widget:GameFrame(gameFrame)
 	-- if gameFrame >= 100 and not isCommanderRepeatChecked then
 	-- set commander repeat on
@@ -201,6 +276,17 @@ function widget:GameFrame(gameFrame)
 	-- end
 	-- isCommanderRepeatChecked = true
 	-- end
+
+	-- Handle delayed command application (+2 frames after UnitFinished)
+	for unitID, pending in pairs(PENDING_APPLICATIONS) do
+		if gameFrame >= pending.frame then
+			-- Check if unit still exists
+			if Spring.ValidUnitID(unitID) then
+				applyRecordedCommands(unitID, pending.unitDefID)
+			end
+			PENDING_APPLICATIONS[unitID] = nil
+		end
+	end
 
 	if gameFrame % 30 == 0 then
 		if #areaReclaimParams > 1 then
@@ -235,6 +321,93 @@ function widget:GameFrame(gameFrame)
 			end
 		end
 	end
+end
+
+function widget:CommandsChanged()
+	local selectedUnits = Spring.GetSelectedUnits()
+	if #selectedUnits == 0 then
+		return
+	end
+	
+	-- Check if any selected unit has recording enabled
+	local found_mode = 0
+	for _, unitID in ipairs(selectedUnits) do
+		local unitDefID = Spring.GetUnitDefID(unitID)
+		if RECORDING_ENABLED[unitDefID] then
+			found_mode = 1
+			break
+		end
+	end
+	CMD_TYPE_RECORD_DESCRIPTION.params[1] = found_mode
+	
+	-- Show command if we have selected units
+	widgetHandler.customCommands[#widgetHandler.customCommands + 1] = CMD_TYPE_RECORD_DESCRIPTION
+end
+
+function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
+	-- Handle Type Record toggle
+	if cmdID == CMD_TYPE_RECORD then
+		local mode = CMD_TYPE_RECORD_DESCRIPTION.params[1]
+		local newMode = (mode + 1) % 2
+		CMD_TYPE_RECORD_DESCRIPTION.params[1] = newMode
+		
+		-- Enable/disable recording for all selected unitdefids
+		local selectedUnits = Spring.GetSelectedUnits()
+		local unitDefIDs = {}
+		for _, unitID in ipairs(selectedUnits) do
+			local unitDefID = Spring.GetUnitDefID(unitID)
+			if not unitDefIDs[unitDefID] then
+				unitDefIDs[unitDefID] = true
+				if newMode == 1 then
+					RECORDING_ENABLED[unitDefID] = true
+					-- Clear old recording when starting new one
+					RECORDED_COMMANDS[unitDefID] = {}
+				else
+					RECORDING_ENABLED[unitDefID] = false
+				end
+			end
+		end
+		
+		return true
+	end
+	
+	-- Capture commands when recording is active
+	local selectedUnits = Spring.GetSelectedUnits()
+	if #selectedUnits == 0 then
+		return false
+	end
+	
+	-- Check if any selected unit's unitdefid has recording enabled
+	local recordingUnitDefIDs = {}
+	for _, unitID in ipairs(selectedUnits) do
+		local unitDefID = Spring.GetUnitDefID(unitID)
+		if RECORDING_ENABLED[unitDefID] then
+			recordingUnitDefIDs[unitDefID] = true
+		end
+	end
+	
+	if next(recordingUnitDefIDs) then
+		-- Record command for all enabled unitdefids
+		-- Create a separate copy for each unitdefid to avoid reference issues
+		for unitDefID, _ in pairs(recordingUnitDefIDs) do
+			if not RECORDED_COMMANDS[unitDefID] then
+				RECORDED_COMMANDS[unitDefID] = {}
+			end
+			local cmdToRecord = {
+				id = cmdID,
+				params = cmdParams and {unpack(cmdParams)} or {},
+				options = cmdOptions and {
+					alt = cmdOptions.alt or false,
+					ctrl = cmdOptions.ctrl or false,
+					shift = cmdOptions.shift or false,
+					right = cmdOptions.right or false
+				} or {}
+			}
+			table.insert(RECORDED_COMMANDS[unitDefID], cmdToRecord)
+		end
+	end
+	
+	return false -- Don't block the command
 end
 
 function widget:KeyPress(key, mods, isRepeat)
