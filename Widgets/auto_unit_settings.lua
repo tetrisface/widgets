@@ -341,7 +341,9 @@ function widget:CommandsChanged()
 	CMD_TYPE_RECORD_DESCRIPTION.params[1] = found_mode
 	
 	-- Show command if we have selected units
-	widgetHandler.customCommands[#widgetHandler.customCommands + 1] = CMD_TYPE_RECORD_DESCRIPTION
+	if widgetHandler.customCommands then
+		widgetHandler.customCommands[#widgetHandler.customCommands + 1] = CMD_TYPE_RECORD_DESCRIPTION
+	end
 end
 
 function widget:CommandNotify(cmdID, cmdParams, cmdOptions)

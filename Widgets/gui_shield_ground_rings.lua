@@ -188,6 +188,10 @@ local function initGL4()
   return true
 end
 
+local function UnitDefShieldRadius(unitDef)
+  return tonumber(unitDef.customParams and unitDef.customParams.shield_radius) or nil
+end
+
 function widget:Initialize()
   t0 = GetTimer()
   shieldsUpdateTimer = GetTimer()
@@ -200,9 +204,9 @@ function widget:Initialize()
   shieldBuilders = {}
 
   for unitDefId, unitDef in pairs(UnitDefs) do
-    if unitDef.isBuilding and (unitDef.hasShield or
-       (unitDef.customparams and unitDef.customparams.shield_radius and unitDef.customparams.shield_radius > 0)) then
-      defIdRadius[unitDefId] = (unitDef.customparams and unitDef.customparams.shield_radius) or 550
+    local radius = UnitDefShieldRadius(unitDef)
+    if unitDef.isBuilding and radius and radius > 0 then
+      defIdRadius[unitDefId] = radius
       nDefIds = nDefIds + 1
       defIds[nDefIds] = unitDefId
     elseif unitDef.name == 'armgatet3' then
