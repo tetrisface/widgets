@@ -23,10 +23,10 @@ function widget:KeyPress(key, mods, isRepeat)
 		-- Spring.SendCommands('enablewidget CMD JAOT Build Queue Reclaim')
 		Spring.SendCommands('disablewidget Phoenix Engine')
 		Spring.SendCommands('enablewidget Phoenix Engine')
-		Spring.SendCommands('disablewidget Raptor Stats Panel With Eco Attraction')
-		Spring.SendCommands('enablewidget Raptor Stats Panel With Eco Attraction')
-		Spring.SendCommands('disablewidget Holo Place')
-		Spring.SendCommands('enablewidget Holo Place')
+		-- Spring.SendCommands('disablewidget Raptor Stats Panel With Eco Attraction')
+		-- Spring.SendCommands('enablewidget Raptor Stats Panel With Eco Attraction')
+		-- Spring.SendCommands('disablewidget Holo Place')
+		-- Spring.SendCommands('enablewidget Holo Place')
 		return false
 	end
 	-- if key == 113 and mods['ctrl'] then

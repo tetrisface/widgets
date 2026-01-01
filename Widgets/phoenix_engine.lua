@@ -89,6 +89,14 @@ local reclaimPriorityOrderNames = {
 	'win'
 }
 
+local nonFactionBlockedReplacementPairs = {
+	{'moho', 'mex'},
+	{'makr', 'nanotc'},
+	{'mmkr', 'adveconv'},
+	{'mmkrt3', 'adveconvt3'},
+	{'mmkrt3_200', 'adveconvt3_200'}
+}
+
 -- add _scav postfix for all items
 local scavEntries = {}
 for _, name in ipairs(reclaimPriorityOrderNames) do
@@ -121,14 +129,16 @@ end
 reclaimPriorityOrder = table.invert(reclaimPriorityOrder)
 
 -- Build equality groups: maps unitDefID -> set of equivalent unitDefIDs (same building, different factions)
-local UNIT_EQUALITY_GROUPS = {}
+local FACTION_UNIT_EQUALITY_GROUPS = {}
 
 local TARGET_UNITDEF_IDS,
 	builderDefs,
 	NANO_DEFS,
 	BUILDABLE_UNITDEF_IDS,
 	NEVER_RECLAIMABLE_UNITDEF_IDS,
-	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}
+	NEVER_REPLACES_UNITDEF_IDS,
+	blockedReplacementPairs,
+	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}, {}, {}
 
 for _, name in ipairs(TARGET_UNITDEF_NAMES) do
 	local def = UnitDefNames and UnitDefNames[name]
@@ -137,12 +147,46 @@ for _, name in ipairs(TARGET_UNITDEF_NAMES) do
 	end
 end
 
-for _, target in ipairs({'gate', 'gatet3'}) do
+for _, target in ipairs({'gate', 'gatet3', 'respawn'}) do
 	for _, faction in ipairs(factions) do
 		local name = faction .. target
 		local def = UnitDefNames and UnitDefNames[name]
 		if def then
 			NEVER_RECLAIMABLE_UNITDEF_IDS[def.id] = true
+		end
+	end
+end
+
+-- Units containing "evfus" should never be replaced
+for uDefID, uDef in pairs(UnitDefs) do
+	if uDef.name and uDef.name:find('evfus') then
+		NEVER_RECLAIMABLE_UNITDEF_IDS[uDefID] = true
+	end
+end
+
+-- T2 wind should never replace anything (common spam building)
+for _, faction in ipairs(factions) do
+	local def = UnitDefNames and UnitDefNames[faction .. 'wint2']
+	if def then
+		NEVER_REPLACES_UNITDEF_IDS[def.id] = true
+	end
+end
+
+-- Build upgradeable mapping (e.g. T1 to T2)
+for _, faction in pairs(factions) do
+	for _, fromTo in pairs(nonFactionBlockedReplacementPairs) do
+		local from, to = faction .. fromTo[1], faction .. fromTo[2]
+		if from and to and UnitDefNames[from] and UnitDefNames[to] then
+			Spring.Echo(
+				'Upgradeable from ' .. from .. ' to ' .. to,
+				' defs ' ..
+					(UnitDefNames[from] and UnitDefNames[from].id or 'nil') ..
+						' -> ' .. (UnitDefNames[to] and UnitDefNames[to].id or 'nil')
+			)
+			if not blockedReplacementPairs[UnitDefNames[from].id] then
+				blockedReplacementPairs[UnitDefNames[from].id] = {}
+			end
+			blockedReplacementPairs[UnitDefNames[from].id][UnitDefNames[to].id] = true
 		end
 	end
 end
@@ -156,6 +200,11 @@ end
 
 -- Function to detect economical buildings (from gui_spectator_hud.lua)
 local function IsEconomicalBuilding(unitDefID, unitDef)
+	-- Check if it's a nano turret FIRST (nanos might not have isBuilding = true)
+	if unitDef.isBuilder and not unitDef.isFactory and not unitDef.canMove then
+		return true
+	end
+
 	if not unitDef.isBuilding then
 		return false
 	end
@@ -165,11 +214,6 @@ local function IsEconomicalBuilding(unitDefID, unitDef)
 		(unitDef.customParams and unitDef.customParams.unitgroup == 'metal') or
 			(unitDef.customParams and unitDef.customParams.unitgroup == 'energy')
 	 then
-		return true
-	end
-
-	-- Check if it's a nano turret (builder but not factory and not mobile)
-	if unitDef.isBuilder and not unitDef.isFactory and not unitDef.canMove then
 		return true
 	end
 
@@ -217,7 +261,9 @@ end
 -- First, create a temp mapping: baseName -> {faction defIDs}
 local baseNameToDefIDs = {}
 for uDefID, uDef in pairs(UnitDefs) do
-	if uDef.isBuilding then
+	-- Include buildings AND nanos (nanos might not have isBuilding = true)
+	local isNano = uDef.isBuilder and not uDef.canMove and not uDef.isFactory
+	if uDef.isBuilding or isNano then
 		local name = uDef.name
 		-- Extract base name by removing faction prefix (arm, cor, leg)
 		local baseName = name
@@ -242,10 +288,10 @@ end
 for baseName, defIDs in pairs(baseNameToDefIDs) do
 	if #defIDs > 1 then -- Only create groups if multiple factions have this building
 		for _, defID in ipairs(defIDs) do
-			UNIT_EQUALITY_GROUPS[defID] = {}
+			FACTION_UNIT_EQUALITY_GROUPS[defID] = {}
 			for _, otherDefID in ipairs(defIDs) do
 				if otherDefID ~= defID then
-					UNIT_EQUALITY_GROUPS[defID][otherDefID] = true
+					FACTION_UNIT_EQUALITY_GROUPS[defID][otherDefID] = true
 				end
 			end
 		end
@@ -284,7 +330,14 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	end
 
 	-- Never replace: faction equivalents (different faction, same building)
-	if UNIT_EQUALITY_GROUPS[existingUnitDefID] and UNIT_EQUALITY_GROUPS[existingUnitDefID][placingUnitDefID] then
+	if
+		FACTION_UNIT_EQUALITY_GROUPS[existingUnitDefID] and FACTION_UNIT_EQUALITY_GROUPS[existingUnitDefID][placingUnitDefID]
+	 then
+		return false
+	end
+
+	-- Never replace: placing unit is in the "never replaces" list (e.g. T2 wind)
+	if NEVER_REPLACES_UNITDEF_IDS[placingUnitDefID] then
 		return false
 	end
 
@@ -305,6 +358,11 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 
 	-- Never replace: T3+ shields
 	if UnitDefHasShield(existingUnitDefID) and UnitDefTechLevel(existingUnitDefID) >= 3 then
+		return false
+	end
+
+	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
+	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
 
@@ -503,7 +561,7 @@ local function countBuilderQueuedBuilds(builderID)
 	if not commands then
 		return 0
 	end
-	
+
 	local count = 0
 	for _, cmd in ipairs(commands) do
 		-- Negative command IDs are build commands
@@ -522,10 +580,10 @@ local function shouldReclaimForBuild(pipeline, buildOrder, positionInQueue)
 
 	-- Get builder's actual queue length (non-blocked builds that went through)
 	local queuedBuilds = countBuilderQueuedBuilds(pipeline.builderID)
-	
+
 	-- Total position = queued non-blocked builds + position in our blocked pipeline
 	local effectivePosition = queuedBuilds + positionInQueue
-	
+
 	-- Only reclaim for first 2 positions overall
 	return effectivePosition <= 2
 end
@@ -566,15 +624,15 @@ local function cleanupPipelineForBuilder(builderID)
 	if not pipeline then
 		return
 	end
-	
+
 	-- Clear all visual indicators for this builder
 	clearAllVisualIndicators(builderID)
-	
+
 	-- Clean up all tracking
 	for order, _ in pairs(pipeline.reclaimStarted) do
 		clearPipelineOrder(pipeline, order)
 	end
-	
+
 	-- Clear all positions from visual indicators
 	for _, p in ipairs(pipeline.pendingBuilds) do
 		local bx, bz = p.params[1], p.params[3]
@@ -584,11 +642,10 @@ local function cleanupPipelineForBuilder(builderID)
 		local bx, bz = p.params[1], p.params[3]
 		removeVisualIndicator(builderID, bx, bz)
 	end
-	
+
 	-- Remove the pipeline
 	builderPipelines[builderID] = nil
 end
-
 
 -- Main game frame processing
 function widget:GameFrame(n)
@@ -634,7 +691,7 @@ function widget:GameFrame(n)
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
 			end
-			
+
 			local i = 1
 			while i <= #pipeline.currentlyProcessing do
 				local p = pipeline.currentlyProcessing[i]
@@ -728,7 +785,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 		checkUnits(true)
 		return true
 	end
-	
+
 	-- Handle CMD.STOP - clear pipeline for selected builders
 	if cmdID == CMD.STOP then
 		for _, builderID in ipairs(GetSelectedUnits()) do
@@ -738,7 +795,7 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 		end
 		return false -- Let the stop command through
 	end
-	
+
 	if type(cmdID) ~= 'number' or cmdID >= 0 or not isAutoReplaceEnabledForSelection() then
 		return false
 	end

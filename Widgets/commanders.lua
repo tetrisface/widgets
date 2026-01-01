@@ -31,21 +31,24 @@ local CMD_REPEAT = CMD.REPEAT
 
 -- Custom command for the setting
 local CMD_AUTO_DGUN = 28340
+
+-- Settings
+local AUTO_DGUN_OFF = 0
+local AUTO_DGUN_STOCKPILE_MAX = 1
+local AUTO_DGUN_ALWAYS = 2
+
+local AUTO_DGUN_DEFAULT = Spring.Utilities.Gametype.IsScavengers() and AUTO_DGUN_STOCKPILE_MAX or AUTO_DGUN_OFF
+
 local CMD_AUTO_DGUN_DESCRIPTION = {
   id = CMD_AUTO_DGUN,
   type = CMDTYPE.ICON_MODE,
   name = 'Auto D-Gun',
   cursor = nil,
   action = 'auto_dgun',
-  params = {0, 'auto_dgun_off', 'auto_dgun_stockpile_max', 'auto_dgun_always'}
+  params = {AUTO_DGUN_DEFAULT, 'auto_dgun_off', 'auto_dgun_stockpile_max', 'auto_dgun_always'}
 }
 
 local nModes = #CMD_AUTO_DGUN_DESCRIPTION.params - 1
-
--- Settings
-local AUTO_DGUN_OFF = 0
-local AUTO_DGUN_STOCKPILE_MAX = 1
-local AUTO_DGUN_ALWAYS = 2
 
 -- Localization
 local i18n = Spring.I18N
@@ -59,7 +62,6 @@ i18n.set(
 
 -- Global variables
 local myTeamID = GetMyTeamID()
-local myAllyTeamID = GetMyAllyTeamID()
 local commanderDefs = {}
 local commanderUnits = {}
 local originalRepeatStates = {}
@@ -112,7 +114,7 @@ local function createCommanderUnit(unitID, unitDefID)
   end
 
   commanderUnits[unitID] = commanderUnits[unitID] or {}
-  commanderUnits[unitID].mode = commanderUnits[unitID].mode or AUTO_DGUN_STOCKPILE_MAX
+  commanderUnits[unitID].mode = commanderUnits[unitID].mode or AUTO_DGUN_DEFAULT
 
   return commanderUnits[unitID]
 end
@@ -317,7 +319,7 @@ end
 local function checkSelectedUnits(updateMode)
   local selectedUnits = GetSelectedUnits()
   local hasCommanders = false
-  local foundMode = AUTO_DGUN_STOCKPILE_MAX
+  local foundMode = AUTO_DGUN_DEFAULT
 
   for _, unitID in ipairs(selectedUnits) do
     local unitDefID = GetUnitDefID(unitID)
@@ -394,10 +396,6 @@ function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
   end
 end
 
-function widget:UnitDestroyed(unitID)
-  removeCommanderUnit(unitID)
-end
-
 function widget:UnitGiven(unitID, unitDefID, newTeam, oldTeam)
   if oldTeam == myTeamID then
     -- Unit was given away from our team
@@ -408,20 +406,18 @@ function widget:UnitGiven(unitID, unitDefID, newTeam, oldTeam)
   end
 end
 
+function widget:UnitTaken(unitID, unitDefID, oldTeam, newTeam)
+  widget:UnitGiven(unitID, unitDefID, newTeam, oldTeam)
+end
+
 function widget:UnitCreated(unitID, unitDefID, teamID)
   if teamID == myTeamID then
     createCommanderUnit(unitID, unitDefID)
   end
 end
 
-function widget:UnitTaken(unitID, unitDefID, oldTeam, newTeam)
-  if oldTeam == myTeamID then
-    -- Unit was taken from our team
-    removeCommanderUnit(unitID)
-  elseif newTeam == myTeamID then
-    -- Unit was taken by our team
-    createCommanderUnit(unitID, unitDefID)
-  end
+function widget:UnitDestroyed(unitID)
+  removeCommanderUnit(unitID)
 end
 
 function widget:GameFrame(frameNum)
