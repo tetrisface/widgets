@@ -1281,6 +1281,9 @@ function widget:Update(dt)
 					local currentMmLevel = spGetTeamRulesParam(myTeamID, 'mmLevel')
 					if mmLevel ~= currentMmLevel or energyOverflowLevel ~= r['energy'][6] then
 						mmLevel = currentMmLevel
+						if not draggingConversionIndicator then
+							draggingConversionIndicatorValue = nil  -- allow slider to reflect updated server mmLevel
+						end
 						updateResbar('energy')
 					end
 					if metalOverflowLevel ~= r['metal'][6] then
@@ -1294,6 +1297,9 @@ function widget:Update(dt)
 				local currentMmLevel = spGetTeamRulesParam(myTeamID, 'mmLevel')
 				if mmLevel ~= currentMmLevel or energyOverflowLevel ~= r['energy'][6] then
 					mmLevel = currentMmLevel
+					if not draggingConversionIndicator then
+						draggingConversionIndicatorValue = nil  -- allow slider to reflect updated server mmLevel
+					end
 					updateResbar('energy')
 				end
 				if metalOverflowLevel ~= r['metal'][6] then
