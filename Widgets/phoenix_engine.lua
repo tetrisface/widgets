@@ -2,7 +2,7 @@ function widget:GetInfo()
 	return {
 		name = 'Phoenix Engine',
 		desc = 'Automatically reclaims blocking units when placing buildings over them.',
-		author = 'timuela',
+		author = 'timuela, tetrisface',
 		date = '2025-10-02',
 		layer = 0,
 		enabled = true,
@@ -94,7 +94,12 @@ local nonFactionBlockedReplacementPairs = {
 	{'makr', 'nanotc'},
 	{'mmkr', 'adveconv'},
 	{'mmkrt3', 'adveconvt3'},
-	{'mmkrt3_200', 'adveconvt3_200'}
+	{'mmkrt3_200', 'adveconvt3_200'},
+}
+
+local regexBlockedReplacementPairs = {
+	{'^[acl][roe][mrg]evfus%d$', '^[acl][roe][mrg]evfus%d$'},
+	{'^[acl][roe][mrg]mmkrt3%d$', '^[acl][roe][mrg]mmkrt3%d$'},
 }
 
 -- add _scav postfix for all items
@@ -131,21 +136,13 @@ reclaimPriorityOrder = table.invert(reclaimPriorityOrder)
 -- Build equality groups: maps unitDefID -> set of equivalent unitDefIDs (same building, different factions)
 local FACTION_UNIT_EQUALITY_GROUPS = {}
 
-local TARGET_UNITDEF_IDS,
+local
 	builderDefs,
 	NANO_DEFS,
-	BUILDABLE_UNITDEF_IDS,
 	NEVER_RECLAIMABLE_UNITDEF_IDS,
 	NEVER_REPLACES_UNITDEF_IDS,
 	blockedReplacementPairs,
-	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}, {}, {}
-
-for _, name in ipairs(TARGET_UNITDEF_NAMES) do
-	local def = UnitDefNames and UnitDefNames[name]
-	if def then
-		TARGET_UNITDEF_IDS[def.id] = true
-	end
-end
+	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}
 
 for _, target in ipairs({'gate', 'gatet3', 'respawn'}) do
 	for _, faction in ipairs(factions) do
@@ -177,12 +174,12 @@ for _, faction in pairs(factions) do
 	for _, fromTo in pairs(nonFactionBlockedReplacementPairs) do
 		local from, to = faction .. fromTo[1], faction .. fromTo[2]
 		if from and to and UnitDefNames[from] and UnitDefNames[to] then
-			Spring.Echo(
-				'Upgradeable from ' .. from .. ' to ' .. to,
-				' defs ' ..
-					(UnitDefNames[from] and UnitDefNames[from].id or 'nil') ..
-						' -> ' .. (UnitDefNames[to] and UnitDefNames[to].id or 'nil')
-			)
+			-- Spring.Echo(
+			-- 	'[nonregex] Upgradeable from ' .. from .. ' to ' .. to,
+			-- 	' defs ' ..
+			-- 		(UnitDefNames[from] and UnitDefNames[from].id or 'nil') ..
+			-- 			' -> ' .. (UnitDefNames[to] and UnitDefNames[to].id or 'nil')
+			-- )
 			if not blockedReplacementPairs[UnitDefNames[from].id] then
 				blockedReplacementPairs[UnitDefNames[from].id] = {}
 			end
@@ -191,10 +188,20 @@ for _, faction in pairs(factions) do
 	end
 end
 
-for _, name in ipairs(BUILDABLE_UNITDEF_NAMES) do
-	local def = UnitDefNames and UnitDefNames[name]
-	if def then
-		BUILDABLE_UNITDEF_IDS[def.id] = true
+-- build regex-based upgradeable mapping
+for _, fromTo in pairs(regexBlockedReplacementPairs) do
+	local fromPattern, toPattern = fromTo[1], fromTo[2]
+	for fromUnitDefID, fromUnitDef in pairs(UnitDefs) do
+		if fromUnitDef.name and fromUnitDef.name:match(fromPattern) then
+			for toUnitDefID, toUnitDef in pairs(UnitDefs) do
+				if toUnitDef.name and toUnitDef.name:match(toPattern) then
+					if not blockedReplacementPairs[fromUnitDefID] then
+						blockedReplacementPairs[fromUnitDefID] = {}
+					end
+					blockedReplacementPairs[fromUnitDefID][toUnitDefID] = true
+				end
+			end
+		end
 	end
 end
 
@@ -679,14 +686,14 @@ function widget:GameFrame(n)
 				currentPipelineSize = getPipelineSize(-pipeline.currentlyProcessing[1].cmdID)
 			end
 
-			Spring.Echo(
-				'currentPipelineSize',
-				currentPipelineSize,
-				'pendingBuilds',
-				#pipeline.pendingBuilds,
-				'currentlyProcessing',
-				#pipeline.currentlyProcessing
-			)
+			-- Spring.Echo(
+			-- 	'currentPipelineSize',
+			-- 	currentPipelineSize,
+			-- 	'pendingBuilds',
+			-- 	#pipeline.pendingBuilds,
+			-- 	'currentlyProcessing',
+			-- 	#pipeline.currentlyProcessing
+			-- )
 
 			while #pipeline.currentlyProcessing < currentPipelineSize and #pipeline.pendingBuilds > 0 do
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
@@ -776,12 +783,12 @@ end
 function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	if cmdID == CMD_AUTO_REPLACE then
 		local mode = CMD_AUTO_REPLACE_DESCRIPTION.params[1]
-		Spring.Echo('Phoenix Engine: Button clicked, current mode:', mode)
+		-- Spring.Echo('Phoenix Engine: Button clicked, current mode:', mode)
 		-- Cycle through modes like holo_place does
 		local n_modes = #CMD_AUTO_REPLACE_DESCRIPTION.params - 1
 		mode = (mode + 1) % n_modes
 		CMD_AUTO_REPLACE_DESCRIPTION.params[1] = mode
-		Spring.Echo('Phoenix Engine: New mode:', CMD_AUTO_REPLACE_DESCRIPTION.params[1])
+		-- Spring.Echo('Phoenix Engine: New mode:', CMD_AUTO_REPLACE_DESCRIPTION.params[1])
 		checkUnits(true)
 		return true
 	end

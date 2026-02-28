@@ -44,7 +44,7 @@ local CMD_AUTO_DGUN_DESCRIPTION = {
   type = CMDTYPE.ICON_MODE,
   name = 'Auto D-Gun',
   cursor = nil,
-  action = 'auto_dgun',
+
   params = {AUTO_DGUN_DEFAULT, 'auto_dgun_off', 'auto_dgun_stockpile_max', 'auto_dgun_always'}
 }
 
@@ -426,7 +426,7 @@ function widget:GameFrame(frameNum)
     return
   end
 
-    validateCommanderUnits()
+  validateCommanderUnits()
   -- Spring.Echo('GameFrame', frameNum)
 
   -- Process auto d-gun for all commanders
