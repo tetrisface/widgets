@@ -184,9 +184,9 @@ for _, faction in pairs(factions) do
 	for _, fromTo in pairs(blockedReplacementPairs) do
 		local from, to = faction .. fromTo[1], faction .. fromTo[2]
 		if from and to and UnitDefNames[from] and UnitDefNames[to] then
-			Spring.Echo(
-				'[PHX_DBG] blocked pair: ' .. from .. '(' .. UnitDefNames[from].id .. ') -> ' .. to .. '(' .. UnitDefNames[to].id .. ')'
-			)
+			-- Spring.Echo(
+			-- 	'[PHX_DBG] blocked pair: ' .. from .. '(' .. UnitDefNames[from].id .. ') -> ' .. to .. '(' .. UnitDefNames[to].id .. ')'
+			-- )
 			if not blockedReplacementPairs[UnitDefNames[from].id] then
 				blockedReplacementPairs[UnitDefNames[from].id] = {}
 			end
@@ -389,7 +389,7 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
 	local placingName = UnitDefs[placingUnitDefID] and UnitDefs[placingUnitDefID].name or '?'
 	local existingName = UnitDefs[existingUnitDefID] and UnitDefs[existingUnitDefID].name or '?'
-	Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
+	-- Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
 	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
