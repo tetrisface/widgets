@@ -89,8 +89,9 @@ local reclaimPriorityOrderNames = {
 	'win'
 }
 
-local nonFactionBlockedReplacementPairs = {
+local blockedReplacementPairs = {
 	{'moho', 'mex'},
+	{'mohoconct', 'mex'}, -- combined nano and t2 metal extractor
 	{'makr', 'nanotc'},
 	{'mmkr', 'adveconv'},
 	{'mmkrt3', 'adveconvt3'},
@@ -100,6 +101,7 @@ local nonFactionBlockedReplacementPairs = {
 local regexBlockedReplacementPairs = {
 	{'^[acl][roe][mrg]evfus%d$', '^[acl][roe][mrg]evfus%d$'},
 	{'^[acl][roe][mrg]mmkrt3%d$', '^[acl][roe][mrg]mmkrt3%d$'},
+	{'%w*moho%w*$', '%w*mex%w*'},
 }
 
 -- add _scav postfix for all items
@@ -171,7 +173,7 @@ end
 
 -- Build upgradeable mapping (e.g. T1 to T2)
 for _, faction in pairs(factions) do
-	for _, fromTo in pairs(nonFactionBlockedReplacementPairs) do
+	for _, fromTo in pairs(blockedReplacementPairs) do
 		local from, to = faction .. fromTo[1], faction .. fromTo[2]
 		if from and to and UnitDefNames[from] and UnitDefNames[to] then
 			-- Spring.Echo(
