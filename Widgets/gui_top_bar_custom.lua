@@ -1,8 +1,13 @@
 local widget = widget ---@type Widget
 
+-- CUSTOM: This file is a customized copy of the upstream "Top Bar" widget (gui_top_bar.lua).
+-- When rebasing onto a newer upstream version:
+--   1. Replace this file's content with the new upstream version
+--   2. Restore the widget name to "Top Bar custom" (avoids collision with upstream widget)
+--   3. Re-apply custom changes (search for "CUSTOM:" comments in this file's git history)
 function widget:GetInfo()
 	return {
-		name = "Top Bar custom",
+		name = "Top Bar custom",  -- CUSTOM: renamed from "Top Bar" to avoid collision
 		desc = "Shows Resources, wind speed, commander counter, and various options.",
 		author = "Floris",
 		date = "Feb, 2017",
@@ -211,6 +216,7 @@ local blinkProgress = 0
 local guishaderCheckUpdateRate = 0.5
 
 local nextSmoothUpdate = 0
+local nextMmLevelResend = 0  -- CUSTOM: timer for periodic mmLevel re-send (see widget:Update)
 --------------------------------------------------------------------------------
 
 local function getPlayerLiveAllyCount()
@@ -1265,6 +1271,22 @@ function widget:Update(dt)
 				resbarHover = nil
 				updateResbar('metal')
 			end
+			-- CUSTOM: upstream bug fix — mmLevel sync was missing from the normal gameplay branch.
+			-- The upstream code only syncs mmLevel in the spec and quitscreen branches, meaning
+			-- during normal play the slider never detects server-side mmLevel changes.
+			if mmLevel then
+				local currentMmLevel = spGetTeamRulesParam(myTeamID, 'mmLevel')
+				if mmLevel ~= currentMmLevel or energyOverflowLevel ~= r['energy'][6] then
+					mmLevel = currentMmLevel
+					if not draggingConversionIndicator then
+						draggingConversionIndicatorValue = nil
+					end
+					updateResbar('energy')
+				end
+				if metalOverflowLevel ~= r['metal'][6] then
+					updateResbar('metal')
+				end
+			end
 		elseif spec then
 			local prevMyTeamID = myTeamID
 			local newMyTeamID = spGetMyTeamID()
@@ -1281,8 +1303,10 @@ function widget:Update(dt)
 					local currentMmLevel = spGetTeamRulesParam(myTeamID, 'mmLevel')
 					if mmLevel ~= currentMmLevel or energyOverflowLevel ~= r['energy'][6] then
 						mmLevel = currentMmLevel
+						-- CUSTOM: clear stale drag value so slider reflects actual server mmLevel
+						-- (upstream bug: draggingConversionIndicatorValue persists after drag, causing visual desync)
 						if not draggingConversionIndicator then
-							draggingConversionIndicatorValue = nil  -- allow slider to reflect updated server mmLevel
+							draggingConversionIndicatorValue = nil
 						end
 						updateResbar('energy')
 					end
@@ -1297,8 +1321,9 @@ function widget:Update(dt)
 				local currentMmLevel = spGetTeamRulesParam(myTeamID, 'mmLevel')
 				if mmLevel ~= currentMmLevel or energyOverflowLevel ~= r['energy'][6] then
 					mmLevel = currentMmLevel
+					-- CUSTOM: clear stale drag value (same fix as spec branch above)
 					if not draggingConversionIndicator then
-						draggingConversionIndicatorValue = nil  -- allow slider to reflect updated server mmLevel
+						draggingConversionIndicatorValue = nil
 					end
 					updateResbar('energy')
 				end
@@ -1306,6 +1331,16 @@ function widget:Update(dt)
 					updateResbar('metal')
 				end
 			end
+		end
+	end
+
+	-- CUSTOM: periodically re-send mmLevel to the server to work around a likely engine-side bug
+	-- where newly built metalmakers don't inherit the current conversion setting until char(137)
+	-- is re-sent. This ensures all metalmakers (including new ones) respect the current mmLevel.
+	if not spec and gameStarted and mmLevel and now > nextMmLevelResend then
+		nextMmLevelResend = now + 3
+		if not draggingConversionIndicator then
+			Spring.SendLuaRulesMsg(stringFormat(string.char(137) .. '%i', mathFloor(mmLevel * 100)))
 		end
 	end
 
