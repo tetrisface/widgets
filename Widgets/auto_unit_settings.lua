@@ -239,7 +239,7 @@ function widget:UnitFinished(unitID, unitDefID, unitTeam)
 	--   Spring.GiveOrderToUnit(unitID, CMD.REPEAT, { 1 }, 0)
 	end
 
-	Spring.Echo('UnitFinished: ' .. def.translatedHumanName .. ' (' .. unitID .. ')')
+	-- Spring.Echo('UnitFinished: ' .. def.translatedHumanName .. ' (' .. unitID .. ')')
 	if def.canStockpile and not lraa[unitDefID] and def.isBuilding and unitID ~= nil and type(unitID) == 'number'
 	and not (def.name:find 'Launcher' or def.translatedHumanName:find 'Launcher')
 	 then

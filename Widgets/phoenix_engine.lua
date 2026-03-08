@@ -21,6 +21,8 @@ local GetMyTeamID = Spring.GetMyTeamID
 local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitsInRectangle = Spring.GetUnitsInRectangle
 local GetUnitIsBeingBuilt = Spring.GetUnitIsBeingBuilt
+local GetUnitBuildFacing = Spring.GetUnitBuildFacing
+local GetUnitRulesParam = Spring.GetUnitRulesParam
 local UnitDefs = UnitDefs
 local CMD_RECLAIM = CMD.RECLAIM
 local CMD_INSERT = CMD.INSERT
@@ -92,6 +94,10 @@ local reclaimPriorityOrderNames = {
 local blockedReplacementPairs = {
 	{'moho', 'mex'},
 	{'mohoconct', 'mex'}, -- combined nano and t2 metal extractor
+	{'mohocon', 'mohoconct'}, -- legmohocon morphs into legmohoconct + legmohoconin on completion
+	{'mohocon', 'mohoconin'},
+	{'mohoconct', 'mohoconin'},
+	{'mohoconct', 'mohocon'},
 	{'makr', 'nanotc'},
 	{'mmkr', 'adveconv'},
 	{'mmkrt3', 'adveconvt3'},
@@ -102,6 +108,8 @@ local regexBlockedReplacementPairs = {
 	{'^[acl][roe][mrg]evfus%d$', '^[acl][roe][mrg]evfus%d$'},
 	{'^[acl][roe][mrg]mmkrt3%d$', '^[acl][roe][mrg]mmkrt3%d$'},
 	{'%w*moho%w*$', '%w*mex%w*'},
+	{'%w*mohocon$', '%w*mohoconct'}, -- legmohocon morphs into legmohoconct + legmohoconin; don't replace them
+	{'%w*mohocon$', '%w*mohoconin'},
 }
 
 -- add _scav postfix for all items
@@ -176,12 +184,9 @@ for _, faction in pairs(factions) do
 	for _, fromTo in pairs(blockedReplacementPairs) do
 		local from, to = faction .. fromTo[1], faction .. fromTo[2]
 		if from and to and UnitDefNames[from] and UnitDefNames[to] then
-			-- Spring.Echo(
-			-- 	'[nonregex] Upgradeable from ' .. from .. ' to ' .. to,
-			-- 	' defs ' ..
-			-- 		(UnitDefNames[from] and UnitDefNames[from].id or 'nil') ..
-			-- 			' -> ' .. (UnitDefNames[to] and UnitDefNames[to].id or 'nil')
-			-- )
+			Spring.Echo(
+				'[PHX_DBG] blocked pair: ' .. from .. '(' .. UnitDefNames[from].id .. ') -> ' .. to .. '(' .. UnitDefNames[to].id .. ')'
+			)
 			if not blockedReplacementPairs[UnitDefNames[from].id] then
 				blockedReplacementPairs[UnitDefNames[from].id] = {}
 			end
@@ -266,6 +271,16 @@ for uDefID, uDef in pairs(UnitDefs) do
 	end
 end
 
+-- Precompute max half-footprint among all reclaimable buildings (in elmos)
+local MAX_BLOCKER_HALF_FOOTPRINT = 0
+for uDefID, _ in pairs(ECONOMICAL_UNITDEF_IDS) do
+	local def = UnitDefs[uDefID]
+	local halfFoot = math.max(def.xsize or 2, def.zsize or 2) * 4
+	if halfFoot > MAX_BLOCKER_HALF_FOOTPRINT then
+		MAX_BLOCKER_HALF_FOOTPRINT = halfFoot
+	end
+end
+
 -- Build equality groups table - links faction equivalents together
 -- First, create a temp mapping: baseName -> {faction defIDs}
 local baseNameToDefIDs = {}
@@ -314,6 +329,7 @@ local SMALL_PIPELINE_SIZE = 20
 local NANO_CACHE_UPDATE_INTERVAL = 90
 local RECLAIM_RETRY_DELAY = 150
 local MAX_RECLAIM_RETRIES = 200
+local COMPLETION_CHECK_ANY_UNIT = true -- false = match exact unitDefID, true = any completed friendly unit (needed for units that morph/split on completion like legmohocon)
 
 -- States
 -- AUTO_REPLACE_ENABLED stores mode: 0 = off, 1 = on
@@ -371,6 +387,9 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	end
 
 	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
+	local placingName = UnitDefs[placingUnitDefID] and UnitDefs[placingUnitDefID].name or '?'
+	local existingName = UnitDefs[existingUnitDefID] and UnitDefs[existingUnitDefID].name or '?'
+	Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
 	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
@@ -504,18 +523,67 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 
 	local mode = AUTO_REPLACE_ENABLED[builderID] or MODE_AUTO_REPLACE_ON
 
-	for _, uid in ipairs(GetUnitsInRectangle(x - areaX, z - areaZ, x + areaX, z + areaZ)) do
+	-- Expand search rect to catch units whose footprint overlaps but center is outside
+	local searchX = areaX + MAX_BLOCKER_HALF_FOOTPRINT
+	local searchZ = areaZ + MAX_BLOCKER_HALF_FOOTPRINT
+
+	for _, uid in ipairs(GetUnitsInRectangle(x - searchX, z - searchZ, x + searchX, z + searchZ)) do
 		if GetUnitTeam(uid) == GetMyTeamID() then
 			local unitDefID = GetUnitDefID(uid)
 
 			if canReplaceUnit(unitDefID, placedUnitDefID, mode, F14_MODIFIER_ACTIVE) then
 				local ux, _, uz = GetUnitPosition(uid)
-				if ux and math.abs(ux - x) <= areaX and math.abs(uz - z) <= areaZ then
-					blockers[#blockers + 1] = uid
+				if ux then
+					-- Check actual footprint overlap using existing unit's size and facing
+					local existingDef = UnitDefs[unitDefID]
+					local exFacing = GetUnitBuildFacing(uid) or 0
+					local exHalfX = ((exFacing == 1 or exFacing == 3) and existingDef.zsize or existingDef.xsize) * 4
+					local exHalfZ = ((exFacing == 1 or exFacing == 3) and existingDef.xsize or existingDef.zsize) * 4
+					if math.abs(ux - x) < (areaX + exHalfX) and math.abs(uz - z) < (areaZ + exHalfZ) then
+						blockers[#blockers + 1] = uid
+					end
 				end
 			end
 		end
 	end
+	-- For composite units (e.g. legmohoconct+legmohoconin), deduplicate paired sub-units
+	-- and prefer the one without death explosion to avoid visual explosion on reclaim
+	local pairedSeen = nil
+	for i = 1, #blockers do
+		local pairedID = GetUnitRulesParam(blockers[i], "pairedUnitID")
+		if pairedID and pairedID ~= 0 then
+			if not pairedSeen then pairedSeen = {} end
+			pairedSeen[blockers[i]] = pairedID
+		end
+	end
+	if pairedSeen then
+		local filtered = {}
+		local skip = {}
+		for i = 1, #blockers do
+			local uid = blockers[i]
+			if not skip[uid] then
+				local pairedID = pairedSeen[uid]
+				if pairedID then
+					-- Skip the paired unit if it's also in the blockers list
+					skip[pairedID] = true
+					-- Keep the sub-unit with no death explosion
+					local defID = GetUnitDefID(uid)
+					local pairedDefID = GetUnitDefID(pairedID)
+					local hasExplosion = defID and UnitDefs[defID].deathExplosion ~= ""
+					local pairedHasExplosion = pairedDefID and UnitDefs[pairedDefID].deathExplosion ~= ""
+					if hasExplosion and not pairedHasExplosion then
+						filtered[#filtered + 1] = pairedID
+					else
+						filtered[#filtered + 1] = uid
+					end
+				else
+					filtered[#filtered + 1] = uid
+				end
+			end
+		end
+		blockers = filtered
+	end
+
 	return blockers, areaX, areaZ
 end
 
@@ -601,11 +669,10 @@ local function isBuildComplete(constructionInfo)
 	local wx, wz = constructionInfo.position[1], constructionInfo.position[2]
 	local hx, hz = constructionInfo.footprint[1], constructionInfo.footprint[2]
 	for _, uid in ipairs(GetUnitsInRectangle(wx - hx, wz - hz, wx + hx, wz + hz)) do
-		if
-			GetUnitDefID(uid) == constructionInfo.unitDefID and GetUnitTeam(uid) == GetMyTeamID() and
-				not GetUnitIsBeingBuilt(uid)
-		 then
-			return true
+		if GetUnitTeam(uid) == GetMyTeamID() and not GetUnitIsBeingBuilt(uid) then
+			if COMPLETION_CHECK_ANY_UNIT or GetUnitDefID(uid) == constructionInfo.unitDefID then
+				return true
+			end
 		end
 	end
 	return false
@@ -712,25 +779,29 @@ function widget:GameFrame(n)
 				-- Check if we should reclaim for this build based on position in queue
 				local shouldReclaimForThisBuild = shouldReclaimForBuild(pipeline, p.order, i)
 
-				-- Handle reclaim retry logic
-				if shouldRetry and shouldReclaimForThisBuild then
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
-					if #blockers > 0 then
-						pipeline.reclaimRetries[p.order] = (pipeline.reclaimRetries[p.order] or 0) + 1
-						giveReclaimOrdersFromNanos(blockers)
-						pipeline.lastReclaimAttempt[p.order] = currentFrame
-					end
-				elseif shouldStart and shouldReclaimForThisBuild then
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
-					if #blockers > 0 then
-						giveReclaimOrdersFromNanos(blockers)
-						pipeline.reclaimStarted[p.order] = true
-						pipeline.lastReclaimAttempt[p.order] = currentFrame
+				-- Check construction state BEFORE reclaim to avoid reclaiming our own completed buildings
+				local constructionInfo = pipeline.buildingsUnderConstruction[p.order]
+
+				-- Handle reclaim retry logic (only when not yet building, and game engine says position is actually blocked)
+				if not constructionInfo then
+					local stillBlocked = Spring.TestBuildOrder(buildingDefIDBeingPlaced, bx, p.params[2], bz, p.facing) == 0
+
+					if shouldRetry and shouldReclaimForThisBuild and stillBlocked then
+						local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
+						if #blockers > 0 then
+							pipeline.reclaimRetries[p.order] = (pipeline.reclaimRetries[p.order] or 0) + 1
+							giveReclaimOrdersFromNanos(blockers)
+							pipeline.lastReclaimAttempt[p.order] = currentFrame
+						end
+					elseif shouldStart and shouldReclaimForThisBuild and stillBlocked then
+						local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
+						if #blockers > 0 then
+							giveReclaimOrdersFromNanos(blockers)
+							pipeline.reclaimStarted[p.order] = true
+							pipeline.lastReclaimAttempt[p.order] = currentFrame
+						end
 					end
 				end
-
-				-- Check if building is under construction
-				local constructionInfo = pipeline.buildingsUnderConstruction[p.order]
 				if constructionInfo then
 					if isBuildComplete(constructionInfo) then
 						pipeline.buildingsUnderConstruction[p.order] = nil
@@ -738,19 +809,28 @@ function widget:GameFrame(n)
 						removeVisualIndicator(builderID, bx, bz)
 						table.remove(pipeline.currentlyProcessing, i)
 					else
+						-- If position is now clear but building isn't complete, it was destroyed
+						-- Only check after giving nanos time to start construction (90 frames ~3s)
+						if currentFrame - constructionInfo.startFrame > 90 then
+							local canRebuild = Spring.TestBuildOrder(buildingDefIDBeingPlaced, bx, p.params[2], bz, p.facing)
+							if canRebuild ~= 0 then
+								pipeline.buildingsUnderConstruction[p.order] = nil
+							end
+						end
 						i = i + 1
 					end
 				else
-					-- Check if ready to build
-					local blockers = findBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, builderID, buildingDefIDBeingPlaced)
-					if #blockers == 0 then
+					-- Check if ready to build using game engine's placement check
+					local canBuild = Spring.TestBuildOrder(buildingDefIDBeingPlaced, bx, p.params[2], bz, p.facing)
+					if canBuild ~= 0 then
 						local aliveBuilders = getAliveBuilders(p.builders)
 						if #aliveBuilders > 0 then
 							GiveOrderToUnitArray(aliveBuilders, p.cmdID, p.params, {'shift'})
 							pipeline.buildingsUnderConstruction[p.order] = {
 								position = {bx, bz},
-								footprint = {p.xsize / 2, p.zsize / 2},
-								unitDefID = -p.cmdID
+								footprint = {p.xsize * 4, p.zsize * 4},
+								unitDefID = -p.cmdID,
+								startFrame = currentFrame
 							}
 						else
 							clearPipelineOrder(pipeline, p.order)
@@ -821,6 +901,13 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	end
 	local xsize, zsize = buildingDef.xsize, buildingDef.zsize
 	local facing = cmdParams[4] or 0
+
+	-- Fast pre-check: if the game engine says the position is clear, no need to intercept
+	local testResult = Spring.TestBuildOrder(buildingDefID, bx, by, bz, facing)
+	if testResult ~= 0 then
+		return false
+	end
+
 	local assignedBuilderID = nil
 	for _, builderID in ipairs(GetSelectedUnits()) do
 		if (AUTO_REPLACE_ENABLED[builderID] or MODE_AUTO_REPLACE_ON) ~= MODE_AUTO_REPLACE_OFF then
