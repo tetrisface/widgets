@@ -125,7 +125,7 @@ end
 
 function widget:Initialize()
 	local mapNameLower = string.lower(Game.mapName or '')
-	if string.find(mapNameLower, 'full metal plate') then
+	if string.find(mapNameLower, 'full') and string.find(mapNameLower, 'metal') and string.find(mapNameLower, 'plate') then
 		Spring.Echo('Running on Full Metal Plate')
 		Spring.MarkerErasePosition(0, 0, 0)
 		CollectGridLines()
