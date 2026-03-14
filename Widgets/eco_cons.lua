@@ -97,6 +97,13 @@ local anyBuildWillStall = false
 local assignedTargetBuildSpeed = {}
 local isUnitLogActive = false
 local selectedUnits = {}
+
+-- per-frame caches (cleared at start of Builders())
+local cachedResourceStatus = {}
+local cachedUnitsUpkeep = nil
+local cachedMetalMakersUpkeep = nil
+local cachedTargetWillStall = {}
+local purgedThisFrame = {}
 -- local mapPosUnitCache = LRUCacheTable:new(100)
 
 -- WG["ObjectSpotlight"].addSpotlight = function() end
@@ -326,17 +333,7 @@ end
 
 local function getBuildTimeLeft(targetId, targetDef)
   local _, _, _, _, build = GetUnitHealth(targetId)
-  local currentBuildSpeed = 0
-  -- for builderId, _ in pairs(builders) do
-  for i = 1, builderUnitIds.count do
-    local builder = BuilderById(builderUnitIds.list[i])
-    if builder then -- todo investigate
-      local testTargetId = GetUnitIsBuilding(builder.id)
-      if testTargetId == targetId and builder.id ~= targetId then
-        currentBuildSpeed = currentBuildSpeed + builder.def.buildSpeed
-      end
-    end
-  end
+  local currentBuildSpeed = assignedTargetBuildSpeed[targetId] or 0
 
   if not targetDef then
     targetDef = UnitDefs[GetUnitDefID(targetId)]
@@ -388,6 +385,10 @@ local function purgeRepairs(builderId, cmdQueue, queueSize)
   if not cmdQueue then
     return {}
   end
+  if purgedThisFrame[builderId] then
+    return GetUnitCommands(builderId, queueSize)
+  end
+  purgedThisFrame[builderId] = true
   local cmd
   local removeCommands = {}
   for i = 1, #cmdQueue do
@@ -458,6 +459,9 @@ local function repair(builderId, targetId, shift)
 end
 
 local function getMetalMakersUpkeep()
+  if cachedMetalMakersUpkeep then
+    return cachedMetalMakersUpkeep
+  end
   local totalUpKeep = 0
   for unitID, upKeep in pairs(metalMakers) do
     local state = GetUnitStates(unitID)
@@ -468,6 +472,7 @@ local function getMetalMakersUpkeep()
     totalUpKeep = totalUpKeep + energy
   end
 
+  cachedMetalMakersUpkeep = totalUpKeep
   return totalUpKeep
 end
 
@@ -638,9 +643,22 @@ local function UpdateResourceNeeds()
   -- mMMNeed = math.max(0, math.min(1, (positiveMMLevel and 1 or 0) * (regularizedNegativeEnergy and 1 or 0.5) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
 
   -- mMMNeed = math.max(0, math.min(1, (positiveMMLevel and 1 or 0) * (energyIncome / energyExpenseActual) * Interpolate(energyLevel, metalMakersLevel, 1, 0, 1) * (1 - metalLevel)))
+
+  -- clamp: don't build more of a resource type that is already overflowing
+  if isEnergyLeaking then
+    energyNeed = 0
+  end
+  if isMetalLeaking then
+    mMMNeed = 0
+  end
 end
 
 local function GetResourceStatus(type)
+  if cachedResourceStatus[type] then
+    local c = cachedResourceStatus[type]
+    return c[1], c[2], c[3], c[4], c[5]
+  end
+
   local lvl, storage, pullExpWanted, inc, expActual, shareSlider, sent, recieved = GetTeamResources(myTeamId, type)
 
   if not inc then
@@ -668,6 +686,7 @@ local function GetResourceStatus(type)
 
   local alreadyInStall = pullExpWanted > lvl or exp > lvl
 
+  cachedResourceStatus[type] = {total, lvl, storage, exp, alreadyInStall}
   return total, lvl, storage, exp, alreadyInStall
 end
 
@@ -739,6 +758,10 @@ local function traceUpkeep(unitID, alreadyCounted)
 end
 
 local function getUnitsUpkeep()
+  if cachedUnitsUpkeep then
+    return cachedUnitsUpkeep[1], cachedUnitsUpkeep[2]
+  end
+
   local alreadyCounted = {}
 
   local metal = 0
@@ -752,6 +775,7 @@ local function getUnitsUpkeep()
       energy = energy + energyUse
     end
   end
+  cachedUnitsUpkeep = {metal, energy}
   return metal, energy
 end
 
@@ -776,6 +800,11 @@ local function IsTimeToMoveOn(secondsLeft, builderId, builderDef, targetTotalBui
 end
 
 local function TargetWillStall(targetId, targetDef, targetTotalBuildSpeed, secondsLeft)
+  if cachedTargetWillStall[targetId] then
+    local c = cachedTargetWillStall[targetId]
+    return c[1], c[2], c[3]
+  end
+
   if not targetDef then
     targetDef = UnitIdDef(targetId)
   end
@@ -794,6 +823,8 @@ local function TargetWillStall(targetId, targetDef, targetTotalBuildSpeed, secon
   -- log('targetWillStall', 'secondsLeft', secondsLeft, 'totalBuildSpeed', totalBuildSpeed, 'speed', speed, 'metal', metal, 'energy', energy, 'mDrain', mDrain, 'eDrain', eDrain)
   local eStall = buildingWillStallType('energy', energy, secondsLeft, eDrain)
   local mStall = buildingWillStallType('metal', metal, secondsLeft, mDrain)
+
+  cachedTargetWillStall[targetId] = {mStall or eStall, mStall, eStall}
   return mStall or eStall, mStall, eStall
 end
 
@@ -1062,7 +1093,7 @@ local function IdlingCandidates(builder, targetId, cmdQueue, nCmdQueue, gameFram
             nCandidatesDamaged = nCandidatesDamaged + 1
             candidatesDamaged[nCandidatesDamaged] = candidate
           else
-            local candidateQueue = GetPurgedUnitCommands(candidateId)
+            local candidateQueue = GetUnitCommands(candidateId, 3)
             if candidateQueue and #candidateQueue > 0 and candidateQueue[1].id < 0 then
               table.insert(candidatesGuardBuilders, candidateId)
             end
@@ -1289,7 +1320,7 @@ local function BatchOrder(gameFrame)
     for i = 1, builderUnitIds.count do
       local builder = BuilderById(builderUnitIds.list[i])
       if builder and not assignedBuilders[builder.id] then
-        local commandQueue = GetPurgedUnitCommands(builder.id, 3)
+        local commandQueue = GetUnitCommands(builder.id, 3)
 
         local busy = false
         if commandQueue and #commandQueue > 0 then
@@ -1327,7 +1358,8 @@ local function BatchOrder(gameFrame)
                 --   builder.targetId ~= candidate.id
                 -- )
                 -- if Distance(candidate.x, candidate.z, x, z) <= builder.def.buildDistance + 96 then
-                if GetUnitSeparation(builder.id, candidate.id, true, true) < builder.def.buildDistance - 12 then
+                local separation = GetUnitSeparation(builder.id, candidate.id, true, true)
+                if separation and separation < builder.def.buildDistance - 12 then
                   candidate.buildSpeed = candidate.buildSpeed + builder.def.buildSpeed
                   if builder.targetId == candidate.id then
                     candidate.alreadyBuilding[builder.id] = true
@@ -1420,6 +1452,11 @@ local function Builders(gameFrame)
   anyBuildWillEStall = false
   anyBuildWillStall = false
   assignedTargetBuildSpeed = {}
+  cachedResourceStatus = {}
+  cachedUnitsUpkeep = nil
+  cachedMetalMakersUpkeep = nil
+  cachedTargetWillStall = {}
+  purgedThisFrame = {}
   for i = 1, builderUnitIds.count do
     local builder = BuilderById(builderUnitIds.list[i])
     if builder then
