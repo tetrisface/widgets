@@ -41,8 +41,16 @@ local tidalStrength = Game.tidal
 local windMax = Game.windMax
 local windMin = Game.windMin
 
+local responsivenessSpeed = 1
 local waitGameFramesDefault = 30
 local frameStaggeringModuloMultiplier = 1
+local responsivenessPresets = {1, 1.5, 2, 3, 4}
+
+local function applyResponsivenessSpeed(speed)
+  responsivenessSpeed = speed
+  frameStaggeringModuloMultiplier = 1 / speed
+  waitGameFramesDefault = math.max(2, math.floor(30 / speed))
+end
 
 local myTeamId = Spring.GetMyTeamID()
 local busyCommands = {
@@ -244,6 +252,13 @@ function widget:Initialize()
       end
     end
   end
+
+  WG['eco_cons'] = {
+    getResponsivenessSpeed = function() return responsivenessSpeed end,
+    setResponsivenessSpeed = function(value)
+      applyResponsivenessSpeed(math.max(0.25, math.min(4, value)))
+    end,
+  }
 end
 
 local function RegisterMetalMaker(unitID, unitDef)
@@ -1761,6 +1776,33 @@ function widget:KeyPress(key, mods, isRepeat)
     isUnitLogActive = not isUnitLogActive
     log('isUnitLogActive ' .. tostring(isUnitLogActive))
     return true
+  end
+  if key == KEYSYMS.T and mods['ctrl'] and mods['shift'] then
+    local currentIndex = 1
+    for i, preset in ipairs(responsivenessPresets) do
+      if preset == responsivenessSpeed then
+        currentIndex = i
+        break
+      end
+    end
+    local nextIndex = (currentIndex % #responsivenessPresets) + 1
+    applyResponsivenessSpeed(responsivenessPresets[nextIndex])
+    log('eco cons responsiveness: ' .. responsivenessSpeed .. 'x')
+    return true
+  end
+end
+
+function widget:Shutdown()
+  WG['eco_cons'] = nil
+end
+
+function widget:GetConfigData()
+  return { responsivenessSpeed = responsivenessSpeed }
+end
+
+function widget:SetConfigData(data)
+  if data.responsivenessSpeed then
+    applyResponsivenessSpeed(data.responsivenessSpeed)
   end
 end
 
