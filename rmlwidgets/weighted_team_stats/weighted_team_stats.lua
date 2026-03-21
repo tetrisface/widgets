@@ -40,6 +40,7 @@ local spIsGUIHidden = Spring.IsGUIHidden
 local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
 local spGetViewGeometry = Spring.GetViewGeometry
+local spGetModKeyState = Spring.GetModKeyState
 
 local glColor = gl.Color
 local glRect = gl.Rect
@@ -114,6 +115,35 @@ function StatsEngine.ComputeDeltas(snapshots)
 		deltas[#deltas + 1] = delta
 	end
 	return deltas
+end
+
+--- Aggregate consecutive deltas into larger windows.
+--- @param deltas table[] Array of per-window delta tables
+--- @param factor number Number of deltas to merge into one window
+--- @return table[] aggregated Array of aggregated delta tables
+function StatsEngine.AggregateDeltas(deltas, factor)
+	if factor <= 1 then return deltas end
+	local result = {}
+	for i = 1, #deltas, factor do
+		local merged = { frame = 0, dt = 0 }
+		for _, key in ipairs(StatsEngine.STAT_KEYS) do
+			merged[key] = 0
+		end
+		local count = 0
+		for j = i, math_min(i + factor - 1, #deltas) do
+			local d = deltas[j]
+			merged.frame = d.frame -- use last frame in group
+			merged.dt = merged.dt + d.dt
+			for _, key in ipairs(StatsEngine.STAT_KEYS) do
+				merged[key] = merged[key] + (d[key] or 0)
+			end
+			count = count + 1
+		end
+		if count > 0 then
+			result[#result + 1] = merged
+		end
+	end
+	return result
 end
 
 --- Smoothing modes for share computation.
@@ -283,6 +313,29 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 		end
 	end
 
+	-- Rescale deflated totals so they're on a comparable magnitude to raw totals.
+	-- Deflated values are in "window 1 units" which can be tiny late game.
+	-- This preserves relative proportions between players while making numbers readable.
+	for _, statKey in ipairs(StatsEngine.STAT_KEYS) do
+		local totalRaw = 0
+		local totalDefl = 0
+		for _, teamID in ipairs(teamIDs) do
+			local lastSnap = allDeltas[teamID]
+			local rawSum = 0
+			for w = 1, windowCount do
+				rawSum = rawSum + (lastSnap[w][statKey] or 0)
+			end
+			totalRaw = totalRaw + rawSum
+			totalDefl = totalDefl + deflated[teamID][statKey]
+		end
+		if totalDefl > 0 then
+			local scale = totalRaw / totalDefl
+			for _, teamID in ipairs(teamIDs) do
+				deflated[teamID][statKey] = deflated[teamID][statKey] * scale
+			end
+		end
+	end
+
 	-- Compute inter-player efficiency: damage output relative to resource consumption
 	-- "How much damage did you deal per unit of resources you consumed?"
 	-- Helper to safely divide, returning 0 on NaN/inf
@@ -439,6 +492,7 @@ local dm_handle
 local frameCounter = 0
 local dataDirty = false
 local graphDirty = false
+local panelHeightSet = false
 local isSpectator = false
 local fullView = false
 local myAllyTeamID
@@ -447,11 +501,18 @@ local myAllyTeamID
 local widgetPosX = 100
 local widgetPosY = 100
 local tableVisible = true
+local graphVisible = true
 local viewMode = 'weighted' -- 'weighted' | 'share' | 'raw'
 local activeStat = 'damageDealt'
 local graphMode = 'normalized' -- 'absolute' | 'normalized' | 'overlay'
 local graphDeflated = false
 local smoothingMode = 'laplace' -- 'laplace' | 'relativistic'
+local sortKey = nil -- nil = sort by contribution index, or a stat key string
+local sortAscending = false
+local groupByAlly = true
+local selectedAllyTeam = nil -- nil = first ally team, or an allyTeamID
+local fontScale = 1.0
+local windowAggregation = 1 -- merge N engine snapshots into one window
 local lastUIHiddenState = false
 
 -- Cached computation results
@@ -479,8 +540,12 @@ local function FormatSI(value)
 		return string_format('%.1fM', value / 1e6)
 	elseif value >= 1e3 then
 		return string_format('%.1fk', value / 1e3)
-	else
+	elseif value >= 100 then
 		return string_format('%.0f', value)
+	elseif value >= 10 then
+		return string_format('%.1f', value)
+	else
+		return string_format('%.2f', value)
 	end
 end
 
@@ -507,6 +572,15 @@ local function LoadUIState()
 	graphDeflated = spGetConfigString('WeightedTeamStats_GraphDeflated', 'false') == 'true'
 	smoothingMode = spGetConfigString('WeightedTeamStats_SmoothingMode', 'laplace')
 	tableVisible = spGetConfigString('WeightedTeamStats_TableVisible', 'true') == 'true'
+	graphVisible = spGetConfigString('WeightedTeamStats_GraphVisible', 'true') == 'true'
+	windowAggregation = tonumber(spGetConfigString('WeightedTeamStats_WindowAggregation', '1')) or 1
+	groupByAlly = spGetConfigString('WeightedTeamStats_GroupByAlly', 'true') == 'true'
+	fontScale = tonumber(spGetConfigString('WeightedTeamStats_FontScale', '1.0')) or 1.0
+	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', '')
+	sortKey = savedSortKey ~= '' and savedSortKey or nil
+	sortAscending = spGetConfigString('WeightedTeamStats_SortAscending', 'false') == 'true'
+	local savedAllyTeam = tonumber(spGetConfigString('WeightedTeamStats_SelectedAllyTeam', ''))
+	selectedAllyTeam = savedAllyTeam
 end
 
 local function SaveUIState()
@@ -516,6 +590,13 @@ local function SaveUIState()
 	spSetConfigString('WeightedTeamStats_GraphDeflated', tostring(graphDeflated))
 	spSetConfigString('WeightedTeamStats_SmoothingMode', smoothingMode)
 	spSetConfigString('WeightedTeamStats_TableVisible', tostring(tableVisible))
+	spSetConfigString('WeightedTeamStats_GraphVisible', tostring(graphVisible))
+	spSetConfigString('WeightedTeamStats_WindowAggregation', tostring(windowAggregation))
+	spSetConfigString('WeightedTeamStats_GroupByAlly', tostring(groupByAlly))
+	spSetConfigString('WeightedTeamStats_FontScale', tostring(fontScale))
+	spSetConfigString('WeightedTeamStats_SortKey', sortKey or '')
+	spSetConfigString('WeightedTeamStats_SortAscending', tostring(sortAscending))
+	spSetConfigString('WeightedTeamStats_SelectedAllyTeam', selectedAllyTeam and tostring(selectedAllyTeam) or '')
 end
 
 local function UpdateDocumentPosition()
@@ -545,7 +626,7 @@ local function RecomputeStats()
 
 		for teamID, snapshots in pairs(teamSnapshots) do
 			teamIDs[#teamIDs + 1] = teamID
-			allDeltas[teamID] = StatsEngine.ComputeDeltas(snapshots)
+			allDeltas[teamID] = StatsEngine.AggregateDeltas(StatsEngine.ComputeDeltas(snapshots), windowAggregation)
 
 			-- Cache team info
 			local name, r, g, b = GetTeamPlayerInfo(teamID)
@@ -596,16 +677,29 @@ local function RecomputeStats()
 end
 
 --- Build the stat columns array for the data model.
+local STAT_COLUMN_DEFS = {
+	{ key = 'damageDealt', label = 'Dmg' },
+	{ key = 'metalProduced', label = 'Metal' },
+	{ key = 'energyProduced', label = 'Energy' },
+	{ key = 'metalExcess', label = 'M Exc' },
+	{ key = 'energyExcess', label = 'E Exc' },
+	{ key = 'metalSent', label = 'M Sent' },
+	{ key = 'unitsKilled', label = 'Kills' },
+}
+
 local function BuildStatColumns()
-	local columns = {
-		{ key = 'damageDealt', label = 'Dmg', active = (activeStat == 'damageDealt') },
-		{ key = 'metalProduced', label = 'Metal', active = (activeStat == 'metalProduced') },
-		{ key = 'energyProduced', label = 'Energy', active = (activeStat == 'energyProduced') },
-		{ key = 'metalExcess', label = 'M Exc', active = (activeStat == 'metalExcess') },
-		{ key = 'energyExcess', label = 'E Exc', active = (activeStat == 'energyExcess') },
-		{ key = 'metalSent', label = 'M Sent', active = (activeStat == 'metalSent') },
-		{ key = 'unitsKilled', label = 'Kills', active = (activeStat == 'unitsKilled') },
-	}
+	local columns = {}
+	for _, def in ipairs(STAT_COLUMN_DEFS) do
+		local sortIndicator = ''
+		if sortKey == def.key then
+			sortIndicator = sortAscending and ' ^' or ' v'
+		end
+		columns[#columns + 1] = {
+			key = def.key,
+			label = def.label .. sortIndicator,
+			active = (activeStat == def.key),
+		}
+	end
 	return columns
 end
 
@@ -629,7 +723,7 @@ local function UpdateRMLuiData()
 					local value
 					if viewMode == 'share' then
 						local s = cachedShares[teamID] and cachedShares[teamID][col.key] or 0
-						value = string_format('%.0f%%', s * 100)
+						value = string_format('%.1f%%', s * 100)
 					elseif viewMode == 'weighted' then
 						local d = cachedDeflated[teamID] and cachedDeflated[teamID][col.key] or 0
 						value = FormatSI(d)
@@ -650,6 +744,19 @@ local function UpdateRMLuiData()
 				end
 				local effDisplay = string_format('%.1fx', effValue)
 
+				-- Compute sort value based on current sort key and view mode
+				local sortValue
+				if sortKey then
+					if viewMode == 'share' then
+						sortValue = cachedShares[teamID] and cachedShares[teamID][sortKey] or 0
+					elseif viewMode == 'weighted' then
+						sortValue = cachedDeflated[teamID] and cachedDeflated[teamID][sortKey] or 0
+					else -- raw
+						sortValue = cachedRawTotals[teamID] and cachedRawTotals[teamID][sortKey] or 0
+					end
+					if sortValue ~= sortValue then sortValue = 0 end -- NaN guard
+				end
+
 				players[#players + 1] = {
 					team_id = teamID,
 					name = info.name,
@@ -658,14 +765,21 @@ local function UpdateRMLuiData()
 					contribution_index = idx,
 					contribution_bar_width = idx,
 					efficiency = effDisplay,
+					sort_value = sortValue,
 				}
 			end
 		end
 
-		-- Sort by contribution index descending
-		table.sort(players, function(a, b)
-			return a.contribution_index > b.contribution_index
-		end)
+		-- Sort players
+		if sortKey then
+			if sortAscending then
+				table.sort(players, function(a, b) return a.sort_value < b.sort_value end)
+			else
+				table.sort(players, function(a, b) return a.sort_value > b.sort_value end)
+			end
+		else
+			table.sort(players, function(a, b) return a.contribution_index > b.contribution_index end)
+		end
 
 		allyTeamsData[#allyTeamsData + 1] = {
 			id = allyInfo.allyID,
@@ -673,7 +787,51 @@ local function UpdateRMLuiData()
 		}
 	end
 
+	-- Flat mode: merge all ally teams into one list
+	if not groupByAlly then
+		local allPlayers = {}
+		for _, at in ipairs(allyTeamsData) do
+			for _, p in ipairs(at.players) do
+				allPlayers[#allPlayers + 1] = p
+			end
+		end
+		-- Re-sort the merged list
+		if sortKey then
+			if sortAscending then
+				table.sort(allPlayers, function(a, b) return a.sort_value < b.sort_value end)
+			else
+				table.sort(allPlayers, function(a, b) return a.sort_value > b.sort_value end)
+			end
+		else
+			table.sort(allPlayers, function(a, b) return a.contribution_index > b.contribution_index end)
+		end
+		allyTeamsData = { { id = -1, players = allPlayers } }
+	end
+
+	-- Resolve selectedAllyTeam: default to first ally team if unset or invalid
+	local validAllyTeam = false
+	if selectedAllyTeam then
+		for _, allyInfo in ipairs(cachedAllyTeams) do
+			if allyInfo.allyID == selectedAllyTeam then
+				validAllyTeam = true
+				break
+			end
+		end
+	end
+	if not validAllyTeam and #cachedAllyTeams > 0 then
+		selectedAllyTeam = cachedAllyTeams[1].allyID
+	end
+
 	local graphModeLabels = { absolute = 'Abs', normalized = 'Norm', overlay = 'Lines' }
+
+	-- Set panel height once data is available so flex layout works
+	if hasData and not panelHeightSet and document then
+		local panel = document:GetElementById('wts-panel')
+		if panel then
+			panel.style.height = '320dp'
+			panelHeightSet = true
+		end
+	end
 
 	dm_handle.has_data = hasData
 	dm_handle.table_visible = tableVisible
@@ -685,6 +843,12 @@ local function UpdateRMLuiData()
 	dm_handle.graph_deflated_label = graphDeflated and 'Deflated' or 'Raw'
 	dm_handle.smoothing_mode = smoothingMode
 	dm_handle.smoothing_label = smoothingMode == 'laplace' and 'Laplace' or 'Relativ'
+	dm_handle.graph_visible = graphVisible
+	dm_handle.group_by_ally = groupByAlly
+	dm_handle.group_label = groupByAlly and 'Grp' or 'Flat'
+	dm_handle.ally_team_label = selectedAllyTeam and ('Team ' .. (selectedAllyTeam + 1)) or 'Team ?'
+	dm_handle.show_ally_selector = #cachedAllyTeams > 1
+	dm_handle.window_agg_label = windowAggregation == 1 and '1x' or (windowAggregation .. 'x')
 	dm_handle.ally_teams = allyTeamsData
 	dm_handle.stat_columns = statColumns
 end
@@ -700,23 +864,26 @@ local function RebuildGraphDisplayList()
 		return
 	end
 
-	-- Collect all teams that have per-window data for the active stat
+	-- Collect teams that have per-window data for the active stat
+	-- Graph focuses on the selected ally team
 	local graphTeams = {} -- { {teamID, color, data[]}, ... }
 	for _, allyInfo in ipairs(cachedAllyTeams) do
-		for _, teamID in ipairs(allyInfo.teamIDs) do
-			local info = cachedTeamInfo[teamID]
-			local dataSource
-			if graphDeflated then
-				dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
-			else
-				dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
-			end
-			if info and dataSource and #dataSource > 0 then
-				graphTeams[#graphTeams + 1] = {
-					teamID = teamID,
-					r = info.r, g = info.g, b = info.b,
-					data = dataSource,
-				}
+		if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
+			for _, teamID in ipairs(allyInfo.teamIDs) do
+				local info = cachedTeamInfo[teamID]
+				local dataSource
+				if graphDeflated then
+					dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
+				else
+					dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+				end
+				if info and dataSource and #dataSource > 0 then
+					graphTeams[#graphTeams + 1] = {
+						teamID = teamID,
+						r = info.r, g = info.g, b = info.b,
+						data = dataSource,
+					}
+				end
 			end
 		end
 	end
@@ -725,10 +892,20 @@ local function RebuildGraphDisplayList()
 		return
 	end
 
-	-- Sort teams consistently (by teamID) for stable stacking order
-	table.sort(graphTeams, function(a, b)
-		return a.teamID < b.teamID
-	end)
+	-- Sort graph teams by cumulative value of the sort key (or active stat)
+	-- Highest cumulative at bottom of stack (drawn first) for visibility
+	for _, team in ipairs(graphTeams) do
+		local total = 0
+		for _, v in ipairs(team.data) do
+			total = total + (v or 0)
+		end
+		team.cumulative = total
+	end
+	if sortKey and sortAscending then
+		table.sort(graphTeams, function(a, b) return a.cumulative < b.cumulative end)
+	else
+		table.sort(graphTeams, function(a, b) return a.cumulative > b.cumulative end)
+	end
 
 	local wc = math_min(windowCount, #graphTeams[1].data)
 	if wc < 2 then
@@ -750,8 +927,8 @@ local function RebuildGraphDisplayList()
 			end
 
 			for _, team in ipairs(graphTeams) do
-				-- Filled area with low alpha
-				glColor(team.r, team.g, team.b, 0.15)
+				-- Filled area
+				glColor(team.r, team.g, team.b, 0.5)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
 						local x = (w - 1) / wcDivisor
@@ -762,7 +939,7 @@ local function RebuildGraphDisplayList()
 				end)
 
 				-- Line with full alpha
-				glColor(team.r, team.g, team.b, 0.9)
+				glColor(team.r, team.g, team.b, 1.0)
 				glLineWidth(2)
 				glBeginEnd(GL_LINE_STRIP, function()
 					for w = 1, wc do
@@ -792,7 +969,7 @@ local function RebuildGraphDisplayList()
 			end
 
 			for _, team in ipairs(graphTeams) do
-				glColor(team.r, team.g, team.b, 0.6)
+				glColor(team.r, team.g, team.b, 0.8)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
 						local x = (w - 1) / wcDivisor
@@ -829,7 +1006,7 @@ local function RebuildGraphDisplayList()
 			end
 
 			for _, team in ipairs(graphTeams) do
-				glColor(team.r, team.g, team.b, 0.6)
+				glColor(team.r, team.g, team.b, 0.8)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
 						local x = (w - 1) / wcDivisor
@@ -880,6 +1057,12 @@ function widget:Initialize()
 		graph_deflated_label = graphDeflated and 'Deflated' or 'Raw',
 		smoothing_mode = smoothingMode,
 		smoothing_label = smoothingMode == 'laplace' and 'Laplace' or 'Relativ',
+		graph_visible = graphVisible,
+		group_by_ally = groupByAlly,
+		group_label = groupByAlly and 'Grp' or 'Flat',
+		ally_team_label = 'Team ?',
+		show_ally_selector = false, -- updated to true once multiple ally teams detected
+		window_agg_label = windowAggregation == 1 and '1x' or (windowAggregation .. 'x'),
 		ally_teams = {},
 		stat_columns = BuildStatColumns(),
 	}
@@ -899,11 +1082,26 @@ function widget:Initialize()
 
 	document:ReloadStyleSheet()
 
+	-- Apply persisted font scale
+	if fontScale ~= 1.0 then
+		local panel = document:GetElementById('wts-panel')
+		if panel then
+			panel.style['font-size'] = math_floor(12 * fontScale) .. 'dp'
+		end
+	end
+
 	if not spIsGUIHidden() then
 		document:Show()
 	end
 
 	UpdateDocumentPosition()
+
+	-- Try to load data immediately instead of waiting for first STATS_UPDATE_FREQUENCY
+	if HasNewSnapshots() then
+		RecomputeStats()
+		UpdateRMLuiData()
+	end
+
 	return true
 end
 
@@ -954,7 +1152,7 @@ function widget:GameFrame()
 end
 
 function widget:DrawScreen()
-	if spIsGUIHidden() or not document then
+	if spIsGUIHidden() or not document or not graphVisible then
 		return
 	end
 
@@ -985,11 +1183,11 @@ function widget:DrawScreen()
 	local screenH = gh
 
 	-- Draw dark background
-	glColor(0.04, 0.04, 0.04, 0.85)
+	glColor(0.08, 0.08, 0.1, 0.65)
 	glRect(screenX, screenY, screenX + screenW, screenY + screenH)
 
 	-- Draw subtle grid lines
-	glColor(0.15, 0.18, 0.22, 0.4)
+	glColor(0.25, 0.3, 0.38, 0.6)
 	glLineWidth(1)
 	for i = 1, 3 do
 		local y = screenY + screenH * (i / 4)
@@ -1078,6 +1276,25 @@ function widget:ToggleTable(event)
 	SaveUIState()
 end
 
+function widget:ToggleGraph(event)
+	graphVisible = not graphVisible
+	dataDirty = true
+	SaveUIState()
+end
+
+function widget:CycleWindowAggregation(event)
+	-- Cycle through: 1, 2, 4, 8
+	if windowAggregation >= 8 then
+		windowAggregation = 1
+	else
+		windowAggregation = windowAggregation * 2
+	end
+	RecomputeStats()
+	dataDirty = true
+	graphDirty = true
+	SaveUIState()
+end
+
 function widget:SetViewMode(event)
 	local element = event.current_element
 	if not element then
@@ -1098,7 +1315,22 @@ function widget:SetActiveStat(event)
 	end
 	local key = element:GetAttribute('data-key')
 	if key then
-		activeStat = key
+		if key == activeStat then
+			-- Cycle sort: descending -> ascending -> default (contribution index)
+			if sortKey == key and not sortAscending then
+				sortAscending = true
+			elseif sortKey == key and sortAscending then
+				sortKey = nil
+				sortAscending = false
+			else
+				sortKey = key
+				sortAscending = false
+			end
+		else
+			activeStat = key
+			sortKey = key
+			sortAscending = false
+		end
 		dataDirty = true
 		graphDirty = true
 		SaveUIState()
@@ -1136,4 +1368,60 @@ function widget:CycleSmoothingMode(event)
 	dataDirty = true
 	graphDirty = true
 	SaveUIState()
+end
+
+function widget:ToggleGrouping(event)
+	groupByAlly = not groupByAlly
+	dataDirty = true
+	graphDirty = true
+	SaveUIState()
+end
+
+function widget:CycleAllyTeam(event)
+	if #cachedAllyTeams < 2 then return end
+	local currentIdx = 1
+	for i, allyInfo in ipairs(cachedAllyTeams) do
+		if allyInfo.allyID == selectedAllyTeam then
+			currentIdx = i
+			break
+		end
+	end
+	selectedAllyTeam = cachedAllyTeams[(currentIdx % #cachedAllyTeams) + 1].allyID
+	dataDirty = true
+	graphDirty = true
+	SaveUIState()
+end
+
+function widget:IsAbove(x, y)
+	if not document then return false end
+	local panel = document:GetElementById('wts-panel')
+	if not panel then return false end
+	local vsx, vsy = spGetViewGeometry()
+	local px = panel.absolute_left
+	local py = panel.absolute_top
+	local pw = panel.offset_width
+	local ph = panel.offset_height
+	-- RML is top-down, Spring mouse coords are bottom-up
+	local mouseY = vsy - y
+	return x >= px and x <= px + pw and mouseY >= py and mouseY <= py + ph
+end
+
+function widget:MouseWheel(up, value)
+	local ctrl = select(2, spGetModKeyState())
+	if not ctrl then return false end
+	if up then
+		fontScale = math_min(fontScale + 0.1, 2.0)
+	else
+		fontScale = math_max(fontScale - 0.1, 0.5)
+	end
+	-- Apply font scale to the panel root element
+	if document then
+		local panel = document:GetElementById('wts-panel')
+		if panel then
+			panel.style['font-size'] = math_floor(12 * fontScale) .. 'dp'
+		end
+	end
+	dataDirty = true
+	SaveUIState()
+	return true
 end

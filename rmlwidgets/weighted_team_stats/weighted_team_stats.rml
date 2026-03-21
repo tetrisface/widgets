@@ -17,7 +17,11 @@
 				<div class="ctrl-btn" onclick="widget:CycleGraphMode(event)">{{graph_mode_label}}</div>
 				<div class="ctrl-btn" data-class-active="graph_deflated" onclick="widget:ToggleDeflation(event)">{{graph_deflated_label}}</div>
 				<div class="ctrl-btn" onclick="widget:CycleSmoothingMode(event)">{{smoothing_label}}</div>
-				<div class="ctrl-btn" onclick="widget:ToggleTable(event)">Tbl</div>
+				<div class="ctrl-btn" data-class-active="!group_by_ally" onclick="widget:ToggleGrouping(event)">{{group_label}}</div>
+				<div class="ctrl-btn" data-if="show_ally_selector" onclick="widget:CycleAllyTeam(event)">{{ally_team_label}}</div>
+				<div class="ctrl-btn" onclick="widget:CycleWindowAggregation(event)">{{window_agg_label}}</div>
+				<div class="ctrl-btn" data-class-active="graph_visible" onclick="widget:ToggleGraph(event)">Gfx</div>
+				<div class="ctrl-btn" data-class-active="table_visible" onclick="widget:ToggleTable(event)">Tbl</div>
 			</div>
 		</div>
 
@@ -29,7 +33,7 @@
 		</div>
 
 		<!-- Graph Area (GL draws into this via DrawScreen) -->
-		<div id="graph-area" class="graph-area" data-if="has_data">
+		<div id="graph-area" class="graph-area" data-if="graph_visible &amp;&amp; has_data">
 		</div>
 
 		<!-- No Data Message -->
@@ -53,7 +57,6 @@
 					{{col.label}}
 				</div>
 				<div class="th-eff">Eff</div>
-				<div class="th-idx">Idx</div>
 			</div>
 
 			<!-- Ally Team Sections -->
@@ -65,13 +68,7 @@
 						{{dv.value}}
 					</div>
 					<span class="eff-cell">{{player.efficiency}}</span>
-					<div class="idx-cell">
-						<div class="idx-bar">
-							<div class="idx-fill" data-attr-style="'width: ' + player.contribution_bar_width + '%'" data-style-background-color="player.color"></div>
-						</div>
-						<span class="idx-value">{{player.contribution_index}}</span>
 					</div>
-				</div>
 			</div>
 		</div>
 
