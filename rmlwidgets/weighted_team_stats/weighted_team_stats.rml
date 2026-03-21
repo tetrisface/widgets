@@ -1,0 +1,84 @@
+<rml>
+<head>
+	<title>Weighted Team Stats</title>
+	<link rel="stylesheet" href="weighted_team_stats.rcss" type="text/rcss" />
+</head>
+<body id="weighted-team-stats-widget">
+	<div id="wts-panel" class="panel" data-model="weighted_team_stats" onmouseup="widget:OnDragEnd(event)">
+		<!-- Title Bar -->
+		<div class="title-bar">
+			<handle move_target="wts-panel">
+				<div class="title-content">
+					<span class="title-text">WTS</span>
+				</div>
+			</handle>
+			<!-- Graph Mode + Deflation toggles -->
+			<div class="title-controls">
+				<div class="ctrl-btn" onclick="widget:CycleGraphMode(event)">{{graph_mode_label}}</div>
+				<div class="ctrl-btn" data-class-active="graph_deflated" onclick="widget:ToggleDeflation(event)">{{graph_deflated_label}}</div>
+				<div class="ctrl-btn" onclick="widget:CycleSmoothingMode(event)">{{smoothing_label}}</div>
+				<div class="ctrl-btn" onclick="widget:ToggleTable(event)">Tbl</div>
+			</div>
+		</div>
+
+		<!-- Stat Selector Buttons -->
+		<div class="stat-selector" data-if="has_data">
+			<div data-for="col : stat_columns" class="stat-btn" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
+				{{col.label}}
+			</div>
+		</div>
+
+		<!-- Graph Area (GL draws into this via DrawScreen) -->
+		<div id="graph-area" class="graph-area" data-if="has_data">
+		</div>
+
+		<!-- No Data Message -->
+		<div class="empty-state" data-if="!has_data">
+			<span class="empty-text">Collecting data...</span>
+		</div>
+
+		<!-- Collapsible Stats Table -->
+		<div class="table-area" data-if="table_visible &amp;&amp; has_data">
+			<!-- View Mode Toggle -->
+			<div class="view-toggle">
+				<div class="view-btn" data-class-active="view_mode == 'weighted'" data-mode="weighted" onclick="widget:SetViewMode(event)">Weighted</div>
+				<div class="view-btn" data-class-active="view_mode == 'share'" data-mode="share" onclick="widget:SetViewMode(event)">Share%</div>
+				<div class="view-btn" data-class-active="view_mode == 'raw'" data-mode="raw" onclick="widget:SetViewMode(event)">Raw</div>
+			</div>
+
+			<!-- Table Header -->
+			<div class="table-header">
+				<div class="th-player">Player</div>
+				<div data-for="col : stat_columns" class="th-stat" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
+					{{col.label}}
+				</div>
+				<div class="th-eff">Eff</div>
+				<div class="th-idx">Idx</div>
+			</div>
+
+			<!-- Ally Team Sections -->
+			<div data-for="ally : ally_teams" class="ally-section">
+				<div data-for="player : ally.players" class="player-row">
+					<div class="player-accent" data-style-background-color="player.color"></div>
+					<span class="player-name">{{player.name}}</span>
+					<div data-for="dv : player.display_values" class="stat-cell">
+						{{dv.value}}
+					</div>
+					<span class="eff-cell">{{player.efficiency}}</span>
+					<div class="idx-cell">
+						<div class="idx-bar">
+							<div class="idx-fill" data-attr-style="'width: ' + player.contribution_bar_width + '%'" data-style-background-color="player.color"></div>
+						</div>
+						<span class="idx-value">{{player.contribution_index}}</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Corner Resize Handle -->
+		<handle size_target="wts-panel" class="resize-handle">
+			<div class="resize-grip"></div>
+		</handle>
+	</div>
+</body>
+</rml>

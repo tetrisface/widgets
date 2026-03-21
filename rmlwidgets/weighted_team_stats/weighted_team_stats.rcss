@@ -1,0 +1,309 @@
+/* Weighted Team Stats */
+
+body, div {
+	display: block;
+}
+
+#weighted-team-stats-widget {
+	width: auto;
+	min-height: 45dp;
+	display: flex;
+}
+
+.panel {
+	position: absolute;
+	width: 280dp;
+	min-width: 200dp;
+	min-height: 45dp;
+	background-color: #0D0D0DEB;
+	font-family: Exo 2;
+	overflow: auto;
+}
+
+/* Title Bar */
+.title-bar {
+	height: 25dp;
+	background-color: #1A1F26CC;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0 8dp;
+}
+
+.title-bar handle {
+	display: flex;
+	align-items: center;
+	cursor: move;
+}
+
+.title-content {
+	display: flex;
+	align-items: center;
+}
+
+.title-text {
+	color: #CCE6FF;
+	font-size: 12dp;
+	font-weight: bold;
+}
+
+.title-controls {
+	display: flex;
+	gap: 4dp;
+	align-items: center;
+}
+
+.ctrl-btn {
+	color: #8099B3CC;
+	font-size: 9dp;
+	cursor: pointer;
+	padding: 2dp 4dp;
+	background-color: #0F1419;
+}
+
+.ctrl-btn:hover {
+	color: #CCE6FF;
+	background-color: #262E38;
+}
+
+.ctrl-btn.active {
+	color: #66CCFF;
+	background-color: #1A2A3A;
+}
+
+/* Stat Selector */
+.stat-selector {
+	display: flex;
+	gap: 2dp;
+	padding: 3dp 4dp;
+	background-color: #0F1419;
+}
+
+.stat-btn {
+	color: #8099B3CC;
+	font-size: 9dp;
+	cursor: pointer;
+	padding: 2dp 4dp;
+	flex: 1;
+	text-align: center;
+}
+
+.stat-btn:hover {
+	color: #CCE6FF;
+	background-color: #1A1F26;
+}
+
+.stat-btn.active {
+	color: #66CCFF;
+	background-color: #1A2A3A;
+	font-weight: bold;
+}
+
+/* Graph Area */
+.graph-area {
+	width: auto;
+	height: 140dp;
+	min-height: 80dp;
+	margin: 4dp;
+}
+
+/* Empty State */
+.empty-state {
+	padding: 12dp;
+	text-align: center;
+}
+
+.empty-text {
+	color: #666666;
+	font-size: 11dp;
+}
+
+/* Table Area */
+.table-area {
+	padding: 0 4dp 4dp 4dp;
+}
+
+/* View Mode Toggle */
+.view-toggle {
+	display: flex;
+	gap: 2dp;
+	padding: 2dp 0;
+	margin-bottom: 2dp;
+}
+
+.view-btn {
+	color: #8099B3CC;
+	font-size: 9dp;
+	cursor: pointer;
+	padding: 1dp 4dp;
+	flex: 1;
+	text-align: center;
+	background-color: #0F1419;
+}
+
+.view-btn:hover {
+	color: #CCE6FF;
+}
+
+.view-btn.active {
+	color: #66CCFF;
+	background-color: #1A2A3A;
+}
+
+/* Table Header */
+.table-header {
+	display: flex;
+	align-items: center;
+	height: 14dp;
+	padding: 1dp 0;
+	border-bottom-width: 1dp;
+	border-bottom-color: #262E38;
+}
+
+.th-player {
+	color: #8099B3;
+	font-size: 9dp;
+	width: 60dp;
+	flex-shrink: 0;
+	padding-left: 8dp;
+}
+
+.th-stat {
+	color: #8099B3;
+	font-size: 9dp;
+	flex: 1;
+	text-align: right;
+	cursor: pointer;
+	padding: 0 2dp;
+}
+
+.th-stat:hover {
+	color: #CCE6FF;
+}
+
+.th-stat.active {
+	color: #66CCFF;
+}
+
+.th-eff {
+	color: #8099B3;
+	font-size: 9dp;
+	width: 28dp;
+	flex-shrink: 0;
+	text-align: right;
+	padding-right: 2dp;
+}
+
+.th-idx {
+	color: #8099B3;
+	font-size: 9dp;
+	width: 50dp;
+	flex-shrink: 0;
+	text-align: right;
+	padding-right: 2dp;
+}
+
+/* Ally Team Section */
+.ally-section {
+	margin-bottom: 2dp;
+}
+
+/* Player Row */
+.player-row {
+	display: flex;
+	align-items: center;
+	height: 16dp;
+	padding: 1dp 0;
+}
+
+.player-row:hover {
+	background-color: #262E38E6;
+}
+
+.player-accent {
+	width: 3dp;
+	height: 100%;
+	margin-right: 5dp;
+	flex-shrink: 0;
+}
+
+.player-name {
+	color: #CCCCCC;
+	font-size: 10dp;
+	width: 52dp;
+	flex-shrink: 0;
+	overflow: hidden;
+}
+
+.stat-cell {
+	color: #AABBCC;
+	font-size: 9dp;
+	flex: 1;
+	text-align: right;
+	padding: 0 2dp;
+}
+
+/* Efficiency */
+.eff-cell {
+	color: #99AABB;
+	font-size: 9dp;
+	width: 28dp;
+	flex-shrink: 0;
+	text-align: right;
+	padding: 0 2dp;
+}
+
+/* Contribution Index */
+.idx-cell {
+	display: flex;
+	align-items: center;
+	width: 50dp;
+	flex-shrink: 0;
+	gap: 3dp;
+	padding-right: 2dp;
+}
+
+.idx-bar {
+	flex: 1;
+	height: 6dp;
+	background-color: #0F1419;
+	overflow: hidden;
+}
+
+.idx-fill {
+	height: 100%;
+}
+
+.idx-value {
+	color: #8099B3;
+	font-size: 9dp;
+	width: 18dp;
+	text-align: right;
+}
+
+/* Resize Handle */
+.resize-handle {
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	width: 14dp;
+	height: 14dp;
+	cursor: resize;
+}
+
+.resize-grip {
+	position: absolute;
+	bottom: 2dp;
+	right: 2dp;
+	width: 8dp;
+	height: 8dp;
+	border-right-width: 2dp;
+	border-bottom-width: 2dp;
+	border-right-color: #8099B366;
+	border-bottom-color: #8099B366;
+}
+
+.resize-handle:hover .resize-grip {
+	border-right-color: #CCE6FF;
+	border-bottom-color: #CCE6FF;
+}
