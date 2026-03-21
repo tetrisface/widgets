@@ -102,6 +102,32 @@ body, div {
 	font-weight: bold;
 }
 
+/* Sort Arrows */
+.sort-arrow {
+	display: inline-block;
+	width: 0;
+	height: 0;
+	margin-left: 2dp;
+}
+
+.sort-desc {
+	border-left-width: 3dp;
+	border-right-width: 3dp;
+	border-top-width: 4dp;
+	border-left-color: transparent;
+	border-right-color: transparent;
+	border-top-color: #66CCFF;
+}
+
+.sort-asc {
+	border-left-width: 3dp;
+	border-right-width: 3dp;
+	border-bottom-width: 4dp;
+	border-left-color: transparent;
+	border-right-color: transparent;
+	border-bottom-color: #66CCFF;
+}
+
 /* Graph Area */
 .graph-area {
 	width: auto;
@@ -169,8 +195,8 @@ body, div {
 .th-player {
 	color: #8099B3;
 	font-size: 9dp;
-	width: 60dp;
-	flex-shrink: 0;
+	min-width: 60dp;
+	flex: 1;
 	padding-left: 8dp;
 }
 
@@ -180,7 +206,7 @@ body, div {
 	flex: 1;
 	text-align: right;
 	cursor: pointer;
-	padding: 0 2dp;
+	padding: 0 4dp;
 }
 
 .th-stat:hover {
@@ -194,10 +220,10 @@ body, div {
 .th-eff {
 	color: #8099B3;
 	font-size: 9dp;
-	width: 28dp;
+	width: 42dp;
 	flex-shrink: 0;
 	text-align: right;
-	padding-right: 2dp;
+	padding: 0 6dp 0 8dp;
 }
 
 .th-idx {
@@ -236,8 +262,8 @@ body, div {
 .player-name {
 	color: #CCCCCC;
 	font-size: 10dp;
-	width: 52dp;
-	flex-shrink: 0;
+	min-width: 52dp;
+	flex: 1;
 	overflow: hidden;
 }
 
@@ -246,17 +272,17 @@ body, div {
 	font-size: 9dp;
 	flex: 1;
 	text-align: right;
-	padding: 0 2dp;
+	padding: 0 4dp;
 }
 
 /* Efficiency */
 .eff-cell {
 	color: #99AABB;
 	font-size: 9dp;
-	width: 28dp;
+	width: 42dp;
 	flex-shrink: 0;
 	text-align: right;
-	padding: 0 2dp;
+	padding: 0 6dp 0 8dp;
 }
 
 /* Contribution Index */

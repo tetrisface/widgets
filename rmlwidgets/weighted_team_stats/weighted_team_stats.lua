@@ -6,7 +6,7 @@ local widget = widget ---@type Widget
 local WIDGET_NAME = 'Weighted Team Stats'
 local MODEL_NAME = 'weighted_team_stats'
 local RML_PATH = 'luaui/rmlwidgets/weighted_team_stats/weighted_team_stats.rml'
-local STATS_UPDATE_FREQUENCY = 300 -- ~10 seconds
+local STATS_UPDATE_FREQUENCY = 60 -- ~2 seconds
 local UI_UPDATE_FREQUENCY = 30 -- ~1 second
 
 function widget:GetInfo()
@@ -41,6 +41,7 @@ local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
 local spGetViewGeometry = Spring.GetViewGeometry
 local spGetModKeyState = Spring.GetModKeyState
+local spGetMouseState = Spring.GetMouseState
 
 local glColor = gl.Color
 local glRect = gl.Rect
@@ -678,26 +679,25 @@ end
 
 --- Build the stat columns array for the data model.
 local STAT_COLUMN_DEFS = {
+	{ key = 'unitsKilled', label = 'Kills' },
 	{ key = 'damageDealt', label = 'Dmg' },
 	{ key = 'metalProduced', label = 'Metal' },
 	{ key = 'energyProduced', label = 'Energy' },
 	{ key = 'metalExcess', label = 'M Exc' },
 	{ key = 'energyExcess', label = 'E Exc' },
 	{ key = 'metalSent', label = 'M Sent' },
-	{ key = 'unitsKilled', label = 'Kills' },
 }
 
 local function BuildStatColumns()
 	local columns = {}
 	for _, def in ipairs(STAT_COLUMN_DEFS) do
-		local sortIndicator = ''
-		if sortKey == def.key then
-			sortIndicator = sortAscending and ' ^' or ' v'
-		end
+		local isSorted = sortKey == def.key
 		columns[#columns + 1] = {
 			key = def.key,
-			label = def.label .. sortIndicator,
+			label = def.label,
 			active = (activeStat == def.key),
+			sort_asc = isSorted and sortAscending,
+			sort_desc = isSorted and not sortAscending,
 		}
 	end
 	return columns
@@ -736,7 +736,16 @@ local function UpdateRMLuiData()
 
 				local idx = cachedShares[teamID] and StatsEngine.ComputeContributionIndex(cachedShares[teamID]) or 0
 
-				-- Efficiency: damage share / resource share ratio
+				-- Damage Efficiency: (damage dealt / damage received) * 100
+				local dmgDealt = cachedRawTotals[teamID] and cachedRawTotals[teamID].damageDealt or 0
+				local dmgRecv = cachedRawTotals[teamID] and cachedRawTotals[teamID].damageReceived or 0
+				local dmgEffValue = dmgRecv > 0 and (dmgDealt / dmgRecv * 100) or 0
+				if dmgEffValue ~= dmgEffValue or dmgEffValue == math.huge or dmgEffValue == -math.huge then
+					dmgEffValue = 0
+				end
+				local dmgEffDisplay = string_format('%.0f%%', dmgEffValue)
+
+				-- DmgRes Efficiency: damage share / resource share ratio
 				local eff = cachedEfficiency[teamID]
 				local effValue = eff and eff.damagePerResource or 0
 				if effValue ~= effValue or effValue == math.huge or effValue == -math.huge then
@@ -764,6 +773,7 @@ local function UpdateRMLuiData()
 					display_values = displayValues,
 					contribution_index = idx,
 					contribution_bar_width = idx,
+					dmg_efficiency = dmgEffDisplay,
 					efficiency = effDisplay,
 					sort_value = sortValue,
 				}
@@ -785,6 +795,26 @@ local function UpdateRMLuiData()
 			id = allyInfo.allyID,
 			players = players,
 		}
+	end
+
+	-- Sort ally team groups by aggregate value
+	if groupByAlly and #allyTeamsData > 1 then
+		for _, at in ipairs(allyTeamsData) do
+			local groupTotal = 0
+			local groupIdx = 0
+			for _, p in ipairs(at.players) do
+				if sortKey then
+					groupTotal = groupTotal + (p.sort_value or 0)
+				end
+				groupIdx = groupIdx + p.contribution_index
+			end
+			at.group_sort = sortKey and groupTotal or groupIdx
+		end
+		if sortKey and sortAscending then
+			table.sort(allyTeamsData, function(a, b) return a.group_sort < b.group_sort end)
+		else
+			table.sort(allyTeamsData, function(a, b) return a.group_sort > b.group_sort end)
+		end
 	end
 
 	-- Flat mode: merge all ally teams into one list
@@ -834,6 +864,7 @@ local function UpdateRMLuiData()
 	end
 
 	dm_handle.has_data = hasData
+	dm_handle.empty_text = frameCounter > 0 and 'Collecting data...' or 'Starting...'
 	dm_handle.table_visible = tableVisible
 	dm_handle.view_mode = viewMode
 	dm_handle.active_stat = activeStat
@@ -1048,6 +1079,7 @@ function widget:Initialize()
 
 	local initialModel = {
 		has_data = false,
+		empty_text = 'Starting...',
 		table_visible = tableVisible,
 		view_mode = viewMode,
 		active_stat = activeStat,
@@ -1096,11 +1128,9 @@ function widget:Initialize()
 
 	UpdateDocumentPosition()
 
-	-- Try to load data immediately instead of waiting for first STATS_UPDATE_FREQUENCY
-	if HasNewSnapshots() then
-		RecomputeStats()
-		UpdateRMLuiData()
-	end
+	-- Force initial data load instead of waiting for first STATS_UPDATE_FREQUENCY
+	RecomputeStats()
+	UpdateRMLuiData()
 
 	return true
 end
@@ -1231,6 +1261,145 @@ function widget:DrawScreen()
 		local endMin = math_floor(lastFrame / 30 / 60)
 		glText(startMin .. 'm', screenX + 2, screenY - 12, 10, 'o')
 		glText(endMin .. 'm', screenX + screenW - 2, screenY - 12, 10, 'or')
+	end
+
+	-- Mouse crosshair tooltip
+	if windowCount >= 2 then
+		local mx, my = spGetMouseState()
+		if mx >= screenX and mx <= screenX + screenW and my >= screenY and my <= screenY + screenH then
+			-- Determine which window the mouse is over
+			local relX = (mx - screenX) / screenW
+			local wIdx = math_floor(relX * (windowCount - 1) + 0.5) + 1
+			wIdx = math_max(1, math_min(wIdx, windowCount))
+
+			-- Draw vertical crosshair line
+			glColor(0.7, 0.8, 0.9, 0.5)
+			glLineWidth(1)
+			glBeginEnd(GL.LINES, function()
+				glVertex(mx, screenY)
+				glVertex(mx, screenY + screenH)
+			end)
+
+			-- Draw horizontal crosshair line
+			glBeginEnd(GL.LINES, function()
+				glVertex(screenX, my)
+				glVertex(screenX + screenW, my)
+			end)
+
+			-- Y-axis value label
+			local relY = (my - screenY) / screenH
+			local yLabel
+			if graphMode == 'normalized' then
+				yLabel = string_format('%.0f%%', relY * 100)
+			else
+				-- For absolute/overlay, need the max value to convert back
+				-- Compute max from visible data at this window
+				local maxVal = 0
+				if graphMode == 'overlay' then
+					for _, allyInfo in ipairs(cachedAllyTeams) do
+						if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
+							for _, teamID in ipairs(allyInfo.teamIDs) do
+								local ds = graphDeflated and (cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat])
+									or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
+								if ds then
+									for w = 1, windowCount do
+										maxVal = math_max(maxVal, ds[w] or 0)
+									end
+								end
+							end
+						end
+					end
+				else -- absolute stacked
+					for w = 1, windowCount do
+						local total = 0
+						for _, allyInfo in ipairs(cachedAllyTeams) do
+							if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
+								for _, teamID in ipairs(allyInfo.teamIDs) do
+									local ds = graphDeflated and (cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat])
+										or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
+									if ds then
+										total = total + math_max(ds[w] or 0, 0)
+									end
+								end
+							end
+						end
+						maxVal = math_max(maxVal, total)
+					end
+				end
+				if maxVal > 0 then
+					yLabel = FormatSI(relY * maxVal)
+				else
+					yLabel = '0'
+				end
+			end
+			glColor(0.8, 0.9, 1.0, 0.8)
+			glText(yLabel, screenX + 2, my + 2, 9, 'o')
+
+			-- Time label at crosshair
+			local frame = windowFrames[wIdx] or 0
+			local mins = math_floor(frame / 30 / 60)
+			local secs = math_floor((frame / 30) % 60)
+			local timeStr = string_format('%d:%02d', mins, secs)
+
+			-- Gather per-player values at this window
+			local tooltipLines = {} ---@type table[]
+			local tooltipTime = timeStr
+			for _, allyInfo in ipairs(cachedAllyTeams) do
+				if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
+					for _, teamID in ipairs(allyInfo.teamIDs) do
+						local info = cachedTeamInfo[teamID]
+						if info then
+							local dataSource
+							if graphDeflated then
+								dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
+							else
+								dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+							end
+							if dataSource and dataSource[wIdx] then
+								local val = dataSource[wIdx]
+								tooltipLines[#tooltipLines + 1] = {
+									name = info.name,
+									value = FormatSI(val),
+									r = info.r, g = info.g, b = info.b,
+								}
+							end
+						end
+					end
+				end
+			end
+
+			-- Draw tooltip background and text
+			if #tooltipLines > 0 then
+				local lineH = 12
+				local tooltipH = (#tooltipLines + 1) * lineH + 6
+				local tooltipW = 100
+				local tx = mx + 10
+				local ty = screenY + screenH - 4
+
+				-- Keep tooltip within graph bounds
+				if tx + tooltipW > screenX + screenW then
+					tx = mx - tooltipW - 10
+				end
+
+				-- Background
+				glColor(0.05, 0.05, 0.07, 0.85)
+				glRect(tx, ty - tooltipH, tx + tooltipW, ty)
+
+				-- Time header
+				glColor(0.8, 0.9, 1.0, 0.9)
+				glText(tooltipTime, tx + 4, ty - lineH + 2, 10, 'o')
+
+				-- Player values
+				for i = 1, #tooltipLines do
+					local line = tooltipLines[i]
+					local ly = ty - (i + 1) * lineH + 2
+					glColor(line.r, line.g, line.b, 0.9)
+					glText(line.name, tx + 4, ly, 9, 'o')
+					glColor(0.85, 0.9, 0.95, 0.9)
+					glText(line.value, tx + tooltipW - 4, ly, 9, 'or')
+				end
+			end
+		end
 	end
 
 	glColor(1, 1, 1, 1)

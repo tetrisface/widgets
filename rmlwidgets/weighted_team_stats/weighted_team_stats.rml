@@ -29,6 +29,8 @@
 		<div class="stat-selector" data-if="has_data">
 			<div data-for="col : stat_columns" class="stat-btn" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
 				{{col.label}}
+				<div class="sort-arrow sort-asc" data-if="col.sort_asc"></div>
+				<div class="sort-arrow sort-desc" data-if="col.sort_desc"></div>
 			</div>
 		</div>
 
@@ -38,7 +40,7 @@
 
 		<!-- No Data Message -->
 		<div class="empty-state" data-if="!has_data">
-			<span class="empty-text">Collecting data...</span>
+			<span class="empty-text">{{empty_text}}</span>
 		</div>
 
 		<!-- Collapsible Stats Table -->
@@ -55,8 +57,11 @@
 				<div class="th-player">Player</div>
 				<div data-for="col : stat_columns" class="th-stat" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
 					{{col.label}}
+					<div class="sort-arrow sort-asc" data-if="col.sort_asc"></div>
+					<div class="sort-arrow sort-desc" data-if="col.sort_desc"></div>
 				</div>
-				<div class="th-eff">Eff</div>
+				<div class="th-eff">DmgEff</div>
+				<div class="th-eff">DmgResEff</div>
 			</div>
 
 			<!-- Ally Team Sections -->
@@ -67,6 +72,7 @@
 					<div data-for="dv : player.display_values" class="stat-cell">
 						{{dv.value}}
 					</div>
+					<span class="eff-cell">{{player.dmg_efficiency}}</span>
 					<span class="eff-cell">{{player.efficiency}}</span>
 					</div>
 			</div>
