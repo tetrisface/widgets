@@ -12,7 +12,7 @@ body, div {
 
 .panel {
 	position: absolute;
-	width: 280dp;
+	width: 560dp;
 	min-width: 200dp;
 	min-height: 45dp;
 	font-family: Exo 2;

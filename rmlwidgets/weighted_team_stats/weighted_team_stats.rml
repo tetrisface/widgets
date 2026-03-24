@@ -16,7 +16,6 @@
 			<div class="title-controls">
 				<div class="ctrl-btn" onclick="widget:CycleGraphMode(event)">{{graph_mode_label}}</div>
 				<div class="ctrl-btn" data-class-active="graph_deflated" onclick="widget:ToggleDeflation(event)">{{graph_deflated_label}}</div>
-				<div class="ctrl-btn" onclick="widget:CycleSmoothingMode(event)">{{smoothing_label}}</div>
 				<div class="ctrl-btn" data-class-active="!group_by_ally" onclick="widget:ToggleGrouping(event)">{{group_label}}</div>
 				<div class="ctrl-btn" data-if="show_ally_selector" onclick="widget:CycleAllyTeam(event)">{{ally_team_label}}</div>
 				<div class="ctrl-btn" onclick="widget:CycleWindowAggregation(event)">{{window_agg_label}}</div>
@@ -47,9 +46,9 @@
 		<div class="table-area" data-if="table_visible &amp;&amp; has_data">
 			<!-- View Mode Toggle -->
 			<div class="view-toggle">
-				<div class="view-btn" data-class-active="view_mode == 'weighted'" data-mode="weighted" onclick="widget:SetViewMode(event)">Weighted</div>
-				<div class="view-btn" data-class-active="view_mode == 'share'" data-mode="share" onclick="widget:SetViewMode(event)">Share%</div>
 				<div class="view-btn" data-class-active="view_mode == 'raw'" data-mode="raw" onclick="widget:SetViewMode(event)">Raw</div>
+				<div class="view-btn" data-class-active="view_mode == 'share'" data-mode="share" onclick="widget:SetViewMode(event)">Share%</div>
+				<div class="view-btn" data-class-active="view_mode == 'weighted'" data-mode="weighted" onclick="widget:SetViewMode(event)">Weighted</div>
 			</div>
 
 			<!-- Table Header -->

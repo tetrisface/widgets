@@ -503,17 +503,17 @@ local widgetPosX = 100
 local widgetPosY = 100
 local tableVisible = true
 local graphVisible = true
-local viewMode = 'weighted' -- 'weighted' | 'share' | 'raw'
+local viewMode = 'raw' -- 'raw' | 'share' | 'weighted'
 local activeStat = 'damageDealt'
-local graphMode = 'normalized' -- 'absolute' | 'normalized' | 'overlay'
+local graphMode = 'absolute' -- 'absolute' | 'normalized' | 'overlay'
 local graphDeflated = false
-local smoothingMode = 'laplace' -- 'laplace' | 'relativistic'
+local smoothingMode = 'laplace' -- always laplace
 local sortKey = nil -- nil = sort by contribution index, or a stat key string
 local sortAscending = false
 local groupByAlly = true
 local selectedAllyTeam = nil -- nil = first ally team, or an allyTeamID
 local fontScale = 1.0
-local windowAggregation = 1 -- merge N engine snapshots into one window
+local windowAggregation = 8 -- merge N engine snapshots into one window
 local lastUIHiddenState = false
 
 -- Cached computation results
@@ -567,14 +567,13 @@ local function SavePosition()
 end
 
 local function LoadUIState()
-	viewMode = spGetConfigString('WeightedTeamStats_ViewMode', 'weighted')
+	viewMode = spGetConfigString('WeightedTeamStats_ViewMode', 'raw')
 	activeStat = spGetConfigString('WeightedTeamStats_ActiveStat', 'damageDealt')
-	graphMode = spGetConfigString('WeightedTeamStats_GraphMode', 'normalized')
+	graphMode = spGetConfigString('WeightedTeamStats_GraphMode', 'absolute')
 	graphDeflated = spGetConfigString('WeightedTeamStats_GraphDeflated', 'false') == 'true'
-	smoothingMode = spGetConfigString('WeightedTeamStats_SmoothingMode', 'laplace')
 	tableVisible = spGetConfigString('WeightedTeamStats_TableVisible', 'true') == 'true'
 	graphVisible = spGetConfigString('WeightedTeamStats_GraphVisible', 'true') == 'true'
-	windowAggregation = tonumber(spGetConfigString('WeightedTeamStats_WindowAggregation', '1')) or 1
+	windowAggregation = tonumber(spGetConfigString('WeightedTeamStats_WindowAggregation', '8')) or 8
 	groupByAlly = spGetConfigString('WeightedTeamStats_GroupByAlly', 'true') == 'true'
 	fontScale = tonumber(spGetConfigString('WeightedTeamStats_FontScale', '1.0')) or 1.0
 	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', '')
@@ -589,7 +588,7 @@ local function SaveUIState()
 	spSetConfigString('WeightedTeamStats_ActiveStat', activeStat)
 	spSetConfigString('WeightedTeamStats_GraphMode', graphMode)
 	spSetConfigString('WeightedTeamStats_GraphDeflated', tostring(graphDeflated))
-	spSetConfigString('WeightedTeamStats_SmoothingMode', smoothingMode)
+
 	spSetConfigString('WeightedTeamStats_TableVisible', tostring(tableVisible))
 	spSetConfigString('WeightedTeamStats_GraphVisible', tostring(graphVisible))
 	spSetConfigString('WeightedTeamStats_WindowAggregation', tostring(windowAggregation))
@@ -751,7 +750,7 @@ local function UpdateRMLuiData()
 				if effValue ~= effValue or effValue == math.huge or effValue == -math.huge then
 					effValue = 0
 				end
-				local effDisplay = string_format('%.1fx', effValue)
+				local effDisplay = string_format('%.0f%%', effValue * 100)
 
 				-- Compute sort value based on current sort key and view mode
 				local sortValue
@@ -872,8 +871,6 @@ local function UpdateRMLuiData()
 	dm_handle.graph_mode_label = graphModeLabels[graphMode] or graphMode
 	dm_handle.graph_deflated = graphDeflated
 	dm_handle.graph_deflated_label = graphDeflated and 'Deflated' or 'Raw'
-	dm_handle.smoothing_mode = smoothingMode
-	dm_handle.smoothing_label = smoothingMode == 'laplace' and 'Laplace' or 'Relativ'
 	dm_handle.graph_visible = graphVisible
 	dm_handle.group_by_ally = groupByAlly
 	dm_handle.group_label = groupByAlly and 'Grp' or 'Flat'
@@ -1087,8 +1084,6 @@ function widget:Initialize()
 		graph_mode_label = 'Norm',
 		graph_deflated = graphDeflated,
 		graph_deflated_label = graphDeflated and 'Deflated' or 'Raw',
-		smoothing_mode = smoothingMode,
-		smoothing_label = smoothingMode == 'laplace' and 'Laplace' or 'Relativ',
 		graph_visible = graphVisible,
 		group_by_ally = groupByAlly,
 		group_label = groupByAlly and 'Grp' or 'Flat',
@@ -1526,18 +1521,6 @@ function widget:ToggleDeflation(event)
 	SaveUIState()
 end
 
-function widget:CycleSmoothingMode(event)
-	if smoothingMode == 'laplace' then
-		smoothingMode = 'relativistic'
-	else
-		smoothingMode = 'laplace'
-	end
-	-- Smoothing mode changes require full recomputation
-	RecomputeStats()
-	dataDirty = true
-	graphDirty = true
-	SaveUIState()
-end
 
 function widget:ToggleGrouping(event)
 	groupByAlly = not groupByAlly
