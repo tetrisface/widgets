@@ -1422,6 +1422,10 @@ end
 -- RML Event Handlers
 --------------------------------------------------------------------------------
 
+function widget:CloseWidget(event)
+	Spring.SendCommands('luaui disablewidget ' .. WIDGET_NAME)
+end
+
 function widget:OnDragEnd(event)
 	if not document then
 		return

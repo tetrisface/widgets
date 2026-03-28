@@ -546,8 +546,31 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 			end
 		end
 	end
-	-- For composite units (e.g. legmohoconct+legmohoconin), deduplicate paired sub-units
-	-- and prefer the one without death explosion to avoid visual explosion on reclaim
+	-- PAIRED UNIT EXPLOSION FIX — Known facts from debugging:
+	--
+	-- legmohoconct: deathExplosion = "largebuildingexplosiongeneric" (REAL explosion, damages nearby units)
+	-- legmohoconin: deathExplosion = "noweapon" (harmless, not a real explosion)
+	-- Both have deathExplosion ~= "", so the condition `hasExplosion and not pairedHasExplosion` is
+	-- never true with the current check. The code falls to `else` and keeps uid (usually legmohoconct).
+	--
+	-- Reclaiming legmohoconct (the explosive one) is BETTER than reclaiming legmohoconin:
+	--   - Reclaim suppresses death explosion of the unit being reclaimed
+	--   - When legmohoconin is reclaimed instead, legmohoconct is engine-auto-destroyed → BOOM (every time)
+	--   - When legmohoconct is reclaimed, it usually works but "sometimes rarely" still explodes
+	--
+	-- The "sometimes rarely" explosion when reclaiming legmohoconct may be caused by:
+	--   - Shared health between paired units causing legmohoconin to die first
+	--   - Engine auto-destroying legmohoconct (via paired linkage) before reclaim completes
+	--   - This auto-destruction bypasses reclaim suppression → explosion fires
+	--
+	-- cmd_reclaim_selected NEVER causes explosions — it reclaims units directly without dedup.
+	-- The difference may be that when both units are actively being reclaimed by nanos,
+	-- the engine handles paired destruction differently (suppresses explosion).
+	--
+	-- TODO: Try reclaiming BOTH paired units (keep both in blockers list) with "noweapon"
+	-- properly excluded from explosion check, so dedup correctly identifies which has the
+	-- real explosion. Previous "reclaim both" attempts failed but had the noweapon bug.
+	--
 	local pairedSeen = nil
 	for i = 1, #blockers do
 		local pairedID = GetUnitRulesParam(blockers[i], "pairedUnitID")

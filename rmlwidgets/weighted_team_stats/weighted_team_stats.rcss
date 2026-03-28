@@ -73,6 +73,20 @@ body, div {
 	background-color: #1A2A3A;
 }
 
+/* Close Button */
+.close-btn {
+	color: #8099B3CC;
+	font-size: 11dp;
+	font-weight: bold;
+	cursor: pointer;
+	padding: 0 4dp;
+	margin-left: 4dp;
+}
+
+.close-btn:hover {
+	color: #FF6666;
+}
+
 /* Stat Selector */
 .stat-selector {
 	display: flex;

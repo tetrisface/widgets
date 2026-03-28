@@ -21,6 +21,7 @@
 				<div class="ctrl-btn" onclick="widget:CycleWindowAggregation(event)">{{window_agg_label}}</div>
 				<div class="ctrl-btn" data-class-active="graph_visible" onclick="widget:ToggleGraph(event)">Gfx</div>
 				<div class="ctrl-btn" data-class-active="table_visible" onclick="widget:ToggleTable(event)">Tbl</div>
+				<div class="close-btn" onclick="widget:CloseWidget(event)">X</div>
 			</div>
 		</div>
 
