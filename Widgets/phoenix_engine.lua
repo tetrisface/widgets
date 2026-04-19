@@ -389,7 +389,7 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
 	local placingName = UnitDefs[placingUnitDefID] and UnitDefs[placingUnitDefID].name or '?'
 	local existingName = UnitDefs[existingUnitDefID] and UnitDefs[existingUnitDefID].name or '?'
-	-- Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
+	Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
 	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
@@ -471,18 +471,24 @@ local function updateNanoCache()
 	nanoCache.lastUpdate, nanoCache.needsUpdate = Spring.GetGameFrame(), false
 end
 
-local function nanosNearUnit(targetUnitID)
+local function nanosNearUnit(targetUnitID, excludeSet)
 	local tx, _, tz = GetUnitPosition(targetUnitID)
 	if not tx then
 		return {}
 	end
 	local unitIDs = {}
 	for uid, turret in pairs(nanoCache.turrets) do
-		if uid ~= targetUnitID then
-			local dx, dz = tx - turret.x, tz - turret.z
-			local distance = math.sqrt(dx * dx + dz * dz)
-			if turret.buildDist > distance then
-				unitIDs[#unitIDs + 1] = uid
+		if uid ~= targetUnitID and not (excludeSet and excludeSet[uid]) then
+			-- Skip any nano that is part of a paired unit (e.g. legmohoconct).
+			-- These units get cascade-destroyed when their pair dies, so using
+			-- them as reclaimers creates cross-pair chains that cause explosions.
+			local pairedID = GetUnitRulesParam(uid, "pairedUnitID")
+			if not pairedID or pairedID == 0 then
+				local dx, dz = tx - turret.x, tz - turret.z
+				local distance = math.sqrt(dx * dx + dz * dz)
+				if turret.buildDist > distance then
+					unitIDs[#unitIDs + 1] = uid
+				end
 			end
 		end
 	end
@@ -546,30 +552,15 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 			end
 		end
 	end
-	-- PAIRED UNIT EXPLOSION FIX — Known facts from debugging:
+	-- PAIRED UNIT EXPLOSION FIX — Root cause:
 	--
-	-- legmohoconct: deathExplosion = "largebuildingexplosiongeneric" (REAL explosion, damages nearby units)
-	-- legmohoconin: deathExplosion = "noweapon" (harmless, not a real explosion)
-	-- Both have deathExplosion ~= "", so the condition `hasExplosion and not pairedHasExplosion` is
-	-- never true with the current check. The code falls to `else` and keeps uid (usually legmohoconct).
+	-- legmohoconct is a builder (con turret), so it appears in the nano cache.
+	-- When used as a reclaimer, it can be cascade-destroyed by the gadget when
+	-- its paired unit (or any other pair's unit) dies. This cascade-destroy triggers
+	-- a death explosion (largebuildingexplosiongeneric) that damages nearby units.
 	--
-	-- Reclaiming legmohoconct (the explosive one) is BETTER than reclaiming legmohoconin:
-	--   - Reclaim suppresses death explosion of the unit being reclaimed
-	--   - When legmohoconin is reclaimed instead, legmohoconct is engine-auto-destroyed → BOOM (every time)
-	--   - When legmohoconct is reclaimed, it usually works but "sometimes rarely" still explodes
-	--
-	-- The "sometimes rarely" explosion when reclaiming legmohoconct may be caused by:
-	--   - Shared health between paired units causing legmohoconin to die first
-	--   - Engine auto-destroying legmohoconct (via paired linkage) before reclaim completes
-	--   - This auto-destruction bypasses reclaim suppression → explosion fires
-	--
-	-- cmd_reclaim_selected NEVER causes explosions — it reclaims units directly without dedup.
-	-- The difference may be that when both units are actively being reclaimed by nanos,
-	-- the engine handles paired destruction differently (suppresses explosion).
-	--
-	-- TODO: Try reclaiming BOTH paired units (keep both in blockers list) with "noweapon"
-	-- properly excluded from explosion check, so dedup correctly identifies which has the
-	-- real explosion. Previous "reclaim both" attempts failed but had the noweapon bug.
+	-- Fix: nanosNearUnit() now excludes ALL paired units from the reclaimer list.
+	-- Dedup also prefers the harmless sub-unit ("noweapon") as the reclaim target.
 	--
 	local pairedSeen = nil
 	for i = 1, #blockers do
@@ -589,13 +580,20 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 				if pairedID then
 					-- Skip the paired unit if it's also in the blockers list
 					skip[pairedID] = true
-					-- Keep the sub-unit with no death explosion
+					-- Prefer the sub-unit with harmless/no death explosion as reclaim target.
+					-- Reclaiming the transportee (legmohoconin) avoids ReleaseTransportees
+					-- chain reactions that can cause the transport (legmohoconct) to explode.
+					-- "noweapon" counts as harmless even though deathExplosion ~= "".
 					local defID = GetUnitDefID(uid)
 					local pairedDefID = GetUnitDefID(pairedID)
-					local hasExplosion = defID and UnitDefs[defID].deathExplosion ~= ""
-					local pairedHasExplosion = pairedDefID and UnitDefs[pairedDefID].deathExplosion ~= ""
-					if hasExplosion and not pairedHasExplosion then
+					local uidExp = defID and UnitDefs[defID].deathExplosion or ""
+					local pairedExp = pairedDefID and UnitDefs[pairedDefID].deathExplosion or ""
+					local uidDangerous = uidExp ~= "" and uidExp ~= "noweapon"
+					local pairedDangerous = pairedExp ~= "" and pairedExp ~= "noweapon"
+					if uidDangerous and not pairedDangerous then
 						filtered[#filtered + 1] = pairedID
+					elseif pairedDangerous and not uidDangerous then
+						filtered[#filtered + 1] = uid
 					else
 						filtered[#filtered + 1] = uid
 					end
@@ -611,8 +609,20 @@ local function findBlockersAtPosition(x, z, xsize, zsize, facing, builderID, pla
 end
 
 local function giveReclaimOrdersFromNanos(targetUnitIDs)
+	-- Build exclude set: blockers + their paired units must not be used as reclaimers.
+	-- legmohoconct is a builder/nano but must not reclaim its own paired legmohoconin,
+	-- or the gadget cascade-destroy triggers a death explosion on the con turret.
+	local excludeSet = nil
+	for _, uid in ipairs(targetUnitIDs) do
+		local pairedID = GetUnitRulesParam(uid, "pairedUnitID")
+		if pairedID and pairedID ~= 0 then
+			if not excludeSet then excludeSet = {} end
+			excludeSet[uid] = true
+			excludeSet[pairedID] = true
+		end
+	end
 	for _, targetUnitID in ipairs(targetUnitIDs) do
-		local unitIDs = nanosNearUnit(targetUnitID)
+		local unitIDs = nanosNearUnit(targetUnitID, excludeSet)
 		CMD_CACHE[4] = targetUnitID
 		GiveOrderToUnitArray(unitIDs, CMD_INSERT, CMD_CACHE, ALT)
 	end
@@ -928,7 +938,20 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 	-- Fast pre-check: if the game engine says the position is clear, no need to intercept
 	local testResult = Spring.TestBuildOrder(buildingDefID, bx, by, bz, facing)
 	if testResult ~= 0 then
+		-- Log if there are paired units at the position that we're NOT intercepting
+		local hx = ((facing == 1 or facing == 3) and zsize or xsize) * 4
+		local hz = ((facing == 1 or facing == 3) and xsize or zsize) * 4
+		for _, uid in ipairs(GetUnitsInRectangle(bx - hx, bz - hz, bx + hx, bz + hz)) do
+			local pairedID = GetUnitRulesParam(uid, "pairedUnitID")
+			if pairedID and pairedID ~= 0 then
+				local dID = GetUnitDefID(uid)
+				local dName = dID and UnitDefs[dID].name or '?'
+				-- Spring.Echo('[PHX_BYPASS] testResult=' .. testResult .. ' unit=' .. uid .. '(' .. dName .. ') at (' .. bx .. ',' .. bz .. ') — build NOT intercepted!')
+			end
+		end
 		return false
+	else
+		-- Spring.Echo('[PHX] engine might have exploded dangling unit. testResult=0, position is blocked, checking blockers for build at (' .. bx .. ',' .. bz .. ')')
 	end
 
 	local assignedBuilderID = nil
@@ -970,7 +993,39 @@ function widget:CommandNotify(cmdID, cmdParams, cmdOptions)
 end
 
 -- Event handlers
-widget.UnitDestroyed = function(_, unitID)
+widget.UnitDestroyed = function(_, unitID, unitDefID)
+	-- Log ALL unit destructions for debugging explosions
+	if unitDefID then
+		local defName = UnitDefs[unitDefID] and UnitDefs[unitDefID].name or '?'
+		local deathExp = UnitDefs[unitDefID] and UnitDefs[unitDefID].deathExplosion or ''
+		local pairedID = GetUnitRulesParam(unitID, "pairedUnitID")
+		local ux, uy, uz = GetUnitPosition(unitID)
+		local health, maxHealth = Spring.GetUnitHealth(unitID)
+		local nanoInfo = ''
+		if ux then
+			for nanoUID, turret in pairs(nanoCache.turrets) do
+				local dx, dz = (ux or 0) - turret.x, (uz or 0) - turret.z
+				if math.sqrt(dx * dx + dz * dz) < turret.buildDist then
+					local cmds = Spring.GetUnitCommands(nanoUID, 3)
+					if cmds and #cmds > 0 then
+						local cmdStr = ''
+						for ci = 1, math.min(#cmds, 3) do
+							local c = cmds[ci]
+							cmdStr = cmdStr .. ' cmd' .. ci .. '=' .. c.id
+							if c.params and c.params[1] then
+								cmdStr = cmdStr .. '(t=' .. c.params[1] .. ')'
+							end
+						end
+						nanoInfo = nanoInfo .. ' nano=' .. nanoUID .. cmdStr .. ';'
+					end
+				end
+			end
+		end
+		local posStr = ux and string.format(' pos=%.0f,%.0f,%.0f', ux, uy, uz) or ''
+		local healthStr = health and string.format(' hp=%.0f/%.0f', health, maxHealth) or ''
+		local pairedStr = (pairedID and pairedID ~= 0) and (' paired=' .. pairedID) or ''
+		-- Spring.Echo('[PHX_DESTROYED] unit=' .. unitID .. '(' .. defName .. ') exp=' .. deathExp .. pairedStr .. healthStr .. posStr .. ' frame=' .. Spring.GetGameFrame() .. nanoInfo)
+	end
 	AUTO_REPLACE_ENABLED[unitID] = nil
 	if builderPipelines[unitID] then
 		cleanupPipelineForBuilder(unitID)
