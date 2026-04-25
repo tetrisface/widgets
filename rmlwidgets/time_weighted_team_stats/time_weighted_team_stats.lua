@@ -14,7 +14,7 @@ function widget:GetInfo()
 		name = WIDGET_NAME,
 		desc = 'Time-weighted team statistics with inflation adjustment',
 		author = 'tetrisface',
-		date = '2026-04-21',
+		date = '2026-03-21',
 		license = 'GNU GPL, v2 or later',
 		layer = 200,
 		enabled = true,
