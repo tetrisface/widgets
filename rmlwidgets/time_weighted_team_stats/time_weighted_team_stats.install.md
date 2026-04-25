@@ -6,7 +6,7 @@ Raw totals lie. In a long game the last 5 minutes of eco output can make the fir
 # 1. Install/Update Automatically
 On Windows with BAR installed in the default location press :hwwindows: + :regional_indicator_r: and paste:
 ```pwsh
-$d="$env:LOCALAPPDATA\Programs\Beyond-All-Reason\data"; New-Item -ItemType Directory -Force "$d\LuaUI\rmlwidgets\time_weighted_team_stats" | Out-Null; Invoke-WebRequest "https://gist.githubusercontent.com/tetrisface/12f8265f8cf6b156b113f91085de8a55/raw/time_weighted_team_stats.lua" -OutFile "$d\LuaUI\rmlwidgets\time_weighted_team_stats\time_weighted_team_stats.lua"; Invoke-WebRequest "https://gist.githubusercontent.com/tetrisface/12f8265f8cf6b156b113f91085de8a55/raw/time_weighted_team_stats.rml" -OutFile "$d\LuaUI\rmlwidgets\time_weighted_team_stats\time_weighted_team_stats.rml"; Invoke-WebRequest "https://gist.githubusercontent.com/tetrisface/12f8265f8cf6b156b113f91085de8a55/raw/time_weighted_team_stats.rcss" -OutFile "$d\LuaUI\rmlwidgets\time_weighted_team_stats\time_weighted_team_stats.rcss"
+$n="time_weighted_team_stats"; $d="$env:LOCALAPPDATA\Programs\Beyond-All-Reason\data\LuaUI\rmlwidgets\$n"; $u="https://gist.githubusercontent.com/tetrisface/12f8265f8cf6b156b113f91085de8a55/raw/$n"; New-Item -ItemType Directory -Force $d | Out-Null; 'lua','rml','rcss'|%{iwr "$u.$_" -OutFile "$d\$n.$_"}
 ```
 
 # 2. Enable
