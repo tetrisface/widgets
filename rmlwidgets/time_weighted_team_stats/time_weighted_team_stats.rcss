@@ -90,8 +90,8 @@ body, div {
 /* Stat Selector */
 .stat-selector {
 	display: flex;
-	gap: 2dp;
-	padding: 3dp 4dp;
+	gap: 1dp;
+	padding: 3dp 2dp;
 	background-color: #0F1419;
 	flex-shrink: 0;
 }
@@ -100,7 +100,7 @@ body, div {
 	color: #8099B3CC;
 	font-size: 9dp;
 	cursor: pointer;
-	padding: 2dp 4dp;
+	padding: 2dp 2dp;
 	flex: 1;
 	text-align: center;
 }
@@ -115,6 +115,7 @@ body, div {
 	background-color: #1A2A3A;
 	font-weight: bold;
 }
+
 
 /* Sort Arrows */
 .sort-arrow {
@@ -252,6 +253,13 @@ body, div {
 /* Ally Team Section */
 .ally-section {
 	margin-bottom: 2dp;
+}
+
+.ally-section + .ally-section {
+	border-top-width: 1dp;
+	border-top-color: #2A3540;
+	margin-top: 2dp;
+	padding-top: 2dp;
 }
 
 /* Player Row */

@@ -32,6 +32,9 @@
 				<div class="sort-arrow sort-asc" data-if="col.sort_asc"></div>
 				<div class="sort-arrow sort-desc" data-if="col.sort_desc"></div>
 			</div>
+			<div data-for="col : graph_stat_options" class="stat-btn stat-btn-extra" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
+				{{col.label}}
+			</div>
 		</div>
 
 		<!-- Graph Area (GL draws into this via DrawScreen) -->

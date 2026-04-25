@@ -7,13 +7,15 @@ Raw totals lie. In a long game the last 5 minutes of eco output can make the fir
 - Three table views: **Raw** totals / **Share%** / **Time Weighted** (inflation-adjusted)
 - **Graph** with three modes — stacked absolute (bar height = raw activity, splits = time-weighted shares), stacked normalized (always 100%), and overlay (independent player lines)
 - Graph time-weight toggle: raw per-window values vs time-weighted per-window values
-- **Damage efficiency** (dmg dealt / dmg received) and **resource efficiency** (damage share vs resource consumption share) columns
+- **DmgEff** graph stat: per-window damage dealt / damage received ratio as a historical line
+- **DmgEff** and **DmgPerRes** table columns (damage efficiency and damage per resource consumed); values hidden when one side is zero
 - Players who leave mid-game **keep their stats visible**
-- Drag to move, Ctrl+scroll to resize font, resizable panel
+- Ally team selector to isolate one team in the graph; separator between ally groups in grouped table mode
+- Drag to move, Ctrl+scroll to resize font, resizable panel, configurable window aggregation (1x/2x/4x/8x — higher options only appear when there is enough data)
 
 **Niche**
 - Most useful in longer or uneven games where eco scaling makes raw numbers misleading
-- Share% view: who did what fraction of the team's work
+- Share / % view: who did what fraction of the team's work
 - Time Weighted view: who punched above their weight considering *when* they did it
 
 ---

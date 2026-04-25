@@ -500,7 +500,7 @@ local smoothingMode = 'laplace' -- always laplace
 local sortKey = nil -- nil = sort by contribution index, or a stat key string
 local sortAscending = false
 local groupByAlly = true
-local selectedAllyTeam = nil -- nil = first ally team, or an allyTeamID
+local selectedAllyTeam = nil -- nil = all ally teams shown, or a specific allyTeamID
 local fontScale = 1.0
 local windowAggregation = 8 -- merge N engine snapshots into one window
 local lastUIHiddenState = false
@@ -513,6 +513,8 @@ local cachedPerWindowRaw = {}
 local cachedPerWindowDeflated = {}
 local cachedRawTotals = {} -- [teamID][statKey] = cumulative raw total
 local cachedEfficiency = {} -- [teamID] = { damagePerResource, damagePerMetal, damagePerEnergy }
+local cachedPerWindowDmgPerRes = {} -- [teamID][w] = damageShare / resourceShare per window
+local cachedPerWindowDmgEff = {}    -- [teamID][w] = damageDealt / damageReceived per window
 local cachedAllyTeams = {} -- { { allyID=N, teamIDs={...} }, ... }
 local cachedTeamInfo = {} -- [teamID] = { name=str, r=N, g=N, b=N }
 local windowCount = 0
@@ -705,6 +707,39 @@ local function RecomputeStats()
 			end
 		end
 	end
+
+	-- Compute per-window ratio stats from raw and share data.
+	cachedPerWindowDmgPerRes = {}
+	cachedPerWindowDmgEff = {}
+	for _, allyInfo in ipairs(cachedAllyTeams) do
+		for _, teamID in ipairs(allyInfo.teamIDs) do
+			local pw = cachedPerWindowShares[teamID]
+			local pwRaw = cachedPerWindowRaw[teamID]
+			if pw then
+				local dmgShares = pw.damageDealt or {}
+				local metalShares = pw.metalUsed or {}
+				local energyShares = pw.energyUsed or {}
+				local dmgPerRes = {}
+				for w = 1, #dmgShares do
+					local dmg = dmgShares[w] or 0
+					local res = ((metalShares[w] or 0) + (energyShares[w] or 0)) / 2
+					dmgPerRes[w] = res > 0 and (dmg / res) or 0
+				end
+				cachedPerWindowDmgPerRes[teamID] = dmgPerRes
+			end
+			if pwRaw then
+				local rawDealt = pwRaw.damageDealt or {}
+				local rawRecv = pwRaw.damageReceived or {}
+				local dmgEff = {}
+				for w = 1, #rawDealt do
+					local dealt = rawDealt[w] or 0
+					local recv = rawRecv[w] or 0
+					dmgEff[w] = (dealt > 0 and recv >= 1) and (dealt / recv) or 0
+				end
+				cachedPerWindowDmgEff[teamID] = dmgEff
+			end
+		end
+	end
 end
 
 --- Build the stat columns array for the data model.
@@ -742,6 +777,9 @@ local function UpdateRMLuiData()
 	local hasData = windowCount > 0
 	local allyTeamsData = {}
 	local statColumns = BuildStatColumns()
+	local graphStatOptions = {
+		{ key = 'dmgEff', label = 'DmgEff', active = (activeStat == 'dmgEff'), sort_asc = false, sort_desc = false },
+	}
 
 	for _, allyInfo in ipairs(cachedAllyTeams) do
 		local players = {}
@@ -768,21 +806,17 @@ local function UpdateRMLuiData()
 				local idx = cachedShares[teamID] and StatsEngine.ComputeContributionIndex(cachedShares[teamID]) or 0
 
 				-- Damage Efficiency: (damage dealt / damage received) * 100
+				-- Hide when either side is zero: 0% means no damage dealt (uninformative),
+				-- and dmgRecv < 1 means essentially never hit (ratio would be astronomically large).
 				local dmgDealt = cachedRawTotals[teamID] and cachedRawTotals[teamID].damageDealt or 0
 				local dmgRecv = cachedRawTotals[teamID] and cachedRawTotals[teamID].damageReceived or 0
-				local dmgEffValue = dmgRecv > 0 and (dmgDealt / dmgRecv * 100) or 0
-				if dmgEffValue ~= dmgEffValue or dmgEffValue == math.huge or dmgEffValue == -math.huge then
-					dmgEffValue = 0
-				end
-				local dmgEffDisplay = string_format('%.0f%%', dmgEffValue)
+				local dmgEffDisplay = (dmgDealt <= 0 or dmgRecv < 1) and '' or string_format('%.0f%%', dmgDealt / dmgRecv * 100)
 
 				-- DmgRes Efficiency: damage share / resource share ratio
 				local eff = cachedEfficiency[teamID]
 				local effValue = eff and eff.damagePerResource or 0
-				if effValue ~= effValue or effValue == math.huge or effValue == -math.huge then
-					effValue = 0
-				end
-				local effDisplay = string_format('%.0f%%', effValue * 100)
+				if effValue ~= effValue or effValue == math.huge or effValue == -math.huge then effValue = 0 end
+				local effDisplay = effValue <= 0 and '' or string_format('%.0f%%', effValue * 100)
 
 				-- Compute sort value based on current sort key and view mode
 				local sortValue
@@ -869,18 +903,18 @@ local function UpdateRMLuiData()
 		allyTeamsData = { { id = -1, players = allPlayers } }
 	end
 
-	-- Resolve selectedAllyTeam: default to first ally team if unset or invalid
-	local validAllyTeam = false
-	if selectedAllyTeam then
+	-- nil = "All" is always valid; only fix up a stale non-nil teamID
+	if selectedAllyTeam ~= nil then
+		local found = false
 		for _, allyInfo in ipairs(cachedAllyTeams) do
 			if allyInfo.allyID == selectedAllyTeam then
-				validAllyTeam = true
+				found = true
 				break
 			end
 		end
-	end
-	if not validAllyTeam and #cachedAllyTeams > 0 then
-		selectedAllyTeam = cachedAllyTeams[1].allyID
+		if not found then
+			selectedAllyTeam = nil
+		end
 	end
 
 	local graphModeLabels = { absolute = 'Abs', normalized = 'Norm', overlay = 'Lines' }
@@ -906,11 +940,12 @@ local function UpdateRMLuiData()
 	dm_handle.graph_visible = graphVisible
 	dm_handle.group_by_ally = groupByAlly
 	dm_handle.group_label = groupByAlly and 'Grp' or 'Flat'
-	dm_handle.ally_team_label = selectedAllyTeam and ('Team ' .. (selectedAllyTeam + 1)) or 'Team ?'
+	dm_handle.ally_team_label = selectedAllyTeam and ('Team ' .. (selectedAllyTeam + 1)) or 'All'
 	dm_handle.show_ally_selector = #cachedAllyTeams > 1
 	dm_handle.window_agg_label = windowAggregation == 1 and '1x' or (windowAggregation .. 'x')
 	dm_handle.ally_teams = allyTeamsData
 	dm_handle.stat_columns = statColumns
+	dm_handle.graph_stat_options = graphStatOptions
 end
 
 --- Rebuild the GL display list for the graph.
@@ -932,17 +967,23 @@ local function RebuildGraphDisplayList()
 			for _, teamID in ipairs(allyInfo.teamIDs) do
 				local info = cachedTeamInfo[teamID]
 				local dataSource
-				if graphDeflated then
+				if activeStat == 'dmgPerRes' then
+					dataSource = cachedPerWindowDmgPerRes[teamID]
+				elseif activeStat == 'dmgEff' then
+					dataSource = cachedPerWindowDmgEff[teamID]
+				elseif graphDeflated then
 					dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
 				else
 					dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
 				end
+				local isRatioStat = activeStat == 'dmgPerRes' or activeStat == 'dmgEff'
 				if info and dataSource and #dataSource > 0 then
 					graphTeams[#graphTeams + 1] = {
 						teamID = teamID,
 						r = info.r, g = info.g, b = info.b,
 						data = dataSource,
-						rawData = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat],
+						rawData = isRatioStat and dataSource
+							or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]),
 					}
 				end
 			end
@@ -1146,6 +1187,7 @@ function widget:Initialize()
 		window_agg_label = windowAggregation == 1 and '1x' or (windowAggregation .. 'x'),
 		ally_teams = {},
 		stat_columns = BuildStatColumns(),
+		graph_stat_options = {},
 	}
 
 	dm_handle = widget.rmlContext:OpenDataModel(MODEL_NAME, initialModel)
@@ -1359,8 +1401,16 @@ function widget:DrawScreen()
 					for _, allyInfo in ipairs(cachedAllyTeams) do
 						if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
 							for _, teamID in ipairs(allyInfo.teamIDs) do
-								local ds = graphDeflated and (cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat])
-									or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
+								local ds
+								if activeStat == 'dmgPerRes' then
+									ds = cachedPerWindowDmgPerRes[teamID]
+								elseif activeStat == 'dmgEff' then
+									ds = cachedPerWindowDmgEff[teamID]
+								elseif graphDeflated then
+									ds = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
+								else
+									ds = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+								end
 								if ds then
 									for w = 1, windowCount do
 										maxVal = math_max(maxVal, ds[w] or 0)
@@ -1375,8 +1425,9 @@ function widget:DrawScreen()
 						for _, allyInfo in ipairs(cachedAllyTeams) do
 							if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
 								for _, teamID in ipairs(allyInfo.teamIDs) do
-									-- Y scale always uses raw totals (hybrid drawing does the same)
-									local ds = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+									local ds = activeStat == 'dmgPerRes' and cachedPerWindowDmgPerRes[teamID]
+								or activeStat == 'dmgEff' and cachedPerWindowDmgEff[teamID]
+								or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
 									if ds then
 										total = total + math_max(ds[w] or 0, 0)
 									end
@@ -1410,7 +1461,11 @@ function widget:DrawScreen()
 						local info = cachedTeamInfo[teamID]
 						if info then
 							local dataSource
-							if graphDeflated then
+							if activeStat == 'dmgPerRes' then
+								dataSource = cachedPerWindowDmgPerRes[teamID]
+							elseif activeStat == 'dmgEff' then
+								dataSource = cachedPerWindowDmgEff[teamID]
+							elseif graphDeflated then
 								dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
 							else
 								dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
@@ -1519,11 +1574,20 @@ function widget:ToggleGraph(event)
 end
 
 function widget:CycleWindowAggregation(event)
-	-- Cycle through: 1, 2, 4, 8
-	if windowAggregation >= 8 then
-		windowAggregation = 1
-	else
-		windowAggregation = windowAggregation * 2
+	-- Cycle 1→2→4→8→1, skipping levels that would produce fewer than 2 windows.
+	local levels = { 1, 2, 4, 8 }
+	local rawCount = windowCount * windowAggregation
+	local currentIdx = 1
+	for i, v in ipairs(levels) do
+		if v == windowAggregation then currentIdx = i; break end
+	end
+	for step = 1, #levels do
+		local nextIdx = (currentIdx - 1 + step) % #levels + 1
+		local candidate = levels[nextIdx]
+		if rawCount == 0 or rawCount / candidate >= 2 then
+			windowAggregation = candidate
+			break
+		end
 	end
 	RecomputeStats()
 	dataDirty = true
@@ -1551,20 +1615,25 @@ function widget:SetActiveStat(event)
 	end
 	local key = element:GetAttribute('data-key')
 	if key then
+		local isGraphOnly = key == 'dmgPerRes' or key == 'dmgEff'
 		if key == activeStat then
-			-- Cycle sort: descending -> ascending -> default (contribution index)
-			if sortKey == key and not sortAscending then
-				sortAscending = true
-			elseif sortKey == key and sortAscending then
-				sortKey = nil
-				sortAscending = false
-			else
-				sortKey = key
-				sortAscending = false
+			-- Cycle sort for table stats only; ratio graph-only stats have no table column to sort
+			if not isGraphOnly then
+				if sortKey == key and not sortAscending then
+					sortAscending = true
+				elseif sortKey == key and sortAscending then
+					sortKey = nil
+					sortAscending = false
+				else
+					sortKey = key
+					sortAscending = false
+				end
 			end
 		else
 			activeStat = key
-			sortKey = key
+			if not isGraphOnly then
+				sortKey = key
+			end
 			sortAscending = false
 		end
 		dataDirty = true
@@ -1603,14 +1672,22 @@ end
 
 function widget:CycleAllyTeam(event)
 	if #cachedAllyTeams < 2 then return end
-	local currentIdx = 1
-	for i, allyInfo in ipairs(cachedAllyTeams) do
-		if allyInfo.allyID == selectedAllyTeam then
-			currentIdx = i
-			break
+	if selectedAllyTeam == nil then
+		selectedAllyTeam = cachedAllyTeams[1].allyID
+	else
+		local currentIdx = 1
+		for i, allyInfo in ipairs(cachedAllyTeams) do
+			if allyInfo.allyID == selectedAllyTeam then
+				currentIdx = i
+				break
+			end
+		end
+		if currentIdx >= #cachedAllyTeams then
+			selectedAllyTeam = nil -- wrap back to All
+		else
+			selectedAllyTeam = cachedAllyTeams[currentIdx + 1].allyID
 		end
 	end
-	selectedAllyTeam = cachedAllyTeams[(currentIdx % #cachedAllyTeams) + 1].allyID
 	dataDirty = true
 	graphDirty = true
 	SaveUIState()
