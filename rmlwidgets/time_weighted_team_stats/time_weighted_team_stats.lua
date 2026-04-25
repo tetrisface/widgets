@@ -3,9 +3,9 @@ if not RmlUi then
 end
 
 local widget = widget ---@type Widget
-local WIDGET_NAME = 'Weighted Team Stats'
+local WIDGET_NAME = 'Time Weighted Team Stats'
 local MODEL_NAME = 'weighted_team_stats'
-local RML_PATH = 'luaui/rmlwidgets/weighted_team_stats/weighted_team_stats.rml'
+local RML_PATH = 'luaui/rmlwidgets/time_weighted_team_stats/time_weighted_team_stats.rml'
 local STATS_UPDATE_FREQUENCY = 60 -- ~2 seconds
 local UI_UPDATE_FREQUENCY = 30 -- ~1 second
 
@@ -14,9 +14,9 @@ function widget:GetInfo()
 		name = WIDGET_NAME,
 		desc = 'Time-weighted team statistics with inflation adjustment',
 		author = 'tetrisface',
-		date = '2026',
+		date = '2026-04-21',
 		license = 'GNU GPL, v2 or later',
-		layer = 5,
+		layer = 200,
 		enabled = true,
 		handler = true,
 	}
@@ -71,17 +71,6 @@ StatsEngine.STAT_KEYS = {
 	'metalProduced', 'metalUsed', 'metalExcess', 'metalSent', 'metalReceived',
 	'energyProduced', 'energyUsed', 'energyExcess', 'energySent', 'energyReceived',
 	'unitsProduced', 'unitsKilled', 'unitsDied',
-}
-
-StatsEngine.ECO_DEFLATOR_STATS = {
-	metalProduced = true, metalUsed = true, metalExcess = true, metalSent = true, metalReceived = true,
-	energyProduced = true, energyUsed = true, energyExcess = true, energySent = true, energyReceived = true,
-	unitsProduced = true,
-}
-
-StatsEngine.MIL_DEFLATOR_STATS = {
-	damageDealt = true, damageReceived = true,
-	unitsKilled = true, unitsDied = true,
 }
 
 StatsEngine.INDEX_WEIGHTS = {
@@ -177,23 +166,6 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 		return {}, {}, {}, {}, {}, {}
 	end
 
-	-- Compute per-window deflators
-	local ecoDeflators = {}
-	local milDeflators = {}
-	for w = 1, windowCount do
-		local totalEco = 0
-		local totalMil = 0
-		for _, teamID in ipairs(teamIDs) do
-			local d = allDeltas[teamID][w]
-			totalEco = totalEco + (d.metalProduced or 0) + (d.energyProduced or 0)
-			totalMil = totalMil + (d.damageDealt or 0)
-		end
-		ecoDeflators[w] = math_max(totalEco, 1)
-		milDeflators[w] = math_max(totalMil, 1)
-	end
-	local baseEco = ecoDeflators[1]
-	local baseMil = milDeflators[1]
-
 	-- Initialize result tables
 	local shares = {}
 	local deflated = {}
@@ -219,7 +191,19 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 
 	-- Compute per-window stats
 	for _, statKey in ipairs(StatsEngine.STAT_KEYS) do
-		local isMil = StatsEngine.MIL_DEFLATOR_STATS[statKey]
+		-- Per-stat deflator: each stat is deflated by its own per-window total.
+		-- This means every stat's deflated per-window sum is constant (= window-1 total),
+		-- so player shares are truly inflation-adjusted for that specific stat.
+		local statDeflators = {}
+		for w = 1, windowCount do
+			local total = 0
+			for _, teamID in ipairs(teamIDs) do
+				local val = allDeltas[teamID][w][statKey] or 0
+				if val > 0 then total = total + val end
+			end
+			statDeflators[w] = math_max(total, 1)
+		end
+		local baseStatDeflator = statDeflators[1]
 
 		-- First pass: compute totals needed for smoothing
 		local totalAcrossAllWindows = 0
@@ -249,9 +233,7 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 				end
 			end
 
-			local deflator = isMil and milDeflators[w] or ecoDeflators[w]
-			local baseDeflator = isMil and baseMil or baseEco
-			local deflationRatio = baseDeflator / deflator
+			local deflationRatio = baseStatDeflator / statDeflators[w]
 
 			-- In relativistic mode, each window's weight is its deflated total
 			-- This means early windows (boosted by deflation) contribute more,
@@ -283,7 +265,8 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 					-- (val + prior) / (windowTotal + numPlayers * prior)
 					-- When windowTotal >> prior: converges to val/windowTotal
 					-- When windowTotal << prior: converges to 1/numPlayers
-					share = (val + prior) / (windowTotal + numPlayers * prior)
+					local denom = windowTotal + numPlayers * prior
+					share = denom > 0 and (val + prior) / denom or (1 / numPlayers)
 					shares[teamID][statKey] = shares[teamID][statKey] + share
 				end
 				perWindowShares[teamID][statKey][w] = share
@@ -333,6 +316,10 @@ function StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 			local scale = totalRaw / totalDefl
 			for _, teamID in ipairs(teamIDs) do
 				deflated[teamID][statKey] = deflated[teamID][statKey] * scale
+				local pw = perWindowDeflated[teamID][statKey]
+				for w = 1, #pw do
+					pw[w] = pw[w] * scale
+				end
 			end
 		end
 	end
@@ -501,9 +488,11 @@ local myAllyTeamID
 -- UI state
 local widgetPosX = 100
 local widgetPosY = 100
+local widgetWidth = nil
+local widgetHeight = nil
 local tableVisible = true
 local graphVisible = true
-local viewMode = 'raw' -- 'raw' | 'share' | 'weighted'
+local viewMode = 'raw' -- 'raw' | 'share' | 'time_weighted'
 local activeStat = 'damageDealt'
 local graphMode = 'absolute' -- 'absolute' | 'normalized' | 'overlay'
 local graphDeflated = false
@@ -531,6 +520,7 @@ local windowFrames = {} -- frame numbers for X-axis
 
 -- Graph display list
 local graphDisplayList
+local graphMaxVal = 0 -- Y-axis max stored at display-list build time for label rendering
 local graphAreaX, graphAreaY, graphAreaW, graphAreaH = 0, 0, 0, 0
 
 -- Number formatting
@@ -564,6 +554,23 @@ end
 
 local function SavePosition()
 	spSetConfigString('WeightedTeamStats_Position', widgetPosX .. ',' .. widgetPosY)
+end
+
+local function LoadSize()
+	local s = spGetConfigString('WeightedTeamStats_Size', '')
+	if s and s ~= '' then
+		local w, h = s:match('^(%d+),(%d+)$')
+		if w and h then
+			widgetWidth = tonumber(w)
+			widgetHeight = tonumber(h)
+		end
+	end
+end
+
+local function SaveSize()
+	if widgetWidth and widgetHeight then
+		spSetConfigString('WeightedTeamStats_Size', widgetWidth .. ',' .. widgetHeight)
+	end
 end
 
 local function LoadUIState()
@@ -603,11 +610,14 @@ local function UpdateDocumentPosition()
 	if document then
 		local panel = document:GetElementById('wts-panel')
 		if panel then
-			local currentLeft = panel.style.left
-			local currentTop = panel.style.top
-			if not currentLeft or currentLeft == '' or not currentTop or currentTop == '' then
 				panel.style.left = widgetPosX .. 'px'
-				panel.style.top = widgetPosY .. 'px'
+			panel.style.top = widgetPosY .. 'px'
+			if widgetWidth then
+				panel.style.width = widgetWidth .. 'px'
+			end
+			if widgetHeight then
+				panel.style.height = widgetHeight .. 'px'
+				panelHeightSet = true
 			end
 		end
 	end
@@ -617,8 +627,13 @@ end
 local function RecomputeStats()
 	local allSnapshots = CollectAllTeamSnapshots()
 
+	local prevAllyTeams = cachedAllyTeams
+	local prevTeamInfo = cachedTeamInfo
+
 	cachedAllyTeams = {}
 	cachedTeamInfo = {}
+
+	local freshTeams = {} -- teamID -> allyID for teams seen in this pass
 
 	for allyID, teamSnapshots in pairs(allSnapshots) do
 		local teamIDs = {}
@@ -626,6 +641,7 @@ local function RecomputeStats()
 
 		for teamID, snapshots in pairs(teamSnapshots) do
 			teamIDs[#teamIDs + 1] = teamID
+			freshTeams[teamID] = allyID
 			allDeltas[teamID] = StatsEngine.AggregateDeltas(StatsEngine.ComputeDeltas(snapshots), windowAggregation)
 
 			-- Cache team info
@@ -645,24 +661,12 @@ local function RecomputeStats()
 		local shares, deflated, perWindowShares, perWindowRaw, perWindowDeflated, efficiency =
 			StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 
-		for teamID, s in pairs(shares) do
-			cachedShares[teamID] = s
-		end
-		for teamID, e in pairs(efficiency) do
-			cachedEfficiency[teamID] = e
-		end
-		for teamID, d in pairs(deflated) do
-			cachedDeflated[teamID] = d
-		end
-		for teamID, pw in pairs(perWindowShares) do
-			cachedPerWindowShares[teamID] = pw
-		end
-		for teamID, pw in pairs(perWindowRaw) do
-			cachedPerWindowRaw[teamID] = pw
-		end
-		for teamID, pw in pairs(perWindowDeflated) do
-			cachedPerWindowDeflated[teamID] = pw
-		end
+		table.mergeInPlace(cachedShares, shares)
+		table.mergeInPlace(cachedEfficiency, efficiency)
+		table.mergeInPlace(cachedDeflated, deflated)
+		table.mergeInPlace(cachedPerWindowShares, perWindowShares)
+		table.mergeInPlace(cachedPerWindowRaw, perWindowRaw)
+		table.mergeInPlace(cachedPerWindowDeflated, perWindowDeflated)
 
 		-- Extract window frames from first team's deltas
 		if #teamIDs > 0 then
@@ -671,6 +675,33 @@ local function RecomputeStats()
 			windowFrames = {}
 			for w = 1, windowCount do
 				windowFrames[w] = firstDeltas[w].frame
+			end
+		end
+	end
+
+	-- Re-add departed teams so their stats remain visible after they leave.
+	-- cachedShares/cachedRawTotals etc. are per-teamID tables that persist across
+	-- calls, so the data is still there — we just need to keep them in the ally group.
+	-- Merge fresh team info (active teams) into prev, so fresh wins and departed fill gaps.
+	table.mergeInPlace(prevTeamInfo, cachedTeamInfo)
+	cachedTeamInfo = prevTeamInfo
+
+	local allyGroupIndex = {}
+	for i, allyInfo in ipairs(cachedAllyTeams) do
+		allyGroupIndex[allyInfo.allyID] = i
+	end
+	for _, prevAllyInfo in ipairs(prevAllyTeams) do
+		for _, teamID in ipairs(prevAllyInfo.teamIDs) do
+			if not freshTeams[teamID] and cachedShares[teamID] then
+				local allyID = prevAllyInfo.allyID
+				local groupIdx = allyGroupIndex[allyID]
+				if groupIdx then
+					local tids = cachedAllyTeams[groupIdx].teamIDs
+					tids[#tids + 1] = teamID
+				else
+					cachedAllyTeams[#cachedAllyTeams + 1] = { allyID = allyID, teamIDs = { teamID } }
+					allyGroupIndex[allyID] = #cachedAllyTeams
+				end
 			end
 		end
 	end
@@ -722,8 +753,9 @@ local function UpdateRMLuiData()
 					local value
 					if viewMode == 'share' then
 						local s = cachedShares[teamID] and cachedShares[teamID][col.key] or 0
+						if s ~= s or s == math.huge or s == -math.huge then s = 0 end
 						value = string_format('%.1f%%', s * 100)
-					elseif viewMode == 'weighted' then
+					elseif viewMode == 'time_weighted' then
 						local d = cachedDeflated[teamID] and cachedDeflated[teamID][col.key] or 0
 						value = FormatSI(d)
 					else -- raw
@@ -757,7 +789,7 @@ local function UpdateRMLuiData()
 				if sortKey then
 					if viewMode == 'share' then
 						sortValue = cachedShares[teamID] and cachedShares[teamID][sortKey] or 0
-					elseif viewMode == 'weighted' then
+					elseif viewMode == 'time_weighted' then
 						sortValue = cachedDeflated[teamID] and cachedDeflated[teamID][sortKey] or 0
 					else -- raw
 						sortValue = cachedRawTotals[teamID] and cachedRawTotals[teamID][sortKey] or 0
@@ -870,7 +902,7 @@ local function UpdateRMLuiData()
 	dm_handle.graph_mode = graphMode
 	dm_handle.graph_mode_label = graphModeLabels[graphMode] or graphMode
 	dm_handle.graph_deflated = graphDeflated
-	dm_handle.graph_deflated_label = graphDeflated and 'Deflated' or 'Raw'
+	dm_handle.graph_deflated_label = graphDeflated and 'Time Weighted' or 'Raw'
 	dm_handle.graph_visible = graphVisible
 	dm_handle.group_by_ally = groupByAlly
 	dm_handle.group_label = groupByAlly and 'Grp' or 'Flat'
@@ -910,6 +942,7 @@ local function RebuildGraphDisplayList()
 						teamID = teamID,
 						r = info.r, g = info.g, b = info.b,
 						data = dataSource,
+						rawData = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat],
 					}
 				end
 			end
@@ -953,6 +986,7 @@ local function RebuildGraphDisplayList()
 			if maxVal <= 0 then
 				maxVal = 1
 			end
+			graphMaxVal = maxVal
 
 			for _, team in ipairs(graphTeams) do
 				-- Filled area
@@ -980,6 +1014,7 @@ local function RebuildGraphDisplayList()
 
 		elseif graphMode == 'normalized' then
 			-- Normalized mode: stacked area, always fills 100%
+			graphMaxVal = 1
 			-- Compute per-window totals
 			local windowTotals = {}
 			for w = 1, wc do
@@ -1015,38 +1050,56 @@ local function RebuildGraphDisplayList()
 			end
 
 		else -- absolute
-			-- Absolute mode: stacked area, Y auto-scaled
+			-- Precompute per-window totals for both raw and deflated data.
+			-- When deflated: bar height = raw total (shows real activity variation),
+			-- player splits = deflated shares (inflation-adjusted contributions).
+			-- When raw: straightforward stacked absolute.
+			local rawWindowTotals = {}
+			local deflWindowTotals = {}
 			local maxTotal = 0
 			for w = 1, wc do
-				local total = 0
+				local rawTotal = 0
+				local deflTotal = 0
 				for _, team in ipairs(graphTeams) do
-					total = total + math_max(team.data[w] or 0, 0)
+					rawTotal = rawTotal + math_max((team.rawData and team.rawData[w]) or 0, 0)
+					deflTotal = deflTotal + math_max(team.data[w] or 0, 0)
 				end
-				maxTotal = math_max(maxTotal, total)
+				rawWindowTotals[w] = rawTotal
+				deflWindowTotals[w] = math_max(deflTotal, 1e-9)
+				maxTotal = math_max(maxTotal, graphDeflated and rawTotal or deflTotal)
 			end
-			if maxTotal <= 0 then
-				maxTotal = 1
-			end
+			if maxTotal <= 0 then maxTotal = 1 end
+			graphMaxVal = maxTotal
 
 			local baselines = {}
-			for w = 1, wc do
-				baselines[w] = 0
-			end
+			for w = 1, wc do baselines[w] = 0 end
 
 			for _, team in ipairs(graphTeams) do
 				glColor(team.r, team.g, team.b, 0.8)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
 						local x = (w - 1) / wcDivisor
-						local val = math_max(team.data[w] or 0, 0)
-						local bottom = baselines[w] / maxTotal
-						local top = (baselines[w] + val) / maxTotal
+						local h
+						if graphDeflated then
+							local share = math_max(team.data[w] or 0, 0) / deflWindowTotals[w]
+							h = share * rawWindowTotals[w] / maxTotal
+						else
+							h = math_max(team.data[w] or 0, 0) / maxTotal
+						end
+						local bottom = baselines[w]
 						glVertex(x, bottom)
-						glVertex(x, top)
+						glVertex(x, bottom + h)
 					end
 				end)
 				for w = 1, wc do
-					baselines[w] = baselines[w] + math_max(team.data[w] or 0, 0)
+					local h
+					if graphDeflated then
+						local share = math_max(team.data[w] or 0, 0) / deflWindowTotals[w]
+						h = share * rawWindowTotals[w] / maxTotal
+					else
+						h = math_max(team.data[w] or 0, 0) / maxTotal
+					end
+					baselines[w] = baselines[w] + h
 				end
 			end
 		end
@@ -1066,6 +1119,7 @@ function widget:Initialize()
 	myAllyTeamID = spGetMyAllyTeamID()
 
 	LoadPosition()
+	LoadSize()
 	LoadUIState()
 
 	widget.rmlContext = RmlUi.GetContext('shared')
@@ -1083,7 +1137,7 @@ function widget:Initialize()
 		graph_mode = graphMode,
 		graph_mode_label = 'Norm',
 		graph_deflated = graphDeflated,
-		graph_deflated_label = graphDeflated and 'Deflated' or 'Raw',
+		graph_deflated_label = graphDeflated and 'Time Weighted' or 'Raw',
 		graph_visible = graphVisible,
 		group_by_ally = groupByAlly,
 		group_label = groupByAlly and 'Grp' or 'Flat',
@@ -1211,7 +1265,7 @@ function widget:DrawScreen()
 	glColor(0.08, 0.08, 0.1, 0.65)
 	glRect(screenX, screenY, screenX + screenW, screenY + screenH)
 
-	-- Draw subtle grid lines
+	-- Draw subtle grid lines and Y-axis value labels
 	glColor(0.25, 0.3, 0.38, 0.6)
 	glLineWidth(1)
 	for i = 1, 3 do
@@ -1220,6 +1274,17 @@ function widget:DrawScreen()
 			glVertex(screenX, y)
 			glVertex(screenX + screenW, y)
 		end)
+	end
+	glColor(0.45, 0.55, 0.65, 0.75)
+	for i = 1, 4 do
+		local y = screenY + screenH * (i / 4)
+		local label
+		if graphMode == 'normalized' then
+			label = (i * 25) .. '%'
+		else
+			label = FormatSI(graphMaxVal * (i / 4))
+		end
+		glText(label, screenX + 2, y - 10, 8, 'o')
 	end
 	for i = 1, 3 do
 		local x = screenX + screenW * (i / 4)
@@ -1310,8 +1375,8 @@ function widget:DrawScreen()
 						for _, allyInfo in ipairs(cachedAllyTeams) do
 							if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
 								for _, teamID in ipairs(allyInfo.teamIDs) do
-									local ds = graphDeflated and (cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat])
-										or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
+									-- Y scale always uses raw totals (hybrid drawing does the same)
+									local ds = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
 									if ds then
 										total = total + math_max(ds[w] or 0, 0)
 									end
@@ -1434,7 +1499,10 @@ function widget:OnDragEnd(event)
 	if panel then
 		widgetPosX = math_floor(panel.absolute_left)
 		widgetPosY = math_floor(panel.absolute_top)
+		widgetWidth = math_floor(panel.offset_width)
+		widgetHeight = math_floor(panel.offset_height)
 		SavePosition()
+		SaveSize()
 	end
 end
 
@@ -1469,7 +1537,7 @@ function widget:SetViewMode(event)
 		return
 	end
 	local mode = element:GetAttribute('data-mode')
-	if mode and (mode == 'weighted' or mode == 'share' or mode == 'raw') then
+	if mode and (mode == 'time_weighted' or mode == 'share' or mode == 'raw') then
 		viewMode = mode
 		dataDirty = true
 		SaveUIState()
@@ -1565,6 +1633,8 @@ end
 function widget:MouseWheel(up, value)
 	local ctrl = select(2, spGetModKeyState())
 	if not ctrl then return false end
+	local mx, my = Spring.GetMouseState()
+	if not widget:IsAbove(mx, my) then return false end
 	if up then
 		fontScale = math_min(fontScale + 0.1, 2.0)
 	else

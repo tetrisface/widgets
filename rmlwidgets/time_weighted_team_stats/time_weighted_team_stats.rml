@@ -1,7 +1,7 @@
 <rml>
 <head>
 	<title>Weighted Team Stats</title>
-	<link rel="stylesheet" href="weighted_team_stats.rcss" type="text/rcss" />
+	<link rel="stylesheet" href="time_weighted_team_stats.rcss" type="text/rcss" />
 </head>
 <body id="weighted-team-stats-widget">
 	<div id="wts-panel" class="panel" data-model="weighted_team_stats" onmouseup="widget:OnDragEnd(event)">
@@ -9,7 +9,7 @@
 		<div class="title-bar">
 			<handle move_target="wts-panel">
 				<div class="title-content">
-					<span class="title-text">WTS</span>
+					<span class="title-text">Time Weighted Team Stats</span>
 				</div>
 			</handle>
 			<!-- Graph Mode + Deflation toggles -->
@@ -48,8 +48,8 @@
 			<!-- View Mode Toggle -->
 			<div class="view-toggle">
 				<div class="view-btn" data-class-active="view_mode == 'raw'" data-mode="raw" onclick="widget:SetViewMode(event)">Raw</div>
-				<div class="view-btn" data-class-active="view_mode == 'share'" data-mode="share" onclick="widget:SetViewMode(event)">Share%</div>
-				<div class="view-btn" data-class-active="view_mode == 'weighted'" data-mode="weighted" onclick="widget:SetViewMode(event)">Weighted</div>
+				<div class="view-btn" data-class-active="view_mode == 'share'" data-mode="share" onclick="widget:SetViewMode(event)">Share / %</div>
+				<div class="view-btn" data-class-active="view_mode == 'time_weighted'" data-mode="time_weighted" onclick="widget:SetViewMode(event)">Time Weighted</div>
 			</div>
 
 			<!-- Table Header -->
@@ -60,8 +60,8 @@
 					<div class="sort-arrow sort-asc" data-if="col.sort_asc"></div>
 					<div class="sort-arrow sort-desc" data-if="col.sort_desc"></div>
 				</div>
-				<div class="th-eff">DmgEff</div>
-				<div class="th-eff">DmgResEff</div>
+				<div class="th-eff" title="Damage dealt / damage received. 100% = broke even, 200% = dealt twice what you received.">DmgEff</div>
+				<div class="th-eff" title="Your damage share vs your resource consumption share. 100% = average, &gt;100% = more damage per resource than the team average.">DmgPerRes</div>
 			</div>
 
 			<!-- Ally Team Sections -->
