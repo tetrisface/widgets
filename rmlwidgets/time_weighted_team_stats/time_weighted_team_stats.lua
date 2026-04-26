@@ -37,7 +37,6 @@ local spIsGUIHidden = Spring.IsGUIHidden
 local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
 local spGetViewGeometry = Spring.GetViewGeometry
-local spGetModKeyState = Spring.GetModKeyState
 local spGetMouseState = Spring.GetMouseState
 
 local glColor = gl.Color
@@ -495,7 +494,10 @@ local sortKey = nil -- nil = sort by contribution index, or a stat key string
 local sortAscending = false
 local groupByAlly = true
 local selectedAllyTeam = nil -- nil = all ally teams shown, or a specific allyTeamID
-local fontScale = 1.0
+local fontScale1 = 1.0  -- title bar + stat selector buttons
+local fontScale2 = 1.0  -- graph labels, tooltips, guidelines
+local fontScale3 = 1.0  -- table columns and cells
+local isCtrlDown = false
 local windowAggregation = 8 -- merge N engine snapshots into one window
 local lastUIHiddenState = false
 
@@ -578,7 +580,9 @@ local function LoadUIState()
 	graphVisible = spGetConfigString('WeightedTeamStats_GraphVisible', 'true') == 'true'
 	windowAggregation = tonumber(spGetConfigString('WeightedTeamStats_WindowAggregation', '8')) or 8
 	groupByAlly = spGetConfigString('WeightedTeamStats_GroupByAlly', 'true') == 'true'
-	fontScale = tonumber(spGetConfigString('WeightedTeamStats_FontScale', '1.0')) or 1.0
+	fontScale1 = tonumber(spGetConfigString('WeightedTeamStats_FontScale1', '1.0')) or 1.0
+	fontScale2 = tonumber(spGetConfigString('WeightedTeamStats_FontScale2', '1.0')) or 1.0
+	fontScale3 = tonumber(spGetConfigString('WeightedTeamStats_FontScale3', '1.0')) or 1.0
 	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', '')
 	sortKey = savedSortKey ~= '' and savedSortKey or nil
 	sortAscending = spGetConfigString('WeightedTeamStats_SortAscending', 'false') == 'true'
@@ -596,7 +600,9 @@ local function SaveUIState()
 	spSetConfigString('WeightedTeamStats_GraphVisible', tostring(graphVisible))
 	spSetConfigString('WeightedTeamStats_WindowAggregation', tostring(windowAggregation))
 	spSetConfigString('WeightedTeamStats_GroupByAlly', tostring(groupByAlly))
-	spSetConfigString('WeightedTeamStats_FontScale', tostring(fontScale))
+	spSetConfigString('WeightedTeamStats_FontScale1', tostring(fontScale1))
+	spSetConfigString('WeightedTeamStats_FontScale2', tostring(fontScale2))
+	spSetConfigString('WeightedTeamStats_FontScale3', tostring(fontScale3))
 	spSetConfigString('WeightedTeamStats_SortKey', sortKey or '')
 	spSetConfigString('WeightedTeamStats_SortAscending', tostring(sortAscending))
 	spSetConfigString('WeightedTeamStats_SelectedAllyTeam', selectedAllyTeam and tostring(selectedAllyTeam) or '')
@@ -1223,19 +1229,29 @@ function widget:Initialize()
 
 	document:ReloadStyleSheet()
 
-	-- Apply persisted font scale
-	if fontScale ~= 1.0 then
-		local panel = document:GetElementById('wts-panel')
-		if panel then
-			panel.style['font-size'] = math_floor(12 * fontScale) .. 'dp'
-		end
+	-- Apply persisted per-area font scales
+	local function applyFontScale(id, scale)
+		local el = document:GetElementById(id)
+		if el then el.style['font-size'] = math_floor(12 * scale) .. 'dp' end
 	end
+	applyFontScale('wts-title-bar', fontScale1)
+	applyFontScale('wts-stat-selector', fontScale1)
+	applyFontScale('wts-table-area', fontScale3)
 
 	if not spIsGUIHidden() then
 		document:Show()
 	end
 
 	UpdateDocumentPosition()
+
+	-- Set a default height immediately so the "Starting..." panel doesn't jump when data arrives
+	if not widgetHeight then
+		local panel = document:GetElementById('wts-panel')
+		if panel then
+			panel.style.height = '320dp'
+			panelHeightSet = true
+		end
+	end
 
 	-- Force initial data load instead of waiting for first STATS_UPDATE_FREQUENCY
 	RecomputeStats()
@@ -1340,7 +1356,7 @@ function widget:DrawScreen()
 		else
 			label = FormatSI(graphMaxVal * (i / 4))
 		end
-		glText(label, screenX + 2, y - 10, 8, 'o')
+		glText(label, screenX + 2, y - 10, math_floor(8 * fontScale2), 'o')
 	end
 	for i = 1, 3 do
 		local x = screenX + screenW * (i / 4)
@@ -1376,8 +1392,8 @@ function widget:DrawScreen()
 		local lastFrame = windowFrames[math_min(effectiveWC, #windowFrames)]
 		local startMin = math_floor(firstFrame / 30 / 60)
 		local endMin = math_floor(lastFrame / 30 / 60)
-		glText(startMin .. 'm', screenX + 2, screenY - 12, 10, 'o')
-		glText(endMin .. 'm', screenX + screenW - 2, screenY - 12, 10, 'or')
+		glText(startMin .. 'm', screenX + 2, screenY - 12, math_floor(10 * fontScale2), 'o')
+		glText(endMin .. 'm', screenX + screenW - 2, screenY - 12, math_floor(10 * fontScale2), 'or')
 	end
 
 	-- Mouse crosshair tooltip
@@ -1412,7 +1428,7 @@ function widget:DrawScreen()
 				yLabel = graphMaxVal > 0 and FormatSI(relY * graphMaxVal) or '0'
 			end
 			glColor(0.8, 0.9, 1.0, 0.8)
-			glText(yLabel, screenX + 2, my + 2, 9, 'o')
+			glText(yLabel, screenX + 2, my + 2, math_floor(9 * fontScale2), 'o')
 
 			-- Time label at crosshair
 			local frame = windowFrames[wIdx] or 0
@@ -1453,9 +1469,9 @@ function widget:DrawScreen()
 
 			-- Draw tooltip background and text
 			if #tooltipLines > 0 then
-				local lineH = 12
+				local lineH = math_floor(12 * fontScale2)
 				local tooltipH = (#tooltipLines + 1) * lineH + 6
-				local tooltipW = 100
+				local tooltipW = math_floor(100 * fontScale2)
 				local tx = mx + 10
 				local ty = screenY + screenH - 4
 
@@ -1470,16 +1486,16 @@ function widget:DrawScreen()
 
 				-- Time header
 				glColor(0.8, 0.9, 1.0, 0.9)
-				glText(tooltipTime, tx + 4, ty - lineH + 2, 10, 'o')
+				glText(tooltipTime, tx + 4, ty - lineH + 2, math_floor(10 * fontScale2), 'o')
 
 				-- Player values
 				for i = 1, #tooltipLines do
 					local line = tooltipLines[i]
 					local ly = ty - (i + 1) * lineH + 2
 					glColor(line.r, line.g, line.b, 0.9)
-					glText(line.name, tx + 4, ly, 9, 'o')
+					glText(line.name, tx + 4, ly, math_floor(9 * fontScale2), 'o')
 					glColor(0.85, 0.9, 0.95, 0.9)
-					glText(line.value, tx + tooltipW - 4, ly, 9, 'or')
+					glText(line.value, tx + tooltipW - 4, ly, math_floor(9 * fontScale2), 'or')
 				end
 			end
 		end
@@ -1661,38 +1677,53 @@ function widget:CycleAllyTeam(event)
 	SaveUIState()
 end
 
-function widget:IsAbove(x, y)
-	if not document then return false end
-	local panel = document:GetElementById('wts-panel')
-	if not panel then return false end
-	local vsx, vsy = spGetViewGeometry()
-	local px = panel.absolute_left
-	local py = panel.absolute_top
-	local pw = panel.offset_width
-	local ph = panel.offset_height
-	-- RML is top-down, Spring mouse coords are bottom-up
+local function IsAboveEl(el, x, y)
+	if not el then return false end
+	local _, vsy = spGetViewGeometry()
 	local mouseY = vsy - y
-	return x >= px and x <= px + pw and mouseY >= py and mouseY <= py + ph
+	return x >= el.absolute_left and x <= el.absolute_left + el.offset_width
+		and mouseY >= el.absolute_top and mouseY <= el.absolute_top + el.offset_height
 end
 
-function widget:MouseWheel(up, value)
-	local ctrl = select(2, spGetModKeyState())
-	if not ctrl then return false end
+function widget:IsAbove(x, y)
+	if not document then return false end
+	return IsAboveEl(document:GetElementById('wts-panel'), x, y)
+end
+
+function widget:KeyPress(_, mods)
+	if mods and mods.ctrl then
+		isCtrlDown = true
+	end
+end
+
+function widget:KeyRelease(_)
+	local _, ctrl = Spring.GetModKeyState()
+	isCtrlDown = ctrl
+end
+
+function widget:MouseWheel(up, _)
+	if not isCtrlDown then return false end
 	local mx, my = Spring.GetMouseState()
 	if not widget:IsAbove(mx, my) then return false end
-	if up then
-		fontScale = math_min(fontScale + 0.1, 2.0)
+	if not document then return true end
+
+	local delta = up and 0.1 or -0.1
+	local tableEl  = document:GetElementById('wts-table-area')
+	local graphEl  = document:GetElementById('graph-area')
+	local titleEl  = document:GetElementById('wts-title-bar')
+	local statEl   = document:GetElementById('wts-stat-selector')
+
+	if IsAboveEl(tableEl, mx, my) then
+		fontScale3 = math_max(0.5, math_min(2.0, fontScale3 + delta))
+		if tableEl then tableEl.style['font-size'] = math_floor(12 * fontScale3) .. 'dp' end
+	elseif IsAboveEl(graphEl, mx, my) then
+		fontScale2 = math_max(0.5, math_min(2.0, fontScale2 + delta))
 	else
-		fontScale = math_max(fontScale - 0.1, 0.5)
+		fontScale1 = math_max(0.5, math_min(2.0, fontScale1 + delta))
+		if titleEl then titleEl.style['font-size'] = math_floor(12 * fontScale1) .. 'dp' end
+		if statEl  then statEl.style['font-size']  = math_floor(12 * fontScale1) .. 'dp' end
 	end
-	-- Apply font scale to the panel root element
-	if document then
-		local panel = document:GetElementById('wts-panel')
-		if panel then
-			panel.style['font-size'] = math_floor(12 * fontScale) .. 'dp'
-		end
-	end
-	dataDirty = true
+
 	SaveUIState()
 	return true
 end

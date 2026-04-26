@@ -8,7 +8,7 @@
 <body id="weighted-team-stats-widget">
 	<div id="wts-panel" class="panel" data-model="weighted_team_stats" onmouseup="widget:OnDragEnd(event)">
 		<!-- Title Bar -->
-		<div class="title-bar">
+		<div id="wts-title-bar" class="title-bar">
 			<handle move_target="wts-panel">
 				<div class="title-content">
 					<span class="title-text">Time Weighted Team Stats</span>
@@ -28,7 +28,7 @@
 		</div>
 
 		<!-- Stat Selector Buttons -->
-		<div class="stat-selector" data-if="has_data">
+		<div id="wts-stat-selector" class="stat-selector" data-if="has_data">
 			<div data-for="col : stat_columns" class="stat-btn" data-class-active="col.active" data-attr-data-key="col.key" onclick="widget:SetActiveStat(event)">
 				{{col.label}}
 				<div class="sort-arrow sort-asc" data-if="col.sort_asc"></div>
@@ -49,7 +49,7 @@
 		</div>
 
 		<!-- Collapsible Stats Table -->
-		<div class="table-area" data-if="table_visible &amp;&amp; has_data">
+		<div id="wts-table-area" class="table-area" data-if="table_visible &amp;&amp; has_data">
 			<!-- View Mode Toggle -->
 			<div class="view-toggle">
 				<div class="view-btn" data-class-active="view_mode == 'raw'" data-mode="raw" onclick="widget:SetViewMode(event)">Raw</div>

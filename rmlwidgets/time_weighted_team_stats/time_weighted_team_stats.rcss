@@ -16,6 +16,7 @@ body, div {
 	min-width: 200dp;
 	min-height: 45dp;
 	font-family: Exo 2;
+	font-size: 12dp;
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
@@ -45,7 +46,7 @@ body, div {
 
 .title-text {
 	color: #CCE6FF;
-	font-size: 12dp;
+	font-size: 1em;
 	font-weight: bold;
 }
 
@@ -57,7 +58,7 @@ body, div {
 
 .ctrl-btn {
 	color: #8099B3CC;
-	font-size: 9dp;
+	font-size: 0.75em;
 	cursor: pointer;
 	padding: 2dp 4dp;
 	background-color: #0F1419;
@@ -76,7 +77,7 @@ body, div {
 /* Close Button */
 .close-btn {
 	color: #8099B3CC;
-	font-size: 11dp;
+	font-size: 0.917em;
 	font-weight: bold;
 	cursor: pointer;
 	padding: 0 4dp;
@@ -98,7 +99,7 @@ body, div {
 
 .stat-btn {
 	color: #8099B3CC;
-	font-size: 9dp;
+	font-size: 0.75em;
 	cursor: pointer;
 	padding: 2dp 2dp;
 	flex: 1;
@@ -160,7 +161,7 @@ body, div {
 
 .empty-text {
 	color: #666666;
-	font-size: 11dp;
+	font-size: 0.917em;
 }
 
 /* Table Area */
@@ -180,7 +181,7 @@ body, div {
 
 .view-btn {
 	color: #8099B3CC;
-	font-size: 9dp;
+	font-size: 0.75em;
 	cursor: pointer;
 	padding: 1dp 4dp;
 	flex: 1;
@@ -209,7 +210,7 @@ body, div {
 
 .th-player {
 	color: #8099B3;
-	font-size: 9dp;
+	font-size: 0.75em;
 	min-width: 60dp;
 	flex: 1;
 	padding-left: 8dp;
@@ -217,7 +218,7 @@ body, div {
 
 .th-stat {
 	color: #8099B3;
-	font-size: 9dp;
+	font-size: 0.75em;
 	flex: 1;
 	text-align: right;
 	cursor: pointer;
@@ -234,7 +235,7 @@ body, div {
 
 .th-eff {
 	color: #8099B3;
-	font-size: 9dp;
+	font-size: 0.75em;
 	width: 42dp;
 	flex-shrink: 0;
 	text-align: right;
@@ -243,7 +244,7 @@ body, div {
 
 .th-idx {
 	color: #8099B3;
-	font-size: 9dp;
+	font-size: 0.75em;
 	width: 50dp;
 	flex-shrink: 0;
 	text-align: right;
@@ -283,7 +284,7 @@ body, div {
 
 .player-name {
 	color: #CCCCCC;
-	font-size: 10dp;
+	font-size: 0.833em;
 	min-width: 52dp;
 	flex: 1;
 	overflow: hidden;
@@ -291,7 +292,7 @@ body, div {
 
 .stat-cell {
 	color: #AABBCC;
-	font-size: 9dp;
+	font-size: 0.75em;
 	flex: 1;
 	text-align: right;
 	padding: 0 4dp;
@@ -300,7 +301,7 @@ body, div {
 /* Efficiency */
 .eff-cell {
 	color: #99AABB;
-	font-size: 9dp;
+	font-size: 0.75em;
 	width: 42dp;
 	flex-shrink: 0;
 	text-align: right;
@@ -330,7 +331,7 @@ body, div {
 
 .idx-value {
 	color: #8099B3;
-	font-size: 9dp;
+	font-size: 0.75em;
 	width: 18dp;
 	text-align: right;
 }
