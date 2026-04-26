@@ -517,6 +517,7 @@ local windowFrames = {} -- frame numbers for X-axis
 -- Graph display list
 local graphDisplayList
 local graphMaxVal = 0 -- Y-axis max stored at display-list build time for label rendering
+local graphWindowCount = 0 -- effective window count after trimming trailing sparse windows
 
 -- Number formatting
 local function FormatSI(value)
@@ -952,9 +953,7 @@ local function RebuildGraphDisplayList()
 		return
 	end
 
-	-- Collect teams that have per-window data for the active stat
-	-- Graph focuses on the selected ally team
-	local graphTeams = {} -- { {teamID, color, data[]}, ... }
+	local graphTeams = {}
 	for _, allyInfo in ipairs(cachedAllyTeams) do
 		if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
 			for _, teamID in ipairs(allyInfo.teamIDs) do
@@ -987,22 +986,66 @@ local function RebuildGraphDisplayList()
 		return
 	end
 
-	-- Sort graph teams by cumulative value of the sort key (or active stat)
-	-- Highest cumulative at bottom of stack (drawn first) for visibility
 	for _, team in ipairs(graphTeams) do
 		local total = 0
-		for _, v in ipairs(team.data) do
-			total = total + (v or 0)
-		end
+		for _, v in ipairs(team.data) do total = total + (v or 0) end
 		team.cumulative = total
 	end
-	if sortKey and sortAscending then
-		table.sort(graphTeams, function(a, b) return a.cumulative < b.cumulative end)
+
+	-- When grp mode is on, sort teams so each ally team's players are adjacent in the
+	-- stack — makes it easy to see which team holds the advantage in normalized mode.
+	if groupByAlly and #cachedAllyTeams > 1 and not selectedAllyTeam then
+		local allyGroups = {}
+		for _, allyInfo in ipairs(cachedAllyTeams) do
+			local group = {}
+			for _, team in ipairs(graphTeams) do
+				for _, tid in ipairs(allyInfo.teamIDs) do
+					if team.teamID == tid then group[#group + 1] = team; break end
+				end
+			end
+			if #group > 0 then
+				table.sort(group, function(a, b) return a.cumulative > b.cumulative end)
+				local groupTotal = 0
+				for _, t in ipairs(group) do groupTotal = groupTotal + t.cumulative end
+				allyGroups[#allyGroups + 1] = { teams = group, total = groupTotal }
+			end
+		end
+		table.sort(allyGroups, function(a, b) return a.total > b.total end)
+		graphTeams = {}
+		for _, ag in ipairs(allyGroups) do
+			for _, t in ipairs(ag.teams) do graphTeams[#graphTeams + 1] = t end
+		end
 	else
-		table.sort(graphTeams, function(a, b) return a.cumulative > b.cumulative end)
+		if sortKey and sortAscending then
+			table.sort(graphTeams, function(a, b) return a.cumulative < b.cumulative end)
+		else
+			table.sort(graphTeams, function(a, b) return a.cumulative > b.cumulative end)
+		end
 	end
 
 	local wc = math_min(windowCount, #graphTeams[1].data)
+
+	-- Trim trailing windows whose total is near zero — the engine emits a partial window
+	-- at the current game time that hasn't accumulated stats yet, causing a cliff at the end.
+	if wc > 2 then
+		local sampleEnd = math_max(1, math_floor(wc * 0.8))
+		local avgTotal = 0
+		for w = 1, sampleEnd do
+			local t = 0
+			for _, team in ipairs(graphTeams) do t = t + math_max(team.data[w] or 0, 0) end
+			avgTotal = avgTotal + t
+		end
+		avgTotal = avgTotal / sampleEnd
+		local threshold = avgTotal * 0.3
+		while wc > 2 do
+			local t = 0
+			for _, team in ipairs(graphTeams) do t = t + math_max(team.data[wc] or 0, 0) end
+			if t >= threshold then break end
+			wc = wc - 1
+		end
+	end
+	graphWindowCount = wc
+
 	if wc < 2 then
 		return
 	end
@@ -1010,20 +1053,16 @@ local function RebuildGraphDisplayList()
 
 	graphDisplayList = glCreateList(function()
 		if graphMode == 'overlay' then
-			-- Overlay mode: independent lines per player
 			local maxVal = 0
 			for _, team in ipairs(graphTeams) do
 				for w = 1, wc do
 					maxVal = math_max(maxVal, team.data[w] or 0)
 				end
 			end
-			if maxVal <= 0 then
-				maxVal = 1
-			end
+			if maxVal <= 0 then maxVal = 1 end
 			graphMaxVal = maxVal
 
 			for _, team in ipairs(graphTeams) do
-				-- Filled area
 				glColor(team.r, team.g, team.b, 0.5)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
@@ -1033,8 +1072,6 @@ local function RebuildGraphDisplayList()
 						glVertex(x, y)
 					end
 				end)
-
-				-- Line with full alpha
 				glColor(team.r, team.g, team.b, 1.0)
 				glLineWidth(2)
 				glBeginEnd(GL_LINE_STRIP, function()
@@ -1047,47 +1084,41 @@ local function RebuildGraphDisplayList()
 			end
 
 		elseif graphMode == 'normalized' then
-			-- Normalized mode: stacked area, always fills 100%
+			-- Always use raw values here. The deflated rescaling makes each ally team's
+			-- per-window sum a constant (= their mean window total), so normalizing
+			-- deflated values across teams always produces a perfectly flat boundary
+			-- regardless of actual production. Raw values give correct time-varying shares.
 			graphMaxVal = 1
-			-- Compute per-window totals
 			local windowTotals = {}
 			for w = 1, wc do
 				local total = 0
 				for _, team in ipairs(graphTeams) do
-					total = total + math_max(team.data[w] or 0, 0)
+					local v = team.rawData and team.rawData[w] or team.data[w]
+					total = total + math_max(v or 0, 0)
 				end
 				windowTotals[w] = math_max(total, 1)
 			end
-
-			-- Draw stacked bands bottom to top
 			local baselines = {}
-			for w = 1, wc do
-				baselines[w] = 0
-			end
-
+			for w = 1, wc do baselines[w] = 0 end
 			for _, team in ipairs(graphTeams) do
 				glColor(team.r, team.g, team.b, 0.8)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
 					for w = 1, wc do
 						local x = (w - 1) / wcDivisor
-						local share = (team.data[w] or 0) / windowTotals[w]
+						local v = team.rawData and team.rawData[w] or team.data[w]
+						local share = (v or 0) / windowTotals[w]
 						local bottom = baselines[w]
-						local top = bottom + share
 						glVertex(x, bottom)
-						glVertex(x, top)
+						glVertex(x, bottom + share)
 					end
 				end)
-				-- Update baselines
 				for w = 1, wc do
-					baselines[w] = baselines[w] + (team.data[w] or 0) / windowTotals[w]
+					local v = team.rawData and team.rawData[w] or team.data[w]
+					baselines[w] = baselines[w] + (v or 0) / windowTotals[w]
 				end
 			end
 
 		else -- absolute
-			-- Precompute per-window totals for both raw and deflated data.
-			-- When deflated: bar height = raw total (shows real activity variation),
-			-- player splits = deflated shares (inflation-adjusted contributions).
-			-- When raw: straightforward stacked absolute.
 			local rawWindowTotals = {}
 			local deflWindowTotals = {}
 			local maxTotal = 0
@@ -1107,7 +1138,6 @@ local function RebuildGraphDisplayList()
 
 			local baselines = {}
 			for w = 1, wc do baselines[w] = 0 end
-
 			for _, team in ipairs(graphTeams) do
 				glColor(team.r, team.g, team.b, 0.8)
 				glBeginEnd(GL_TRIANGLE_STRIP, function()
@@ -1338,11 +1368,12 @@ function widget:DrawScreen()
 		glVertex(screenX, screenY + screenH)
 	end)
 
-	-- Draw time labels
+	-- Draw time labels (end time uses trimmed window count so it matches what's drawn)
+	local effectiveWC = graphWindowCount > 0 and graphWindowCount or #windowFrames
 	if windowCount > 0 and #windowFrames > 0 then
 		glColor(0.5, 0.6, 0.7, 0.7)
 		local firstFrame = windowFrames[1]
-		local lastFrame = windowFrames[#windowFrames]
+		local lastFrame = windowFrames[math_min(effectiveWC, #windowFrames)]
 		local startMin = math_floor(firstFrame / 30 / 60)
 		local endMin = math_floor(lastFrame / 30 / 60)
 		glText(startMin .. 'm', screenX + 2, screenY - 12, 10, 'o')
@@ -1350,13 +1381,13 @@ function widget:DrawScreen()
 	end
 
 	-- Mouse crosshair tooltip
-	if windowCount >= 2 then
+	if effectiveWC >= 2 then
 		local mx, my = spGetMouseState()
 		if mx >= screenX and mx <= screenX + screenW and my >= screenY and my <= screenY + screenH then
 			-- Determine which window the mouse is over
 			local relX = (mx - screenX) / screenW
-			local wIdx = math_floor(relX * (windowCount - 1) + 0.5) + 1
-			wIdx = math_max(1, math_min(wIdx, windowCount))
+			local wIdx = math_floor(relX * (effectiveWC - 1) + 0.5) + 1
+			wIdx = math_max(1, math_min(wIdx, effectiveWC))
 
 			-- Draw vertical crosshair line
 			glColor(0.7, 0.8, 0.9, 0.5)
@@ -1378,54 +1409,7 @@ function widget:DrawScreen()
 			if graphMode == 'normalized' then
 				yLabel = string_format('%.0f%%', relY * 100)
 			else
-				-- For absolute/overlay, need the max value to convert back
-				-- Compute max from visible data at this window
-				local maxVal = 0
-				if graphMode == 'overlay' then
-					for _, allyInfo in ipairs(cachedAllyTeams) do
-						if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
-							for _, teamID in ipairs(allyInfo.teamIDs) do
-								local ds
-								if activeStat == 'dmgPerRes' then
-									ds = cachedPerWindowDmgPerRes[teamID]
-								elseif activeStat == 'dmgEff' then
-									ds = cachedPerWindowDmgEff[teamID]
-								elseif graphDeflated then
-									ds = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
-								else
-									ds = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
-								end
-								if ds then
-									for w = 1, windowCount do
-										maxVal = math_max(maxVal, ds[w] or 0)
-									end
-								end
-							end
-						end
-					end
-				else -- absolute stacked
-					for w = 1, windowCount do
-						local total = 0
-						for _, allyInfo in ipairs(cachedAllyTeams) do
-							if not selectedAllyTeam or allyInfo.allyID == selectedAllyTeam then
-								for _, teamID in ipairs(allyInfo.teamIDs) do
-									local ds = activeStat == 'dmgPerRes' and cachedPerWindowDmgPerRes[teamID]
-								or activeStat == 'dmgEff' and cachedPerWindowDmgEff[teamID]
-								or (cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat])
-									if ds then
-										total = total + math_max(ds[w] or 0, 0)
-									end
-								end
-							end
-						end
-						maxVal = math_max(maxVal, total)
-					end
-				end
-				if maxVal > 0 then
-					yLabel = FormatSI(relY * maxVal)
-				else
-					yLabel = '0'
-				end
+				yLabel = graphMaxVal > 0 and FormatSI(relY * graphMaxVal) or '0'
 			end
 			glColor(0.8, 0.9, 1.0, 0.8)
 			glText(yLabel, screenX + 2, my + 2, 9, 'o')
