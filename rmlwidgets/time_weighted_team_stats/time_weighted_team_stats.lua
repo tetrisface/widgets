@@ -33,9 +33,6 @@ local spGetTeamInfo = Spring.GetTeamInfo
 local spGetTeamColor = Spring.GetTeamColor
 local spGetPlayerInfo = Spring.GetPlayerInfo
 local spGetGaiaTeamID = Spring.GetGaiaTeamID
-local spGetSpectatingState = Spring.GetSpectatingState
-local spGetMyTeamID = Spring.GetMyTeamID
-local spGetMyAllyTeamID = Spring.GetMyAllyTeamID
 local spIsGUIHidden = Spring.IsGUIHidden
 local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
@@ -481,9 +478,6 @@ local frameCounter = 0
 local dataDirty = false
 local graphDirty = false
 local panelHeightSet = false
-local isSpectator = false
-local fullView = false
-local myAllyTeamID
 
 -- UI state
 local widgetPosX = 100
@@ -523,7 +517,6 @@ local windowFrames = {} -- frame numbers for X-axis
 -- Graph display list
 local graphDisplayList
 local graphMaxVal = 0 -- Y-axis max stored at display-list build time for label rendering
-local graphAreaX, graphAreaY, graphAreaW, graphAreaH = 0, 0, 0, 0
 
 -- Number formatting
 local function FormatSI(value)
@@ -1154,11 +1147,6 @@ end
 function widget:Initialize()
 	gaiaTeamID = spGetGaiaTeamID()
 
-	local spec, fullV = spGetSpectatingState()
-	isSpectator = spec
-	fullView = fullV
-	myAllyTeamID = spGetMyAllyTeamID()
-
 	LoadPosition()
 	LoadSize()
 	LoadUIState()
@@ -1243,10 +1231,6 @@ function widget:Update()
 end
 
 function widget:PlayerChanged(playerID)
-	local spec, fullV = spGetSpectatingState()
-	isSpectator = spec
-	fullView = fullV
-	myAllyTeamID = spGetMyAllyTeamID()
 	dataDirty = true
 end
 
