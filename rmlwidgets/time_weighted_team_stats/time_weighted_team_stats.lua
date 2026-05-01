@@ -646,8 +646,12 @@ local function RecomputeStats()
 			freshTeams[teamID] = allyID
 			allDeltas[teamID] = StatsEngine.AggregateDeltas(StatsEngine.ComputeDeltas(snapshots), windowAggregation)
 
-			-- Cache team info
+			-- Cache team info, preserving the previously known name if the current lookup returns a fallback
 			local name, r, g, b = GetTeamPlayerInfo(teamID)
+			local prev = prevTeamInfo[teamID]
+			if prev and prev.name and (name == 'Unknown' or name == ('Team ' .. teamID)) then
+				name = prev.name
+			end
 			cachedTeamInfo[teamID] = { name = name, r = r, g = g, b = b }
 
 			-- Cache raw totals from last snapshot
