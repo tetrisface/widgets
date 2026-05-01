@@ -7,7 +7,6 @@ local WIDGET_NAME = 'Time Weighted Team Stats'
 local MODEL_NAME = 'weighted_team_stats'
 local RML_PATH = 'luaui/rmlwidgets/time_weighted_team_stats/time_weighted_team_stats.rml'
 local STATS_UPDATE_FREQUENCY = 60 -- ~2 seconds
-local UI_UPDATE_FREQUENCY = 30 -- ~1 second
 
 function widget:GetInfo()
 	return {
@@ -1278,6 +1277,17 @@ function widget:Update()
 			document:Show()
 		end
 	end
+
+	-- Process dirty flags here so UI responds when paused/post-game (no GameFrame calls)
+	if dataDirty then
+		UpdateRMLuiData()
+		dataDirty = false
+	end
+
+	if graphDirty then
+		RebuildGraphDisplayList()
+		graphDirty = false
+	end
 end
 
 function widget:PlayerChanged(playerID)
@@ -1293,16 +1303,6 @@ function widget:GameFrame()
 			dataDirty = true
 			graphDirty = true
 		end
-	end
-
-	if dataDirty and frameCounter % UI_UPDATE_FREQUENCY == 0 then
-		UpdateRMLuiData()
-		dataDirty = false
-	end
-
-	if graphDirty then
-		RebuildGraphDisplayList()
-		graphDirty = false
 	end
 end
 

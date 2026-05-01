@@ -4,7 +4,7 @@ function widget:GetInfo()
     author = 'tetrisface',
     version = '',
     date = 'feb, 2016',
-    name = 'eco cons',
+    name = 'eco cons (old copy)',
     license = '',
     layer = -99990,
     enabled = true
@@ -254,10 +254,12 @@ function widget:Initialize()
   end
 
   WG['eco_cons'] = {
-    getResponsivenessSpeed = function() return responsivenessSpeed end,
+    getResponsivenessSpeed = function()
+      return responsivenessSpeed
+    end,
     setResponsivenessSpeed = function(value)
       applyResponsivenessSpeed(math.max(0.25, math.min(4, value)))
-    end,
+    end
   }
 end
 
@@ -1589,8 +1591,7 @@ local function Builders(gameFrame)
               not isManualActionCommand and not isBuildingFetchCandidatesOnly and not isMetalLeaking and
                 not isEnergyLeaking and
                 not (commandQueue and nCommandQueue > 0 and
-                  (commandQueue[1].id == CMD.RECLAIM or
-                    (commandQueue[1].id == CMD.REPAIR and gameFrame < 60 * 30) or
+                  (commandQueue[1].id == CMD.RECLAIM or (commandQueue[1].id == CMD.REPAIR and gameFrame < 60 * 30) or
                     commandQueue[1].id < 0 or
                     (commandQueue[2] and commandQueue[2].id < 0)))
              then
@@ -1800,7 +1801,7 @@ function widget:Shutdown()
 end
 
 function widget:GetConfigData()
-  return { responsivenessSpeed = responsivenessSpeed }
+  return {responsivenessSpeed = responsivenessSpeed}
 end
 
 function widget:SetConfigData(data)
