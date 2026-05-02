@@ -148,6 +148,23 @@ end
 -- Persisted settings
 local CONFIG_POSITION = 'RaptorAggroPanel_Position'
 local CONFIG_SCALE = 'RaptorAggroPanel_Scale'
+local SAFE_MARGIN = 30
+
+local function ClampPosition()
+	if not viewSizeX or not viewSizeY or viewSizeX <= 0 or viewSizeY <= 0 then
+		return
+	end
+	local pw = w * panelScale
+	local ph = h * panelScale
+	local maxX = viewSizeX - SAFE_MARGIN
+	local minX = SAFE_MARGIN - pw
+	local maxY = viewSizeY - SAFE_MARGIN
+	local minY = SAFE_MARGIN - ph
+	if x1 > maxX then x1 = maxX end
+	if x1 < minX then x1 = minX end
+	if y1 > maxY then y1 = maxY end
+	if y1 < minY then y1 = minY end
+end
 
 local function LoadConfig()
 	local scaleStr = Spring.GetConfigString(CONFIG_SCALE, '')
@@ -164,6 +181,7 @@ local function LoadConfig()
 		if nx and ny then
 			x1 = math.floor(nx)
 			y1 = math.floor(ny)
+			ClampPosition()
 			updatePanel = true
 		end
 	end
@@ -1104,7 +1122,10 @@ end
 
 function widget:MouseMove(_, _, dx, dy)
 	if isMovingWindow then
-		updatePos(x1 + dx, y1 + dy)
+		x1 = x1 + dx
+		y1 = y1 + dy
+		ClampPosition()
+		updatePanel = true
 	end
 end
 
@@ -1124,6 +1145,7 @@ end
 
 function widget:MouseRelease()
 	if isMovingWindow then
+		ClampPosition()
 		SaveConfig()
 	end
 	isMovingWindow = nil
