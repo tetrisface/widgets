@@ -6,7 +6,9 @@ local widget = widget ---@type Widget
 local WIDGET_NAME = 'Time Weighted Team Stats'
 local MODEL_NAME = 'weighted_team_stats'
 local RML_PATH = 'luaui/rmlwidgets/time_weighted_team_stats/time_weighted_team_stats.rml'
-local STATS_UPDATE_FREQUENCY = 60 -- ~2 seconds
+local STATS_UPDATE_FREQUENCY = 6 -- ~200ms (light recompute: raw deltas only)
+local HEAVY_UPDATE_FREQUENCY = 60 -- ~2s (heavy recompute: shares, deflation, efficiency)
+local LIVE_SAMPLE_FREQUENCY = 6 -- ~200ms (resource integration sampling)
 
 function widget:GetInfo()
 	return {
@@ -37,6 +39,8 @@ local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
 local spGetViewGeometry = Spring.GetViewGeometry
 local spGetMouseState = Spring.GetMouseState
+local spGetTeamResources = Spring.GetTeamResources
+local spGetGameFrame = Spring.GetGameFrame
 
 local glColor = gl.Color
 local glRect = gl.Rect
@@ -126,6 +130,26 @@ function StatsEngine.AggregateDeltas(deltas, factor)
 		end
 		if count > 0 then
 			result[#result + 1] = merged
+		end
+	end
+	return result
+end
+
+--- Build per-window raw clamped deltas without the heavy share/deflation math.
+--- Used by the fast graph-update path when only raw values are needed.
+--- @param allDeltas table<number, table[]> Map of teamID -> deltas array
+--- @return table<number, table<string, number[]>> perWindowRaw
+function StatsEngine.BuildPerWindowRaw(allDeltas)
+	local result = {}
+	for teamID, deltas in pairs(allDeltas) do
+		result[teamID] = {}
+		for _, key in ipairs(StatsEngine.STAT_KEYS) do
+			local arr = {}
+			for w = 1, #deltas do
+				local val = deltas[w][key] or 0
+				arr[w] = val < 0 and 0 or val
+			end
+			result[teamID][key] = arr
 		end
 	end
 	return result
@@ -476,6 +500,16 @@ local frameCounter = 0
 local dataDirty = false
 local graphDirty = false
 local panelHeightSet = false
+local hasLightSinceHeavy = false -- a light update has run since the last heavy recompute
+
+-- Live tracking state (Tier 3): accumulates between snapshots and resets on each new snapshot.
+-- Resource produced/used are integrated from income/expense rates over time;
+-- damage/units come from widget callbacks. Snapshots overwrite this when they arrive.
+local liveCounters = {} -- [teamID][statKey] = accumulated since last snapshot baseline
+local liveBaseline = {} -- [teamID] = { frame = N, metalSent = N, metalReceived = N, energySent = N, energyReceived = N }
+local liveLastSampleFrame = nil -- last gameframe at which we sampled team resources
+local trackedTeamSet = {} -- [teamID] = true for teams visible in cachedAllyTeams
+local gameFrame = 0 -- updated each GameFrame; used by Update for live integration timing
 
 -- UI state
 local widgetPosX = 100
@@ -518,7 +552,9 @@ local windowFrames = {} -- frame numbers for X-axis
 -- Graph display list
 local graphDisplayList
 local graphMaxVal = 0 -- Y-axis max stored at display-list build time for label rendering
-local graphWindowCount = 0 -- effective window count after trimming trailing sparse windows
+local graphWindowCount = 0 -- effective window count after trimming trailing sparse windows (and including live tip if any)
+local graphLiveTipShown = false -- true if the rightmost rendered window is the live tip
+local displayWindowFrames = {} -- windowFrames + optional live-tip frame, used for tooltips/labels
 
 -- Number formatting
 local function FormatSI(value)
@@ -624,8 +660,11 @@ local function UpdateDocumentPosition()
 	end
 end
 
---- Recompute all weighted stats from fresh snapshots.
-local function RecomputeStats()
+--- Recompute stats from fresh snapshots.
+--- @param lightOnly boolean? If true, skip heavy share/deflation/efficiency math
+---                            and only refresh raw deltas, totals, team info, and dmgEff.
+---                            Used by the fast graph-update path between heavy recomputes.
+local function RecomputeStats(lightOnly)
 	local allSnapshots = CollectAllTeamSnapshots()
 
 	local prevAllyTeams = cachedAllyTeams
@@ -663,15 +702,20 @@ local function RecomputeStats()
 
 		cachedAllyTeams[#cachedAllyTeams + 1] = { allyID = allyID, teamIDs = teamIDs }
 
-		local shares, deflated, perWindowShares, perWindowRaw, perWindowDeflated, efficiency =
-			StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
+		if lightOnly then
+			local perWindowRaw = StatsEngine.BuildPerWindowRaw(allDeltas)
+			table.mergeInPlace(cachedPerWindowRaw, perWindowRaw)
+		else
+			local shares, deflated, perWindowShares, perWindowRaw, perWindowDeflated, efficiency =
+				StatsEngine.ComputeWeightedStats(allDeltas, smoothingMode)
 
-		table.mergeInPlace(cachedShares, shares)
-		table.mergeInPlace(cachedEfficiency, efficiency)
-		table.mergeInPlace(cachedDeflated, deflated)
-		table.mergeInPlace(cachedPerWindowShares, perWindowShares)
-		table.mergeInPlace(cachedPerWindowRaw, perWindowRaw)
-		table.mergeInPlace(cachedPerWindowDeflated, perWindowDeflated)
+			table.mergeInPlace(cachedShares, shares)
+			table.mergeInPlace(cachedEfficiency, efficiency)
+			table.mergeInPlace(cachedDeflated, deflated)
+			table.mergeInPlace(cachedPerWindowShares, perWindowShares)
+			table.mergeInPlace(cachedPerWindowRaw, perWindowRaw)
+			table.mergeInPlace(cachedPerWindowDeflated, perWindowDeflated)
+		end
 
 		-- Extract window frames from first team's deltas
 		if #teamIDs > 0 then
@@ -685,8 +729,7 @@ local function RecomputeStats()
 	end
 
 	-- Re-add departed teams so their stats remain visible after they leave.
-	-- cachedShares/cachedRawTotals etc. are per-teamID tables that persist across
-	-- calls, so the data is still there — we just need to keep them in the ally group.
+	-- Per-teamID tables persist across calls — we just need to keep them in the ally group.
 	-- Merge fresh team info (active teams) into prev, so fresh wins and departed fill gaps.
 	table.mergeInPlace(prevTeamInfo, cachedTeamInfo)
 	cachedTeamInfo = prevTeamInfo
@@ -697,7 +740,8 @@ local function RecomputeStats()
 	end
 	for _, prevAllyInfo in ipairs(prevAllyTeams) do
 		for _, teamID in ipairs(prevAllyInfo.teamIDs) do
-			if not freshTeams[teamID] and cachedShares[teamID] then
+			-- Use perWindowRaw as the existence test — populated by both light and heavy paths
+			if not freshTeams[teamID] and cachedPerWindowRaw[teamID] then
 				local allyID = prevAllyInfo.allyID
 				local groupIdx = allyGroupIndex[allyID]
 				if groupIdx then
@@ -711,25 +755,11 @@ local function RecomputeStats()
 		end
 	end
 
-	-- Compute per-window ratio stats from raw and share data.
-	cachedPerWindowDmgPerRes = {}
+	-- dmgEff is cheap and uses only raw data — recompute on both paths.
 	cachedPerWindowDmgEff = {}
 	for _, allyInfo in ipairs(cachedAllyTeams) do
 		for _, teamID in ipairs(allyInfo.teamIDs) do
-			local pw = cachedPerWindowShares[teamID]
 			local pwRaw = cachedPerWindowRaw[teamID]
-			if pw then
-				local dmgShares = pw.damageDealt or {}
-				local metalShares = pw.metalUsed or {}
-				local energyShares = pw.energyUsed or {}
-				local dmgPerRes = {}
-				for w = 1, #dmgShares do
-					local dmg = dmgShares[w] or 0
-					local res = ((metalShares[w] or 0) + (energyShares[w] or 0)) / 2
-					dmgPerRes[w] = res > 0 and (dmg / res) or 0
-				end
-				cachedPerWindowDmgPerRes[teamID] = dmgPerRes
-			end
 			if pwRaw then
 				local rawDealt = pwRaw.damageDealt or {}
 				local rawRecv = pwRaw.damageReceived or {}
@@ -740,6 +770,28 @@ local function RecomputeStats()
 					dmgEff[w] = (dealt > 0 and recv >= 1) and (dealt / recv) or 0
 				end
 				cachedPerWindowDmgEff[teamID] = dmgEff
+			end
+		end
+	end
+
+	-- dmgPerRes depends on shares — only valid after a heavy recompute.
+	if not lightOnly then
+		cachedPerWindowDmgPerRes = {}
+		for _, allyInfo in ipairs(cachedAllyTeams) do
+			for _, teamID in ipairs(allyInfo.teamIDs) do
+				local pw = cachedPerWindowShares[teamID]
+				if pw then
+					local dmgShares = pw.damageDealt or {}
+					local metalShares = pw.metalUsed or {}
+					local energyShares = pw.energyUsed or {}
+					local dmgPerRes = {}
+					for w = 1, #dmgShares do
+						local dmg = dmgShares[w] or 0
+						local res = ((metalShares[w] or 0) + (energyShares[w] or 0)) / 2
+						dmgPerRes[w] = res > 0 and (dmg / res) or 0
+					end
+					cachedPerWindowDmgPerRes[teamID] = dmgPerRes
+				end
 			end
 		end
 	end
@@ -1053,11 +1105,67 @@ local function RebuildGraphDisplayList()
 			wc = wc - 1
 		end
 	end
-	graphWindowCount = wc
-
 	if wc < 2 then
+		graphWindowCount = wc
+		graphLiveTipShown = false
+		displayWindowFrames = windowFrames
 		return
 	end
+
+	-- Append a live tip past the trimmed historical windows when applicable.
+	-- Skipped for deflated mode (no live deflator) and dmgPerRes (depends on shares).
+	graphLiveTipShown = false
+	local liveTipApplies = (activeStat ~= 'dmgPerRes' and not graphDeflated)
+	if liveTipApplies then
+		local windowDurationFrames = windowFrames[wc] and windowFrames[wc - 1]
+			and (windowFrames[wc] - windowFrames[wc - 1]) or 0
+
+		-- All teams reset their baseline together, so any team's baseline frame works.
+		local baselineFrame
+		for _, b in pairs(liveBaseline) do
+			baselineFrame = b.frame
+			break
+		end
+		local liveDurationFrames = baselineFrame and (gameFrame - baselineFrame) or 0
+
+		if windowDurationFrames > 0 and liveDurationFrames > 0 then
+			local tips = {}
+			local hasAnyTip = false
+			for _, team in ipairs(graphTeams) do
+				local tip = ComputeLiveTip(team.teamID, activeStat, windowDurationFrames, liveDurationFrames)
+				tips[team.teamID] = tip
+				if tip and tip > 0 then hasAnyTip = true end
+			end
+			if hasAnyTip then
+				for _, team in ipairs(graphTeams) do
+					local copy = {}
+					for i = 1, wc do copy[i] = team.data[i] end
+					copy[wc + 1] = tips[team.teamID] or 0
+					team.data = copy
+					if team.rawData then
+						local rawCopy = {}
+						for i = 1, wc do rawCopy[i] = team.rawData[i] end
+						rawCopy[wc + 1] = tips[team.teamID] or 0
+						team.rawData = rawCopy
+					end
+				end
+				wc = wc + 1
+				graphLiveTipShown = true
+			end
+		end
+	end
+
+	-- Build display window frames (historical + optional live-tip frame at current time)
+	displayWindowFrames = {}
+	local historicalCount = graphLiveTipShown and (wc - 1) or wc
+	for i = 1, historicalCount do
+		displayWindowFrames[i] = windowFrames[i]
+	end
+	if graphLiveTipShown then
+		displayWindowFrames[wc] = gameFrame
+	end
+
+	graphWindowCount = wc
 	local wcDivisor = wc - 1
 
 	graphDisplayList = glCreateList(function()
@@ -1180,6 +1288,136 @@ local function RebuildGraphDisplayList()
 end
 
 --------------------------------------------------------------------------------
+-- Live tracking (Tier 3): augments graph with sub-snapshot freshness
+--------------------------------------------------------------------------------
+
+local LIVE_STAT_KEYS = {
+	'damageDealt', 'damageReceived',
+	'metalProduced', 'metalUsed', 'metalExcess', 'metalSent', 'metalReceived',
+	'energyProduced', 'energyUsed', 'energyExcess', 'energySent', 'energyReceived',
+	'unitsKilled', 'unitsDied', 'unitsProduced',
+}
+
+--- Reset live counters to zero and snapshot current cumulative resource values as baseline.
+--- Called after each RecomputeStats — historical data now includes everything up to "now",
+--- so live counters track only what happens between this moment and the next snapshot.
+local function ResetLiveBaseline()
+	-- Refresh tracked-team set from cachedAllyTeams so callbacks/sampling stay scoped.
+	trackedTeamSet = {}
+	for _, allyInfo in ipairs(cachedAllyTeams) do
+		for _, teamID in ipairs(allyInfo.teamIDs) do
+			trackedTeamSet[teamID] = true
+		end
+	end
+
+	liveLastSampleFrame = gameFrame
+
+	for teamID in pairs(trackedTeamSet) do
+		local counters = liveCounters[teamID]
+		if not counters then
+			counters = {}
+			liveCounters[teamID] = counters
+		end
+		for _, key in ipairs(LIVE_STAT_KEYS) do
+			counters[key] = 0
+		end
+
+		local _, _, _, _, _, _, mSent, mReceived = spGetTeamResources(teamID, 'metal')
+		local _, _, _, _, _, _, eSent, eReceived = spGetTeamResources(teamID, 'energy')
+		liveBaseline[teamID] = {
+			frame = gameFrame,
+			metalSent = mSent or 0,
+			metalReceived = mReceived or 0,
+			energySent = eSent or 0,
+			energyReceived = eReceived or 0,
+		}
+	end
+
+	-- Drop entries for teams that left the tracked set
+	for teamID in pairs(liveCounters) do
+		if not trackedTeamSet[teamID] then
+			liveCounters[teamID] = nil
+			liveBaseline[teamID] = nil
+		end
+	end
+end
+
+--- Sample current resource rates and integrate them into per-team live counters.
+--- Called periodically from widget:Update.
+local function SampleLiveResources()
+	if not liveLastSampleFrame then
+		liveLastSampleFrame = gameFrame
+		return
+	end
+	local frameDelta = gameFrame - liveLastSampleFrame
+	if frameDelta <= 0 then return end
+	local seconds = frameDelta / 30
+	liveLastSampleFrame = gameFrame
+
+	for teamID in pairs(trackedTeamSet) do
+		local counters = liveCounters[teamID]
+		local baseline = liveBaseline[teamID]
+		if counters and baseline then
+			local mLevel, mStorage, _, mIncome, mExpense, _, mSent, mReceived = spGetTeamResources(teamID, 'metal')
+			if mIncome then
+				counters.metalProduced = counters.metalProduced + mIncome * seconds
+				counters.metalUsed = counters.metalUsed + (mExpense or 0) * seconds
+				if mLevel and mStorage and mLevel >= mStorage * 0.99 and mIncome > (mExpense or 0) then
+					counters.metalExcess = counters.metalExcess + (mIncome - (mExpense or 0)) * seconds
+				end
+				counters.metalSent = (mSent or 0) - baseline.metalSent
+				counters.metalReceived = (mReceived or 0) - baseline.metalReceived
+			end
+
+			local eLevel, eStorage, _, eIncome, eExpense, _, eSent, eReceived = spGetTeamResources(teamID, 'energy')
+			if eIncome then
+				counters.energyProduced = counters.energyProduced + eIncome * seconds
+				counters.energyUsed = counters.energyUsed + (eExpense or 0) * seconds
+				if eLevel and eStorage and eLevel >= eStorage * 0.99 and eIncome > (eExpense or 0) then
+					counters.energyExcess = counters.energyExcess + (eIncome - (eExpense or 0)) * seconds
+				end
+				counters.energySent = (eSent or 0) - baseline.energySent
+				counters.energyReceived = (eReceived or 0) - baseline.energyReceived
+			end
+		end
+	end
+end
+
+--- Compute the live "tip" value for a team's stat, projected to a full window's
+--- equivalent so it's visually comparable to historical per-window bars.
+--- Returns nil for stats with no live source (dmgPerRes, deflated mode handled by caller).
+--- @param teamID number
+--- @param statKey string Stat key (raw stat name, or 'dmgEff')
+--- @param windowDurationFrames number Frames per historical window (for projection scale)
+--- @param liveDurationFrames number Frames since live baseline was reset
+local function ComputeLiveTip(teamID, statKey, windowDurationFrames, liveDurationFrames)
+	local c = liveCounters[teamID]
+	if not c then return nil end
+
+	if statKey == 'dmgPerRes' then return nil end
+
+	if statKey == 'dmgEff' then
+		local dealt = c.damageDealt or 0
+		local recv = c.damageReceived or 0
+		if dealt > 0 and recv >= 1 then return dealt / recv end
+		return nil
+	end
+
+	local val = c[statKey]
+	if not val or val <= 0 then return nil end
+
+	-- Project current accumulator to a full-window equivalent so the tip is
+	-- visually comparable to historical bars. Cap to avoid wild extrapolation
+	-- from very short live intervals at the start of a window.
+	if liveDurationFrames > 0 and windowDurationFrames > 0 then
+		local scale = windowDurationFrames / liveDurationFrames
+		if scale > 20 then scale = 20 end
+		return val * scale
+	end
+	return val
+end
+
+--------------------------------------------------------------------------------
 -- Widget callbacks
 --------------------------------------------------------------------------------
 
@@ -1257,7 +1495,9 @@ function widget:Initialize()
 	end
 
 	-- Force initial data load instead of waiting for first STATS_UPDATE_FREQUENCY
-	RecomputeStats()
+	gameFrame = spGetGameFrame()
+	RecomputeStats(false)
+	ResetLiveBaseline()
 	UpdateRMLuiData()
 
 	return true
@@ -1278,6 +1518,13 @@ function widget:Update()
 		end
 	end
 
+	-- Sample live resources whenever the sim has advanced enough.
+	-- Gating on gameFrame (set in widget:GameFrame) means we naturally pause with the sim.
+	if liveLastSampleFrame and (gameFrame - liveLastSampleFrame) >= LIVE_SAMPLE_FREQUENCY then
+		SampleLiveResources()
+		graphDirty = true
+	end
+
 	-- Process dirty flags here so UI responds when paused/post-game (no GameFrame calls)
 	if dataDirty then
 		UpdateRMLuiData()
@@ -1294,15 +1541,59 @@ function widget:PlayerChanged(playerID)
 	dataDirty = true
 end
 
+function widget:UnitDamaged(_, _, unitTeam, damage, _, _, _, _, _, attackerTeam)
+	if not damage or damage <= 0 then return end
+	if unitTeam and trackedTeamSet[unitTeam] then
+		local c = liveCounters[unitTeam]
+		if c then c.damageReceived = c.damageReceived + damage end
+	end
+	if attackerTeam and trackedTeamSet[attackerTeam] then
+		local c = liveCounters[attackerTeam]
+		if c then c.damageDealt = c.damageDealt + damage end
+	end
+end
+
+function widget:UnitDestroyed(_, _, unitTeam, _, _, attackerTeam)
+	if unitTeam and trackedTeamSet[unitTeam] then
+		local c = liveCounters[unitTeam]
+		if c then c.unitsDied = c.unitsDied + 1 end
+	end
+	if attackerTeam and attackerTeam ~= gaiaTeamID and attackerTeam ~= unitTeam and trackedTeamSet[attackerTeam] then
+		local c = liveCounters[attackerTeam]
+		if c then c.unitsKilled = c.unitsKilled + 1 end
+	end
+end
+
+function widget:UnitFinished(_, _, unitTeam)
+	if unitTeam and trackedTeamSet[unitTeam] then
+		local c = liveCounters[unitTeam]
+		if c then c.unitsProduced = c.unitsProduced + 1 end
+	end
+end
+
 function widget:GameFrame()
 	frameCounter = frameCounter + 1
+	gameFrame = spGetGameFrame()
 
+	-- Light path: refresh raw deltas + graph data ASAP when new snapshots arrive.
 	if frameCounter % STATS_UPDATE_FREQUENCY == 0 then
 		if HasNewSnapshots() then
-			RecomputeStats()
+			RecomputeStats(true)
+			ResetLiveBaseline()
 			dataDirty = true
 			graphDirty = true
+			hasLightSinceHeavy = true
 		end
+	end
+
+	-- Heavy path: refresh shares/deflation/efficiency on a slower cadence,
+	-- only if a light update has happened since the last heavy run.
+	if hasLightSinceHeavy and frameCounter % HEAVY_UPDATE_FREQUENCY == 0 then
+		RecomputeStats(false)
+		ResetLiveBaseline()
+		hasLightSinceHeavy = false
+		dataDirty = true
+		graphDirty = true
 	end
 end
 
@@ -1389,15 +1680,16 @@ function widget:DrawScreen()
 	end)
 
 	-- Draw time labels (end time uses trimmed window count so it matches what's drawn)
-	local effectiveWC = graphWindowCount > 0 and graphWindowCount or #windowFrames
-	if windowCount > 0 and #windowFrames > 0 then
+	local frames = (#displayWindowFrames > 0) and displayWindowFrames or windowFrames
+	local effectiveWC = graphWindowCount > 0 and graphWindowCount or #frames
+	if windowCount > 0 and #frames > 0 then
 		glColor(0.5, 0.6, 0.7, 0.7)
-		local firstFrame = windowFrames[1]
-		local lastFrame = windowFrames[math_min(effectiveWC, #windowFrames)]
+		local firstFrame = frames[1]
+		local lastFrame = frames[math_min(effectiveWC, #frames)]
 		local startMin = math_floor(firstFrame / 30 / 60)
-		local endMin = math_floor(lastFrame / 30 / 60)
+		local endLabel = graphLiveTipShown and 'now' or (math_floor(lastFrame / 30 / 60) .. 'm')
 		glText(startMin .. 'm', screenX + 2, screenY - 12, math_floor(10 * fontScale2), 'o')
-		glText(endMin .. 'm', screenX + screenW - 2, screenY - 12, math_floor(10 * fontScale2), 'or')
+		glText(endLabel, screenX + screenW - 2, screenY - 12, math_floor(10 * fontScale2), 'or')
 	end
 
 	-- Mouse crosshair tooltip
@@ -1435,10 +1727,11 @@ function widget:DrawScreen()
 			glText(yLabel, screenX + 2, my + 2, math_floor(9 * fontScale2), 'o')
 
 			-- Time label at crosshair
-			local frame = windowFrames[wIdx] or 0
+			local isLiveTipColumn = graphLiveTipShown and wIdx == effectiveWC
+			local frame = frames[wIdx] or 0
 			local mins = math_floor(frame / 30 / 60)
 			local secs = math_floor((frame / 30) % 60)
-			local timeStr = string_format('%d:%02d', mins, secs)
+			local timeStr = isLiveTipColumn and 'live' or string_format('%d:%02d', mins, secs)
 
 			-- Gather per-player values at this window
 			local tooltipLines = {} ---@type table[]
@@ -1448,18 +1741,30 @@ function widget:DrawScreen()
 					for _, teamID in ipairs(allyInfo.teamIDs) do
 						local info = cachedTeamInfo[teamID]
 						if info then
-							local dataSource
-							if activeStat == 'dmgPerRes' then
-								dataSource = cachedPerWindowDmgPerRes[teamID]
-							elseif activeStat == 'dmgEff' then
-								dataSource = cachedPerWindowDmgEff[teamID]
-							elseif graphDeflated then
-								dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
+							local val
+							if isLiveTipColumn then
+								-- Compute live tip the same way the graph does (with projection).
+								local windowDurationFrames = windowFrames[graphWindowCount - 1]
+									and windowFrames[graphWindowCount - 2]
+									and (windowFrames[graphWindowCount - 1] - windowFrames[graphWindowCount - 2]) or 0
+								local baselineFrame
+								for _, b in pairs(liveBaseline) do baselineFrame = b.frame; break end
+								local liveDurationFrames = baselineFrame and (gameFrame - baselineFrame) or 0
+								val = ComputeLiveTip(teamID, activeStat, windowDurationFrames, liveDurationFrames)
 							else
-								dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+								local dataSource
+								if activeStat == 'dmgPerRes' then
+									dataSource = cachedPerWindowDmgPerRes[teamID]
+								elseif activeStat == 'dmgEff' then
+									dataSource = cachedPerWindowDmgEff[teamID]
+								elseif graphDeflated then
+									dataSource = cachedPerWindowDeflated[teamID] and cachedPerWindowDeflated[teamID][activeStat]
+								else
+									dataSource = cachedPerWindowRaw[teamID] and cachedPerWindowRaw[teamID][activeStat]
+								end
+								val = dataSource and dataSource[wIdx]
 							end
-							if dataSource and dataSource[wIdx] then
-								local val = dataSource[wIdx]
+							if val then
 								tooltipLines[#tooltipLines + 1] = {
 									name = info.name,
 									value = FormatSI(val),
