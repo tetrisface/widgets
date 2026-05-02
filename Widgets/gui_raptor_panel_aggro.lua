@@ -145,6 +145,35 @@ if not cachedPlayerNames then
 	cachedPlayerNames = {}
 end
 
+-- Persisted settings
+local CONFIG_POSITION = 'RaptorAggroPanel_Position'
+local CONFIG_SCALE = 'RaptorAggroPanel_Scale'
+
+local function LoadConfig()
+	local scaleStr = Spring.GetConfigString(CONFIG_SCALE, '')
+	if scaleStr and scaleStr ~= '' then
+		local s = tonumber(scaleStr)
+		if s and s > 0 then
+			panelScale = s
+		end
+	end
+	local posStr = Spring.GetConfigString(CONFIG_POSITION, '')
+	if posStr and posStr ~= '' then
+		local sx, sy = posStr:match('^(-?[%d%.]+),(-?[%d%.]+)$')
+		local nx, ny = tonumber(sx), tonumber(sy)
+		if nx and ny then
+			x1 = math.floor(nx)
+			y1 = math.floor(ny)
+			updatePanel = true
+		end
+	end
+end
+
+local function SaveConfig()
+	Spring.SetConfigString(CONFIG_POSITION, math.floor(x1) .. ',' .. math.floor(y1))
+	Spring.SetConfigString(CONFIG_SCALE, tostring(panelScale))
+end
+
 local isObject = {}
 for udefID, def in ipairs(UnitDefs) do
 	if def.modCategories['object'] or def.customParams.objectify then
@@ -879,6 +908,7 @@ function widget:Initialize()
 	local y = math.abs(math.floor(viewSizeY - 300)) - (Spring.Utilities.Gametype.IsScavengers() and 257 or 0)
 
 	updatePos(x, y)
+	LoadConfig()
 
 	teamIDs = Spring.GetTeamList()
 	local tempTeamIDs = table.copy(teamIDs)
@@ -917,6 +947,8 @@ function widget:Initialize()
 end
 
 function widget:Shutdown()
+	SaveConfig()
+
 	if hasRaptorEvent then
 		Spring.SendCommands({'luarules HasRaptorEvent 0'})
 	end
@@ -1091,6 +1123,9 @@ function widget:MousePress(x, y)
 end
 
 function widget:MouseRelease()
+	if isMovingWindow then
+		SaveConfig()
+	end
 	isMovingWindow = nil
 end
 
@@ -1157,6 +1192,7 @@ function widget:MouseWheel(up, value)
 
 		viewSizeX, viewSizeY = vsx, vsy
 		updatePanel = true
+		SaveConfig()
 		return true
 	end
 	return false
