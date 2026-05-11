@@ -124,7 +124,12 @@ local function CollectGridLines()
 end
 
 function widget:Initialize()
-	local mapNameLower = string.lower(Game.mapName or '')
+	if not Game.mapName then
+		Spring.Echo('No map name, disabling.')
+		widgetHandler:RemoveWidget(self)
+		return
+	end
+	local mapNameLower = string.lower(Game.mapName)
 	if string.find(mapNameLower, 'full') and string.find(mapNameLower, 'metal') and string.find(mapNameLower, 'plate') then
 		Spring.Echo('Running on Full Metal Plate')
 		Spring.MarkerErasePosition(0, 0, 0)

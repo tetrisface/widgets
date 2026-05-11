@@ -2257,6 +2257,158 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 	end
 end
 
+-- Per-builder pipeline of pending mex upgrades. One reclaim is issued at a time;
+-- the matching build (and the next reclaim) are issued from widget:UnitDestroyed
+-- once the engine has freed the spot.
+local scavMexBuilderQueues = {} -- builderId -> {pending = {{mexId, scavDefId, x, y, z, facing}, ...}}
+local scavMexReclaimingMex = {} -- mexId -> {builderId, scavDefId, x, y, z, facing}
+
+local function startNextScavMexUpgrade(builderId)
+	local q = scavMexBuilderQueues[builderId]
+	if not q or #q.pending == 0 then
+		scavMexBuilderQueues[builderId] = nil
+		return
+	end
+	if not Spring.ValidUnitID(builderId) then
+		scavMexBuilderQueues[builderId] = nil
+		return
+	end
+	local entry = table.remove(q.pending, 1)
+	scavMexReclaimingMex[entry.mexId] = {
+		builderId = builderId,
+		scavDefId = entry.scavDefId,
+		x = entry.x,
+		y = entry.y,
+		z = entry.z,
+		facing = entry.facing
+	}
+	Spring.GiveOrderToUnit(builderId, CMD.RECLAIM, {entry.mexId}, {'shift'})
+end
+
+local function handleScavMexUpgrade(selectedUnitIds)
+	if not selectedUnitIds or #selectedUnitIds == 0 then
+		return
+	end
+
+	local scavBuilders = {}
+	for i = 1, #selectedUnitIds do
+		local uid = selectedUnitIds[i]
+		local def = unitDef(uid)
+		if def and def.isBuilder and def.name:sub(-5) == '_scav' then
+			local x, _, z = Spring.GetUnitPosition(uid)
+			if x then
+				scavBuilders[#scavBuilders + 1] = {
+					id = uid,
+					x = x,
+					z = z,
+					buildOptions = def.buildOptions,
+					assigned = {}
+				}
+			end
+		end
+	end
+	if #scavBuilders == 0 then
+		return
+	end
+
+	local myUnits = Spring.GetTeamUnits(myTeamId)
+	for i = 1, #myUnits do
+		local uid = myUnits[i]
+		local def = unitDef(uid)
+		if def and def.extractsMetal and def.extractsMetal > 0 and def.name:sub(-5) ~= '_scav' then
+			local scavDef = UnitDefNames[def.name .. '_scav']
+			if scavDef then
+				local mx, my, mz = Spring.GetUnitPosition(uid)
+				if mx then
+					local facing = Spring.GetUnitBuildFacing(uid) or 0
+					local candidates = {scavDef.id}
+					local replacements = replacementMap[scavDef.id]
+					if replacements then
+						for k = 1, #replacements do
+							candidates[#candidates + 1] = replacements[k]
+						end
+					end
+					local best, bestDist, bestDefId = nil, math.huge, nil
+					for j = 1, #scavBuilders do
+						local b = scavBuilders[j]
+						local builderDefId = nil
+						for c = 1, #candidates do
+							if table.contains(b.buildOptions, candidates[c]) then
+								builderDefId = candidates[c]
+								break
+							end
+						end
+						if builderDefId then
+							local dx = b.x - mx
+							local dz = b.z - mz
+							local d = dx * dx + dz * dz
+							if d < bestDist then
+								bestDist = d
+								best = b
+								bestDefId = builderDefId
+							end
+						end
+					end
+					if best then
+						best.assigned[#best.assigned + 1] = {
+							dist = bestDist,
+							mexId = uid,
+							x = mx,
+							y = my,
+							z = mz,
+							facing = facing,
+							scavDefId = bestDefId
+						}
+					end
+				end
+			end
+		end
+	end
+
+	for i = 1, #scavBuilders do
+		local b = scavBuilders[i]
+		if #b.assigned > 0 then
+			table.sort(b.assigned, function(p, q) return p.dist < q.dist end)
+			-- Drop any in-flight tracking for this builder from a previous Alt+F
+			for mexId, entry in pairs(scavMexReclaimingMex) do
+				if entry.builderId == b.id then
+					scavMexReclaimingMex[mexId] = nil
+				end
+			end
+			local pending = {}
+			for j = 1, #b.assigned do
+				local a = b.assigned[j]
+				pending[#pending + 1] = {
+					mexId = a.mexId,
+					scavDefId = a.scavDefId,
+					x = a.x,
+					y = a.y,
+					z = a.z,
+					facing = a.facing
+				}
+			end
+			scavMexBuilderQueues[b.id] = {pending = pending}
+			Spring.GiveOrderToUnit(b.id, CMD.STOP, {}, {})
+			startNextScavMexUpgrade(b.id)
+		end
+	end
+end
+
+function widget:UnitDestroyed(unitID, _, _)
+	local entry = scavMexReclaimingMex[unitID]
+	if not entry then
+		return
+	end
+	scavMexReclaimingMex[unitID] = nil
+	local builderId = entry.builderId
+	if not Spring.ValidUnitID(builderId) then
+		scavMexBuilderQueues[builderId] = nil
+		return
+	end
+	Spring.GiveOrderToUnit(builderId, -entry.scavDefId, {entry.x, entry.y, entry.z, entry.facing}, {'shift'})
+	startNextScavMexUpgrade(builderId)
+end
+
 function widget:KeyPress(key, mods, isRepeat)
 	if isRepeat then
 		return false
@@ -2281,6 +2433,8 @@ function widget:KeyPress(key, mods, isRepeat)
 		buildQueueDistributeTransform(selectedUnitIds, mods)
 	elseif (key == KEYSYMS.F) and mods['shift'] and mods['alt'] and not mods['ctrl'] then
 		buildQueueOptimalPooling(selectedUnitIds, mods)
+	elseif key == KEYSYMS.F and mods['alt'] and not mods['shift'] and not mods['ctrl'] then
+		handleScavMexUpgrade(selectedUnitIds)
 	elseif key == KEYSYMS.Q and mods['shift'] and not mods['alt'] and not mods['ctrl'] then
 		buildQueueRedundancy(selectedUnitIds, mods)
 	elseif key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then

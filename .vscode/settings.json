@@ -20,5 +20,8 @@
   },
   "Lua.completion.autoRequire": false,
   "stylua.targetReleaseVersion": "latest",
-  "editor.formatOnSaveMode": "modificationsIfAvailable"
+  "editor.formatOnSaveMode": "modificationsIfAvailable",
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  }
 }

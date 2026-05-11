@@ -145,53 +145,6 @@ if not cachedPlayerNames then
 	cachedPlayerNames = {}
 end
 
--- Persisted settings
-local CONFIG_POSITION = 'RaptorAggroPanel_Position'
-local CONFIG_SCALE = 'RaptorAggroPanel_Scale'
-local SAFE_MARGIN = 30
-
-local function ClampPosition()
-	if not viewSizeX or not viewSizeY or viewSizeX <= 0 or viewSizeY <= 0 then
-		return
-	end
-	local pw = w * panelScale
-	local ph = h * panelScale
-	local maxX = viewSizeX - SAFE_MARGIN
-	local minX = SAFE_MARGIN - pw
-	local maxY = viewSizeY - SAFE_MARGIN
-	local minY = SAFE_MARGIN - ph
-	if x1 > maxX then x1 = maxX end
-	if x1 < minX then x1 = minX end
-	if y1 > maxY then y1 = maxY end
-	if y1 < minY then y1 = minY end
-end
-
-local function LoadConfig()
-	local scaleStr = Spring.GetConfigString(CONFIG_SCALE, '')
-	if scaleStr and scaleStr ~= '' then
-		local s = tonumber(scaleStr)
-		if s and s > 0 then
-			panelScale = s
-		end
-	end
-	local posStr = Spring.GetConfigString(CONFIG_POSITION, '')
-	if posStr and posStr ~= '' then
-		local sx, sy = posStr:match('^(-?[%d%.]+),(-?[%d%.]+)$')
-		local nx, ny = tonumber(sx), tonumber(sy)
-		if nx and ny then
-			x1 = math.floor(nx)
-			y1 = math.floor(ny)
-			ClampPosition()
-			updatePanel = true
-		end
-	end
-end
-
-local function SaveConfig()
-	Spring.SetConfigString(CONFIG_POSITION, math.floor(x1) .. ',' .. math.floor(y1))
-	Spring.SetConfigString(CONFIG_SCALE, tostring(panelScale))
-end
-
 local isObject = {}
 for udefID, def in ipairs(UnitDefs) do
 	if def.modCategories['object'] or def.customParams.objectify then
@@ -926,7 +879,6 @@ function widget:Initialize()
 	local y = math.abs(math.floor(viewSizeY - 300)) - (Spring.Utilities.Gametype.IsScavengers() and 257 or 0)
 
 	updatePos(x, y)
-	LoadConfig()
 
 	teamIDs = Spring.GetTeamList()
 	local tempTeamIDs = table.copy(teamIDs)
@@ -965,8 +917,6 @@ function widget:Initialize()
 end
 
 function widget:Shutdown()
-	SaveConfig()
-
 	if hasRaptorEvent then
 		Spring.SendCommands({'luarules HasRaptorEvent 0'})
 	end
@@ -1122,10 +1072,7 @@ end
 
 function widget:MouseMove(_, _, dx, dy)
 	if isMovingWindow then
-		x1 = x1 + dx
-		y1 = y1 + dy
-		ClampPosition()
-		updatePanel = true
+		updatePos(x1 + dx, y1 + dy)
 	end
 end
 
@@ -1144,10 +1091,6 @@ function widget:MousePress(x, y)
 end
 
 function widget:MouseRelease()
-	if isMovingWindow then
-		ClampPosition()
-		SaveConfig()
-	end
 	isMovingWindow = nil
 end
 
@@ -1214,7 +1157,6 @@ function widget:MouseWheel(up, value)
 
 		viewSizeX, viewSizeY = vsx, vsy
 		updatePanel = true
-		SaveConfig()
 		return true
 	end
 	return false
