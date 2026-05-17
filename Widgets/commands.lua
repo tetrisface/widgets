@@ -209,6 +209,118 @@ local function unitDef(unitId)
 	return UnitDefs[Spring.GetUnitDefID(unitId)]
 end
 
+local DUMP_UNITDEF_CHUNK = 3500
+local DUMP_UNITDEF_MAX_DEPTH = 6
+
+local function echoDumpChunks(text)
+	local len = #text
+	for i = 1, len, DUMP_UNITDEF_CHUNK do
+		Spring.Echo(string.sub(text, i, i + DUMP_UNITDEF_CHUNK - 1))
+	end
+end
+
+local function echoUnitDefTable(def, depth, seen)
+	depth = depth or 0
+	seen = seen or {}
+	if depth > DUMP_UNITDEF_MAX_DEPTH then
+		Spring.Echo(string.rep('  ', depth) .. '...')
+		return
+	end
+
+	if type(def) ~= 'table' then
+		Spring.Echo(string.rep('  ', depth) .. tostring(def))
+		return
+	end
+
+	if seen[def] then
+		Spring.Echo(string.rep('  ', depth) .. '{cycle}')
+		return
+	end
+	seen[def] = true
+
+	local keys = {}
+	for k in pairs(def) do
+		keys[#keys + 1] = k
+	end
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+
+	for _, k in ipairs(keys) do
+		local v = def[k]
+		local indent = string.rep('  ', depth)
+		local keyStr = type(k) == 'string' and k or ('[' .. tostring(k) .. ']')
+		if type(v) == 'table' then
+			Spring.Echo(indent .. keyStr .. ' = {')
+			echoUnitDefTable(v, depth + 1, seen)
+			Spring.Echo(indent .. '}')
+		else
+			Spring.Echo(indent .. keyStr .. ' = ' .. tostring(v))
+		end
+	end
+end
+
+local function echoUnitDefWidgetFields(def)
+	local custom = def.customParams or {}
+	local weaponCount = def.weapons and #def.weapons or 0
+	Spring.Echo('dumpunitdef: widget-relevant fields')
+	Spring.Echo(string.format('  name=%s id=%s', tostring(def.name), tostring(def.id)))
+	Spring.Echo(string.format('  translatedHumanName=%s', tostring(def.translatedHumanName)))
+	Spring.Echo(string.format('  humanName=%s', tostring(def.humanName)))
+	Spring.Echo(string.format('  metalCost=%s energyCost=%s cost=%s', tostring(def.metalCost), tostring(def.energyCost), tostring(def.cost)))
+	Spring.Echo(string.format('  metalMake=%s makesMetal=%s', tostring(def.metalMake), tostring(def.makesMetal)))
+	Spring.Echo(string.format('  energyUpkeep=%s energyMake=%s', tostring(def.energyUpkeep), tostring(def.energyMake)))
+	Spring.Echo(string.format('  isBuilding=%s weapons=%s', tostring(def.isBuilding), tostring(weaponCount)))
+	Spring.Echo(string.format('  energyconv_capacity=%s energyconv_efficiency=%s', tostring(custom.energyconv_capacity), tostring(custom.energyconv_efficiency)))
+end
+
+local function dumpUnitDefToLog(def)
+	echoUnitDefWidgetFields(def)
+
+	if Spring.Debug and Spring.Debug.TableEcho then
+		Spring.Debug.TableEcho(def)
+		return
+	end
+
+	local ok, serialized = pcall(table.tostring, def)
+	if ok and serialized and #serialized > 0 then
+		echoDumpChunks(serialized)
+		return
+	end
+
+	Spring.Echo('dumpunitdef: (fallback field dump)')
+	echoUnitDefTable(def, 0, {})
+end
+
+local function dumpSelectedUnitDef(selectedUnitIds)
+	if not selectedUnitIds or #selectedUnitIds == 0 then
+		Spring.Echo('dumpunitdef: no units selected')
+		return
+	end
+
+	local unitId = selectedUnitIds[1]
+	local def = unitDef(unitId)
+	if not def then
+		Spring.Echo('dumpunitdef: no unitdef for unit ' .. tostring(unitId))
+		return
+	end
+
+	if #selectedUnitIds > 1 then
+		Spring.Echo('dumpunitdef: dumping first of ' .. #selectedUnitIds .. ' selected')
+	end
+
+	Spring.Echo(
+		string.format(
+			'dumpunitdef: unitId=%s defId=%s name=%s (%s)',
+			unitId,
+			def.id,
+			def.name,
+			def.translatedHumanName or ''
+		)
+	)
+	dumpUnitDefToLog(def)
+end
+
 local function reverseQueue(unit_id)
 	local queue = Spring.GetCommandQueue(unit_id, 10000)
 	Spring.GiveOrderToUnit(unit_id, CMD.INSERT, {-1, CMD.STOP, CMD.OPT_SHIFT}, {'alt'})
@@ -2407,6 +2519,16 @@ function widget:UnitDestroyed(unitID, _, _)
 	end
 	Spring.GiveOrderToUnit(builderId, -entry.scavDefId, {entry.x, entry.y, entry.z, entry.facing}, {'shift'})
 	startNextScavMexUpgrade(builderId)
+end
+
+function widget:TextCommand(command)
+	if command == 'dumpunitdef' then
+		local ok, err = pcall(dumpSelectedUnitDef, Spring.GetSelectedUnits())
+		if not ok then
+			Spring.Echo('dumpunitdef error: ' .. tostring(err))
+		end
+		return true
+	end
 end
 
 function widget:KeyPress(key, mods, isRepeat)

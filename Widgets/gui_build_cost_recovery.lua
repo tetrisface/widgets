@@ -190,11 +190,57 @@ local textBufferCount = 0
 local textDistance = 15
 local startTimer = Spring.GetTimer()
 
-local unitDefHumanNamesIds = {}
-for i = 1, #UnitDefs do
-  local udef = UnitDefs[i]
-  unitDefHumanNamesIds[udef.name] = udef.id
+local unitDefNameIds = {}
+local unitDefLabelMatchers = {}
+
+local function addUnitDefLabel(label, id)
+  if not label or label == '' then
+    return
+  end
+  unitDefLabelMatchers[#unitDefLabelMatchers + 1] = { label = label, id = id }
 end
+
+local function buildUnitDefLookups()
+  unitDefNameIds = {}
+  unitDefLabelMatchers = {}
+  for i = 1, #UnitDefs do
+    local udef = UnitDefs[i]
+    unitDefNameIds[udef.name] = udef.id
+    addUnitDefLabel(udef.name, udef.id)
+    if udef.translatedHumanName then
+      addUnitDefLabel(udef.translatedHumanName, udef.id)
+    end
+    if udef.humanName and udef.humanName ~= udef.translatedHumanName then
+      addUnitDefLabel(udef.humanName, udef.id)
+    end
+  end
+  table.sort(unitDefLabelMatchers, function(a, b)
+    return #a.label > #b.label
+  end)
+end
+
+local function resolveUnitDefFromTooltip(tooltip)
+  if not tooltip or tooltip == '' then
+    return nil
+  end
+
+  local tipLower = tooltip:lower()
+  for i = 1, #unitDefLabelMatchers do
+    local entry = unitDefLabelMatchers[i]
+    local label = entry.label
+    if #label > 0 and tipLower:sub(1, #label) == label:lower() then
+      local nextCh = tooltip:sub(#label + 1, #label + 1)
+      if nextCh == '' or nextCh == '\n' or nextCh == ' ' or nextCh == '-' or nextCh == ':' then
+        return entry.id
+      end
+    end
+  end
+
+  local name = split(tooltip, "[%s-]+")[1]
+  return name and unitDefNameIds[name]
+end
+
+buildUnitDefLookups()
 
 ------------------------------------------------------------------------------------
 -- Functions
@@ -273,6 +319,7 @@ function widget:Initialize()
   if not WG["background_opacity_custom"] then
     WG["background_opacity_custom"] = { 0, 0, 0, 0.5 }
   end
+  buildUnitDefLookups()
   init()
 end
 
@@ -334,21 +381,14 @@ function widget:Update(deltaTime)
 
   timeCounter = 0
   local text = Spring.GetCurrentTooltip()
-  local i, j = string.find(text, 'Pos')
-  if i == 1 then
-    uDefID = nil
-  else
-    local name = split(text, "[%s-]+")[1]
-    -- log(table.tostring(name))
-    -- log('unit? "' .. name .. '"')
-    uDefID = unitDefHumanNamesIds[name]
+  uDefID = nil
+  if text and text ~= '' then
+    local i = string.find(text, 'Pos', 1, true)
+    if i ~= 1 then
+      uDefID = resolveUnitDefFromTooltip(text)
+    end
   end
-  -- log("'" .. text .. "'")
 
-  -- log(table.tostring(unitDefHumanNamesIds))
-  -- log('uDefID ' ..tostring(uDefID))
-  --  local expMorphPat = "UnitDefID (%d+)\n"
-  --  uDefID = tonumber(text:match(expMorphPat)) or nil
   local OrderID = WG["cmdID"] or nil
   if OrderID and OrderID < 0 then
     OrderID = math.abs(OrderID)
@@ -382,7 +422,8 @@ function widget:DrawScreen()
   cY = vsy + (yOffset * .5)
   cYstart = cY
 
-  local text = yellow .. uDef.humanName .. white .. "    " .. uDef.name
+  local displayName = uDef.translatedHumanName or uDef.humanName or uDef.name
+  local text = yellow .. displayName .. white .. "    " .. uDef.name
 
   local cornersize = 0
   glColor(0, 0, 0, 0.73)
@@ -403,13 +444,15 @@ function widget:DrawScreen()
   textBufferCount = 0
 
   -- if (WG.energyConversion) then
-  local makerTemp = uDef.customParams
+  local makerTemp = uDef.customParams or {}
+  local energyConvCapacity = makerTemp.energyconv_capacity and tonumber(makerTemp.energyconv_capacity)
+  local metalOut = (uDef.makesMetal or 0) + (uDef.metalMake or 0)
   local curAvgEffi = spGetTeamRulesParam(myTeamID(), 'mmAvgEffi')
   local avgCR = 0.015
   if (makerTemp.energyconv_efficiency) then
     DrawText(orange .. "Metal maker properties", '')
     DrawText("M-             .:", makerTemp.energyconv_efficiency)
-    DrawText("M-Effi.:", format('%.2f m / 1000 e', makerTemp.energyconv_capacity * 1000))
+    DrawText("M-Effi.:", format('%.2f m / 1000 e', tonumber(makerTemp.energyconv_capacity) * 1000))
     cY = cY - fontSize
   end
 
@@ -460,12 +503,15 @@ function widget:DrawScreen()
 
   local unitFilter = not (#uDef.weapons > 0) or uDef.isBuilding or pplants[uDef.name]
   if unitFilter then
-    if ((uDef.extractsMetal and uDef.extractsMetal > 0) or (uDef.metalMake and uDef.metalMake > 0) or (energyUpkeepMake and energyUpkeepMake > 0) or (uDef.tidalGenerator and uDef.tidalGenerator > 0) or (uDef.windGenerator and uDef.windGenerator > 0)) then
+    if ((uDef.extractsMetal and uDef.extractsMetal > 0) or metalOut > 0 or (energyConvCapacity and energyConvCapacity > 0) or (energyUpkeepMake and energyUpkeepMake > 0) or (uDef.tidalGenerator and uDef.tidalGenerator > 0) or (uDef.windGenerator and uDef.windGenerator > 0)) then
       -- Powerplants
       --DrawText(metalColor .. "Total metal generation efficiency", '')
       DrawText(white .. "Estimated time of recovering 100% of cost:", '')
 
-      local totalMOut = uDef.metalMake or 0
+      local totalMOut = metalOut
+      if energyConvCapacity and energyConvCapacity > 0 then
+        totalMOut = energyConvCapacity
+      end
       local totalEOut = energyUpkeepMake
 
       if (uDef.extractsMetal and uDef.extractsMetal > 0) then
@@ -499,8 +545,15 @@ function widget:DrawScreen()
       end
 
       -- Calculate total metal equivalent output (metal directly + energy converted to metal)
-      local totalMetalEquivalentOut = totalMOut + (totalEOut * avgCR)
-      local totalMetalEquivalentOutCurrent = totalMOut + (totalEOut * curAvgEffi)
+      local totalMetalEquivalentOut
+      local totalMetalEquivalentOutCurrent
+      if energyConvCapacity and energyConvCapacity > 0 then
+        totalMetalEquivalentOut = totalMOut
+        totalMetalEquivalentOutCurrent = totalMOut
+      else
+        totalMetalEquivalentOut = totalMOut + (totalEOut * avgCR)
+        totalMetalEquivalentOutCurrent = totalMOut + (totalEOut * curAvgEffi)
+      end
       
       if (totalMetalEquivalentOut > 0) then
         local avgSec = (uDef.metalCost + uDef.energyCost * avgCR) / totalMetalEquivalentOut
