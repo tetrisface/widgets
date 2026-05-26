@@ -119,15 +119,15 @@ local function isReclaimerUnit(def)
 			def.buildOptions and def.buildOptions[1] ~= nil
 		)
 
-	if isReclaimer then
-	  log(
-	    def.translatedHumanName,
-	    'reclaimer',
-	    isReclaimer,
-	    not (def.buildOptions and #def.buildOptions > 0),
-	    def.buildOptions
-	  )
-	end
+	-- if isReclaimer then
+	--   log(
+	--     def.translatedHumanName,
+	--     'reclaimer',
+	--     isReclaimer,
+	--     not (def.buildOptions and #def.buildOptions > 0),
+	--     def.buildOptions
+	--   )
+	-- end
 	return isReclaimer
 end
 
