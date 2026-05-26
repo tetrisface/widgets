@@ -153,8 +153,10 @@ local buildColor = '\255\128\255\128'  -- Light green
 local simSpeed = Game.gameSpeed
 
 local max = math.max
+local min = math.min
 local floor = math.floor
 local ceil = math.ceil
+local sqrt = math.sqrt
 local format = string.format
 local char = string.char
 
@@ -166,7 +168,13 @@ local spGetPlayerInfo = Spring.GetPlayerInfo
 local spGetTeamColor = Spring.GetTeamColor
 
 local spGetMouseState = Spring.GetMouseState
+local GetGroundInfo = Spring.GetGroundInfo
+local TraceScreenRay = Spring.TraceScreenRay
 
+local METAL_MAP_SQUARE_SIZE = 16
+local MEX_RADIUS = Game.extractorRadius
+local MAP_SIZE_X_SCALED = Game.mapSizeX / METAL_MAP_SQUARE_SIZE
+local MAP_SIZE_Z_SCALED = Game.mapSizeZ / METAL_MAP_SQUARE_SIZE
 
 local tidalStrength = Game.tidal
 local windMin = Game.windMin
@@ -238,6 +246,158 @@ local function resolveUnitDefFromTooltip(tooltip)
 
   local name = split(tooltip, "[%s-]+")[1]
   return name and unitDefNameIds[name]
+end
+
+local function stripTooltipColors(text)
+  if not text then
+    return ''
+  end
+  return text:gsub('\255[%d][%d][%d]', '')
+end
+
+local function parseMetalExtractorFromTooltip(tooltip)
+  if not tooltip or tooltip == '' then
+    return nil
+  end
+
+  local plain = stripTooltipColors(tooltip)
+  local inc = tonumber(plain:match('Metal:?[^%d%-+]*([%+%-]?[%d%.]+)'))
+  local out = tonumber(plain:match('Energy:?[^%d]*%-([%d%.]+)'))
+    or tonumber(plain:match('Energy:?[^%d%-+]*([%d%.]+)'))
+
+  if not inc and not out then
+    local legacy = { inc = 0, out = 0, passed = false }
+    string.gsub(plain, 'Metal: ....%d+%.%d', function(x)
+      string.gsub(x, '%d+%.%d', function(y)
+        legacy.inc = tonumber(y)
+      end)
+    end)
+    string.gsub(plain, 'Energy: ....%d+%.%d+..../....%-%d+%.%d+', function(x)
+      string.gsub(x, '%d+%.%d', function(y)
+        if legacy.passed then
+          legacy.out = tonumber(y)
+        else
+          legacy.passed = true
+        end
+      end)
+    end)
+    inc = legacy.inc > 0 and legacy.inc or nil
+    out = legacy.out > 0 and legacy.out or out
+  end
+
+  if inc or out then
+    return { inc = inc or 0, out = out or 0 }
+  end
+end
+
+local function integrateMetalExtraction(uDef, x, z)
+  local extractsMetal = uDef.extractsMetal
+  if not extractsMetal or extractsMetal <= 0 then
+    return 0
+  end
+
+  local centerX
+  if uDef.xsize % 4 == 2 then
+    centerX = (floor(x / METAL_MAP_SQUARE_SIZE) + 0.5) * METAL_MAP_SQUARE_SIZE
+  else
+    centerX = floor(x / METAL_MAP_SQUARE_SIZE + 0.5) * METAL_MAP_SQUARE_SIZE
+  end
+
+  local centerZ
+  if uDef.zsize % 4 == 2 then
+    centerZ = (floor(z / METAL_MAP_SQUARE_SIZE) + 0.5) * METAL_MAP_SQUARE_SIZE
+  else
+    centerZ = floor(z / METAL_MAP_SQUARE_SIZE + 0.5) * METAL_MAP_SQUARE_SIZE
+  end
+
+  local startX = floor((centerX - MEX_RADIUS) / METAL_MAP_SQUARE_SIZE)
+  local startZ = floor((centerZ - MEX_RADIUS) / METAL_MAP_SQUARE_SIZE)
+  local endX = floor((centerX + MEX_RADIUS) / METAL_MAP_SQUARE_SIZE)
+  local endZ = floor((centerZ + MEX_RADIUS) / METAL_MAP_SQUARE_SIZE)
+  startX, startZ = max(startX, 0), max(startZ, 0)
+  endX, endZ = min(endX, MAP_SIZE_X_SCALED - 1), min(endZ, MAP_SIZE_Z_SCALED - 1)
+
+  local result = 0
+  for i = startX, endX do
+    for j = startZ, endZ do
+      local cx = (i + 0.5) * METAL_MAP_SQUARE_SIZE
+      local cz = (j + 0.5) * METAL_MAP_SQUARE_SIZE
+      local dx, dz = cx - centerX, cz - centerZ
+      if sqrt(dx * dx + dz * dz) < MEX_RADIUS then
+        local _, metal, metal2 = GetGroundInfo(cx, cz)
+        if type(metal) == 'string' then
+          metal = metal2
+        end
+        result = result + (metal or 0)
+      end
+    end
+  end
+
+  return result * extractsMetal
+end
+
+local function getMexPlacementCoords()
+  local mx, my = spGetMouseState()
+  local _, coords = TraceScreenRay(mx, my, true, true)
+  if not coords then
+    return nil
+  end
+
+  local x, z = coords[1], coords[3]
+  local rsf = WG and WG['resource_spot_finder']
+  if rsf and rsf.GetClosestMexSpot and not rsf.isMetalMap then
+    local pos = rsf.GetClosestMexSpot(x, z)
+    if pos then
+      return pos.x, pos.z
+    end
+    return nil
+  end
+
+  return x, z
+end
+
+local function getAverageMexOutput(uDef)
+  local rsf = WG and WG['resource_spot_finder']
+  if not rsf or not rsf.metalSpotsList or #rsf.metalSpotsList == 0 then
+    return nil
+  end
+
+  local sum = 0
+  for i = 1, #rsf.metalSpotsList do
+    local spot = rsf.metalSpotsList[i]
+    sum = sum + integrateMetalExtraction(uDef, spot.x, spot.z)
+  end
+  return sum / #rsf.metalSpotsList
+end
+
+local function getMetalExtractorOutput(uDef)
+  local parsed = parseMetalExtractorFromTooltip(spGetTooltip())
+  if parsed and parsed.inc > 0 then
+    return parsed.inc, parsed.out
+  end
+
+  local x, z = getMexPlacementCoords()
+  if x then
+    local output = integrateMetalExtraction(uDef, x, z)
+    if output > 0 then
+      local energyOut = 0
+      if uDef.energyUpkeep and uDef.energyUpkeep > 0 then
+        energyOut = uDef.energyUpkeep
+      end
+      return output, energyOut
+    end
+  end
+
+  local avgOutput = getAverageMexOutput(uDef)
+  if avgOutput and avgOutput > 0 then
+    local energyOut = 0
+    if uDef.energyUpkeep and uDef.energyUpkeep > 0 then
+      energyOut = uDef.energyUpkeep
+    end
+    return avgOutput, energyOut
+  end
+
+  return 0, (uDef.energyUpkeep and uDef.energyUpkeep > 0) and uDef.energyUpkeep or 0
 end
 
 buildUnitDefLookups()
@@ -446,14 +606,31 @@ function widget:DrawScreen()
   -- if (WG.energyConversion) then
   local makerTemp = uDef.customParams or {}
   local energyConvCapacity = makerTemp.energyconv_capacity and tonumber(makerTemp.energyconv_capacity)
+  local energyConvEfficiency = makerTemp.energyconv_efficiency and tonumber(makerTemp.energyconv_efficiency)
   local metalOut = (uDef.makesMetal or 0) + (uDef.metalMake or 0)
   local curAvgEffi = spGetTeamRulesParam(myTeamID(), 'mmAvgEffi')
   local avgCR = 0.015
-  if (makerTemp.energyconv_efficiency) then
+  if energyConvEfficiency then
     DrawText(orange .. "Metal maker properties", '')
-    DrawText("M-             .:", makerTemp.energyconv_efficiency)
-    DrawText("M-Effi.:", format('%.2f m / 1000 e', tonumber(makerTemp.energyconv_capacity) * 1000))
+    DrawText("M-CR:", format('%.5f', energyConvEfficiency))
+    DrawText("M-Effi.:", format('%.2f m / 1000 e', energyConvEfficiency * 1000))
+    if energyConvCapacity then
+      DrawText("M-Out:", format('%.2f m/s', energyConvCapacity * energyConvEfficiency))
+    end
     cY = cY - fontSize
+  end
+
+  local mexMetalInc, mexEnergyOut = 0, 0
+  if uDef.extractsMetal and uDef.extractsMetal > 0 then
+    mexMetalInc, mexEnergyOut = getMetalExtractorOutput(uDef)
+    if mexMetalInc > 0 then
+      DrawText(orange .. "Metal extractor properties", '')
+      DrawText("M-Out:", format('%.2f m/s', mexMetalInc))
+      if mexEnergyOut > 0 then
+        DrawText("E-Upkeep:", format('%.0f e/s', mexEnergyOut))
+      end
+      cY = cY - fontSize
+    end
   end
 
   -- local metalMake, metalUse, energyMake, energyUse = GetUnitResources(unitID)
@@ -509,19 +686,14 @@ function widget:DrawScreen()
       DrawText(white .. "Estimated time of recovering 100% of cost:", '')
 
       local totalMOut = metalOut
-      if energyConvCapacity and energyConvCapacity > 0 then
-        totalMOut = energyConvCapacity
+      if energyConvCapacity and energyConvCapacity > 0 and energyConvEfficiency then
+        totalMOut = metalOut + energyConvCapacity * energyConvEfficiency
       end
       local totalEOut = energyUpkeepMake
 
-      if (uDef.extractsMetal and uDef.extractsMetal > 0) then
-        local metalExtractor = { inc = 0, out = 0, passed = false }
-        local tooltip = spGetTooltip()
-        string.gsub(tooltip, 'Metal: ....%d+%.%d', function(x) string.gsub(x, "%d+%.%d", function(y) metalExtractor.inc = tonumber(y); end) end)
-        string.gsub(tooltip, 'Energy: ....%d+%.%d+..../....-%d+%.%d+', function(x) string.gsub(x, "%d+%.%d", function(y) if (metalExtractor.passed) then metalExtractor.out = tonumber(y); else metalExtractor.passed = true end; end) end)
-
-        totalMOut = totalMOut + metalExtractor.inc
-        totalEOut = totalEOut - metalExtractor.out
+      if mexMetalInc > 0 then
+        totalMOut = totalMOut + mexMetalInc
+        totalEOut = totalEOut - mexEnergyOut
       end
 
       if (uDef.tidalGenerator > 0 and tidalStrength > 0) then

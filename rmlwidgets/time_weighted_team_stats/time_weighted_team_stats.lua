@@ -38,6 +38,9 @@ local spSetConfigString = Spring.SetConfigString
 local spGetViewGeometry = Spring.GetViewGeometry
 local spGetMouseState = Spring.GetMouseState
 
+local isRaptors = Spring.Utilities.Gametype.IsRaptors()
+local isScavengers = Spring.Utilities.Gametype.IsScavengers()
+
 local glColor = gl.Color
 local glRect = gl.Rect
 local glBeginEnd = gl.BeginEnd
@@ -585,8 +588,12 @@ local function LoadUIState()
 	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', '')
 	sortKey = savedSortKey ~= '' and savedSortKey or nil
 	sortAscending = spGetConfigString('WeightedTeamStats_SortAscending', 'false') == 'true'
-	local savedAllyTeam = tonumber(spGetConfigString('WeightedTeamStats_SelectedAllyTeam', ''))
+	local savedAllyTeamRaw = spGetConfigString('WeightedTeamStats_SelectedAllyTeam', '')
+	local savedAllyTeam = tonumber(savedAllyTeamRaw)
 	selectedAllyTeam = savedAllyTeam
+	if savedAllyTeamRaw == '' and (isRaptors or isScavengers) then
+		selectedAllyTeam = 0 -- Team 1 (players)
+	end
 end
 
 local function SaveUIState()

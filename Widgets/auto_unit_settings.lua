@@ -106,20 +106,28 @@ end
 
 local function isReclaimerUnit(def)
 	local isReclaimer =
-		(def.canResurrect or def.canReclaim) and
-		not (def.name:match '^armcom.*' or def.name:match '^corcom.*' or def.name:match '^legcom.*' or def.name == 'armthor' or
-			(def.customParams and def.customParams.iscommander)) and
-		not (def.buildOptions and def.buildOptions[1] ~= nil)
+		(def.canResurrect or def.canReclaim) 
+		and not (
+			def.name:match '^armcom.*' 
+			or def.name:match '^corcom.*' 
+			or def.name:match '^legcom.*' 
+			or def.translatedHumanName:match 'Construction.*'
+			or def.translatedHumanName:find 'Construction Turret'
+			or def.name == 'armthor' 
+			or (def.customParams and def.customParams.iscommander)) 
+		and not (
+			def.buildOptions and def.buildOptions[1] ~= nil
+		)
 
-	-- if isReclaimer then
-	--   log(
-	--     def.translatedHumanName,
-	--     'reclaimer',
-	--     isReclaimer,
-	--     not (def.buildOptions and #def.buildOptions > 0),
-	--     def.buildOptions
-	--   )
-	-- end
+	if isReclaimer then
+	  log(
+	    def.translatedHumanName,
+	    'reclaimer',
+	    isReclaimer,
+	    not (def.buildOptions and #def.buildOptions > 0),
+	    def.buildOptions
+	  )
+	end
 	return isReclaimer
 end
 
