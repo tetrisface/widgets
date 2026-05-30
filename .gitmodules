@@ -1,0 +1,4 @@
+[submodule "rmlwidgets/time_weighted_team_stats"]
+	path = rmlwidgets/time_weighted_team_stats
+	url = git@github-tetrisface:tetrisface/time_weighted_team_stats.git
+	branch = main
