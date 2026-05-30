@@ -481,18 +481,31 @@ local graphDirty = false
 local panelHeightSet = false
 
 -- UI state
-local widgetPosX = 100
-local widgetPosY = 100
-local widgetWidth = nil
-local widgetHeight = nil
+local DEFAULT_VIEW_WIDTH = 2560
+local DEFAULT_VIEW_HEIGHT = 1440
+local DEFAULT_WIDGET_X = 2082
+local DEFAULT_WIDGET_Y = 338
+local DEFAULT_WIDGET_WIDTH = 476
+local DEFAULT_WIDGET_HEIGHT = 599
+local DEFAULT_RIGHT_MARGIN = DEFAULT_VIEW_WIDTH - DEFAULT_WIDGET_X - DEFAULT_WIDGET_WIDTH
+local VIEWPORT_MARGIN = 8
+local TITLE_BAR_HEIGHT = 25
+local MIN_REACHABLE_HEADER_WIDTH = 120
+local MIN_WIDGET_WIDTH = 200
+local MIN_WIDGET_HEIGHT = 45
+
+local widgetPosX = DEFAULT_WIDGET_X
+local widgetPosY = DEFAULT_WIDGET_Y
+local widgetWidth = DEFAULT_WIDGET_WIDTH
+local widgetHeight = DEFAULT_WIDGET_HEIGHT
 local tableVisible = true
 local graphVisible = true
 local viewMode = 'raw' -- 'raw' | 'share' | 'time_weighted'
-local activeStat = 'damageDealt'
-local graphMode = 'absolute' -- 'absolute' | 'normalized' | 'overlay'
-local graphDeflated = false
+local activeStat = 'metalProduced'
+local graphMode = 'normalized' -- 'absolute' | 'normalized' | 'overlay'
+local graphDeflated = true
 local smoothingMode = 'laplace' -- always laplace
-local sortKey = nil -- nil = sort by contribution index, or a stat key string
+local sortKey = 'metalProduced' -- nil = sort by contribution index, or a stat key string
 local sortAscending = false
 local groupByAlly = true
 local selectedAllyTeam = nil -- nil = all ally teams shown, or a specific allyTeamID
@@ -502,6 +515,8 @@ local fontScale3 = 1.0  -- table columns and cells
 local isCtrlDown = false
 local windowAggregation = 8 -- merge N engine snapshots into one window
 local lastUIHiddenState = false
+local loadedPositionFromConfig = false
+local loadedSizeFromConfig = false
 
 -- Cached computation results
 local cachedShares = {}
@@ -541,15 +556,57 @@ local function FormatSI(value)
 end
 
 -- Position persistence
+local function ParseConfigPair(value)
+	if not value or value == '' then
+		return nil, nil
+	end
+
+	local a, b = value:match('^%s*(%-?%d+)%s*,%s*(%-?%d+)%s*$')
+	if not a or not b then
+		return nil, nil
+	end
+
+	return tonumber(a), tonumber(b)
+end
+
+local function GetDefaultLayout()
+	local viewWidth, viewHeight = spGetViewGeometry()
+	viewWidth = math_max(1, viewWidth or DEFAULT_VIEW_WIDTH)
+	viewHeight = math_max(1, viewHeight or DEFAULT_VIEW_HEIGHT)
+
+	local scale = math_min(viewWidth / DEFAULT_VIEW_WIDTH, viewHeight / DEFAULT_VIEW_HEIGHT, 1)
+	local maxWidth = math_max(1, viewWidth - VIEWPORT_MARGIN * 2)
+	local maxHeight = math_max(1, viewHeight - VIEWPORT_MARGIN * 2)
+	local minWidth = math_min(MIN_WIDGET_WIDTH, maxWidth)
+	local minHeight = math_min(MIN_WIDGET_HEIGHT, maxHeight)
+	local width = math_floor(DEFAULT_WIDGET_WIDTH * scale + 0.5)
+	local height = math_floor(DEFAULT_WIDGET_HEIGHT * scale + 0.5)
+
+	width = math_min(math_max(width, minWidth), maxWidth)
+	height = math_min(math_max(height, minHeight), maxHeight)
+
+	local rightMargin = math_floor(DEFAULT_RIGHT_MARGIN * scale + 0.5)
+	local x = viewWidth - width - rightMargin
+	local y = math_floor(DEFAULT_WIDGET_Y * (viewHeight / DEFAULT_VIEW_HEIGHT) + 0.5)
+
+	return x, y, width, height
+end
+
 local function LoadPosition()
 	local configString = spGetConfigString('WeightedTeamStats_Position', '')
 	if configString and configString ~= '' then
-		local x, y = configString:match('^(%d+),(%d+)$')
+		local x, y = ParseConfigPair(configString)
 		if x and y then
 			widgetPosX = tonumber(x)
 			widgetPosY = tonumber(y)
+			loadedPositionFromConfig = true
+			return
 		end
 	end
+
+	local x, y = GetDefaultLayout()
+	widgetPosX = x
+	widgetPosY = y
 end
 
 local function SavePosition()
@@ -559,12 +616,18 @@ end
 local function LoadSize()
 	local s = spGetConfigString('WeightedTeamStats_Size', '')
 	if s and s ~= '' then
-		local w, h = s:match('^(%d+),(%d+)$')
-		if w and h then
+		local w, h = ParseConfigPair(s)
+		if w and h and w > 0 and h > 0 then
 			widgetWidth = tonumber(w)
 			widgetHeight = tonumber(h)
+			loadedSizeFromConfig = true
+			return
 		end
 	end
+
+	local _, _, w, h = GetDefaultLayout()
+	widgetWidth = w
+	widgetHeight = h
 end
 
 local function SaveSize()
@@ -573,11 +636,75 @@ local function SaveSize()
 	end
 end
 
+local function Clamp(value, minValue, maxValue)
+	if value < minValue then
+		return minValue, true
+	end
+	if value > maxValue then
+		return maxValue, true
+	end
+	return value, false
+end
+
+local function ApplyLayoutDefaultsAndRecovery()
+	local viewWidth, viewHeight = spGetViewGeometry()
+	viewWidth = math_max(1, viewWidth or DEFAULT_VIEW_WIDTH)
+	viewHeight = math_max(1, viewHeight or DEFAULT_VIEW_HEIGHT)
+
+	local sizeChanged = false
+	local _, defaultY, defaultWidth, defaultHeight = GetDefaultLayout()
+
+	if not widgetWidth or widgetWidth <= 0 then
+		widgetWidth = defaultWidth
+		sizeChanged = true
+	end
+	if not widgetHeight or widgetHeight <= 0 then
+		widgetHeight = defaultHeight
+		sizeChanged = true
+	end
+
+	local correctedWidth
+	widgetWidth, correctedWidth = Clamp(widgetWidth, MIN_WIDGET_WIDTH, math.huge)
+	sizeChanged = sizeChanged or correctedWidth
+
+	local correctedHeight
+	widgetHeight, correctedHeight = Clamp(widgetHeight, MIN_WIDGET_HEIGHT, math.huge)
+	sizeChanged = sizeChanged or correctedHeight
+
+	if not loadedPositionFromConfig then
+		local scale = math_min(viewWidth / DEFAULT_VIEW_WIDTH, viewHeight / DEFAULT_VIEW_HEIGHT, 1)
+		local rightMargin = math_floor(DEFAULT_RIGHT_MARGIN * scale + 0.5)
+		widgetPosX = viewWidth - widgetWidth - rightMargin
+		widgetPosY = defaultY
+	end
+
+	local positionChanged = false
+	local reachableHeaderWidth = math_min(MIN_REACHABLE_HEADER_WIDTH, math_max(1, viewWidth - VIEWPORT_MARGIN * 2))
+	local minX = VIEWPORT_MARGIN
+	local maxX = math_max(minX, viewWidth - VIEWPORT_MARGIN - reachableHeaderWidth)
+	local maxY = math_max(VIEWPORT_MARGIN, viewHeight - VIEWPORT_MARGIN - TITLE_BAR_HEIGHT)
+
+	local correctedX
+	widgetPosX, correctedX = Clamp(widgetPosX, minX, maxX)
+	positionChanged = positionChanged or correctedX
+
+	local correctedY
+	widgetPosY, correctedY = Clamp(widgetPosY, VIEWPORT_MARGIN, maxY)
+	positionChanged = positionChanged or correctedY
+
+	if loadedPositionFromConfig and positionChanged then
+		SavePosition()
+	end
+	if loadedSizeFromConfig and sizeChanged then
+		SaveSize()
+	end
+end
+
 local function LoadUIState()
 	viewMode = spGetConfigString('WeightedTeamStats_ViewMode', 'raw')
-	activeStat = spGetConfigString('WeightedTeamStats_ActiveStat', 'damageDealt')
-	graphMode = spGetConfigString('WeightedTeamStats_GraphMode', 'absolute')
-	graphDeflated = spGetConfigString('WeightedTeamStats_GraphDeflated', 'false') == 'true'
+	activeStat = spGetConfigString('WeightedTeamStats_ActiveStat', 'metalProduced')
+	graphMode = spGetConfigString('WeightedTeamStats_GraphMode', 'normalized')
+	graphDeflated = spGetConfigString('WeightedTeamStats_GraphDeflated', 'true') == 'true'
 	tableVisible = spGetConfigString('WeightedTeamStats_TableVisible', 'true') == 'true'
 	graphVisible = spGetConfigString('WeightedTeamStats_GraphVisible', 'true') == 'true'
 	windowAggregation = tonumber(spGetConfigString('WeightedTeamStats_WindowAggregation', '8')) or 8
@@ -585,7 +712,7 @@ local function LoadUIState()
 	fontScale1 = tonumber(spGetConfigString('WeightedTeamStats_FontScale1', '1.0')) or 1.0
 	fontScale2 = tonumber(spGetConfigString('WeightedTeamStats_FontScale2', '1.0')) or 1.0
 	fontScale3 = tonumber(spGetConfigString('WeightedTeamStats_FontScale3', '1.0')) or 1.0
-	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', '')
+	local savedSortKey = spGetConfigString('WeightedTeamStats_SortKey', 'metalProduced')
 	sortKey = savedSortKey ~= '' and savedSortKey or nil
 	sortAscending = spGetConfigString('WeightedTeamStats_SortAscending', 'false') == 'true'
 	local savedAllyTeamRaw = spGetConfigString('WeightedTeamStats_SelectedAllyTeam', '')
@@ -618,7 +745,7 @@ local function UpdateDocumentPosition()
 	if document then
 		local panel = document:GetElementById('wts-panel')
 		if panel then
-				panel.style.left = widgetPosX .. 'px'
+			panel.style.left = widgetPosX .. 'px'
 			panel.style.top = widgetPosY .. 'px'
 			if widgetWidth then
 				panel.style.width = widgetWidth .. 'px'
@@ -1195,6 +1322,7 @@ function widget:Initialize()
 
 	LoadPosition()
 	LoadSize()
+	ApplyLayoutDefaultsAndRecovery()
 	LoadUIState()
 
 	widget.rmlContext = RmlUi.GetContext('shared')

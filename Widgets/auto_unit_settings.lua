@@ -104,10 +104,23 @@ local function isT3AirAide(def)
 	return def.name:find 't3airaide'
 end
 
+local explicitReclaimerUnitNames = {
+	overcom = true,
+	overcom_scav = true
+}
+
 local function isReclaimerUnit(def)
+	if explicitReclaimerUnitNames[def.name] then
+		return true
+	end
+
+	local hasReclaimerCapability = def.canResurrect or def.canReclaim
+	if not hasReclaimerCapability then
+		return false
+	end
+
 	local isReclaimer =
-		(def.canResurrect or def.canReclaim) 
-		and not (
+		not (
 			def.name:match '^armcom.*' 
 			or def.name:match '^corcom.*' 
 			or def.name:match '^legcom.*' 
