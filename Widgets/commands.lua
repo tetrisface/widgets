@@ -623,6 +623,19 @@ local function getBuildCommandsOnly(commands)
 	return buildCommands
 end
 
+local function toOrderArrayCommand(command)
+	if not command then
+		return nil
+	end
+
+	local commandId = command[1] or command.id
+	if not commandId then
+		return nil
+	end
+
+	return {commandId, command[2] or command.params or {}, command[3] or command.options or {}}
+end
+
 -- Generate signature from all build command positions
 local function generateBuildOrderSignature(commands)
 	local positions = {}
@@ -2353,18 +2366,28 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 
 		-- Apply new command queue to builder
 		if #newCommands > 0 then
-			-- Stop current commands and give new ones
-			Spring.GiveOrderToUnit(targetBuilder.id, CMD.STOP, {}, {})
-
-			-- Limit to max commands to avoid overwhelming the unit
-			local maxNCommands = 500
-			if #newCommands > maxNCommands then
-				for k = #newCommands, maxNCommands + 1, -1 do
-					newCommands[k] = nil
+			local orderArray = {}
+			for _, command in ipairs(newCommands) do
+				local order = toOrderArrayCommand(command)
+				if order then
+					table.insert(orderArray, order)
 				end
 			end
 
-			Spring.GiveOrderArrayToUnit(targetBuilder.id, newCommands)
+			if #orderArray > 0 then
+				-- Stop current commands and give new ones
+				Spring.GiveOrderToUnit(targetBuilder.id, CMD.STOP, {}, {})
+
+				-- Limit to max commands to avoid overwhelming the unit
+				local maxNCommands = 500
+				if #orderArray > maxNCommands then
+					for k = #orderArray, maxNCommands + 1, -1 do
+						orderArray[k] = nil
+					end
+				end
+
+				Spring.GiveOrderArrayToUnit(targetBuilder.id, orderArray)
+			end
 		end
 	end
 end
