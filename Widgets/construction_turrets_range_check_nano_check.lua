@@ -116,6 +116,21 @@ local new_orders = {} -- stack of {uid = {cmdArr},...} to be processed
 local radius_cache = LRUCache:new(10) -- LRU cache to reduce the number of calls for model radius
 -- !SECTION Settings and other variables
 
+local function get_unit_def(unitID)
+    local unitDefID = Spring.GetUnitDefID(unitID)
+    if not unitDefID then
+        return nil
+    end
+    return UnitDefs[unitDefID]
+end
+
+local function get_unit_def_by_name(name)
+    if UnitDefNames and UnitDefNames[name] then
+        return UnitDefNames[name]
+    end
+    return UnitDefs[name]
+end
+
 local function check_turret_range(uID)
     local x, y, z = Spring.GetUnitPosition(uID)
     local build_distance = Spring.GetUnitEffectiveBuildRange(uID, nil) -- Same as UnitDef.buildDistance; Not ambigous
@@ -170,7 +185,7 @@ function widget:Initialize()
     is_play = Spring.GetSpectatingState()
     -- pre-check set
     for name, _ in pairs(TURRETS) do
-        local ud = UnitDefs[name]
+        local ud = get_unit_def_by_name(name)
         if not ud or ud.buildDistance == nil then
             Spring.Echo('Error: ' .. name .. ' has no buildDistance')
             TURRETS[name] = nil
@@ -221,9 +236,12 @@ function widget:SelectionChanged(selectedUnits)
         return
     end
     current_towers = {}
+    if not selectedUnits then
+        return
+    end
     for _, unitID in ipairs(selectedUnits) do
-        local unitDefID = Spring.GetUnitDefID(unitID)
-        if TURRETS[UnitDefs[unitDefID].name] then
+        local unitDef = get_unit_def(unitID)
+        if unitDef and TURRETS[unitDef.name] then
             table.insert(current_towers, unitID)
         end
     end
