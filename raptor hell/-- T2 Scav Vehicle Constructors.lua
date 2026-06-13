@@ -1,6 +1,5 @@
 --T2 Scav Veh Con Waves
 
-local unitDefs = UnitDefs or {}
 local spring = Spring
 local targetUnits = {
 	'armacv_scav',
@@ -27,7 +26,7 @@ local function customSquadParams()
 	local prefix = isRaptors and 'raptor' or 'scav'
 
 	return {
-		[prefix .. 'customsquad'] = true,
+		[prefix .. 'customsquad'] = '1',
 		[prefix .. 'squadunitsamount'] = 1,
 		[prefix .. 'squadminanger'] = 45,
 		[prefix .. 'squadmaxanger'] = 1000,
@@ -36,20 +35,38 @@ local function customSquadParams()
 		[prefix .. 'squadbehavior'] = 'healer',
 		[prefix .. 'squadbehaviordistance'] = 500,
 		[prefix .. 'squadbehaviorchance'] = 1,
+		[prefix .. 'squadsurface'] = 'land',
 	}
 end
 
 local customParams = customSquadParams()
 
-for _, unitName in ipairs(targetUnits) do
-	local unitDef = unitDefs[unitName]
-
-	if unitDef then
-		unitDef.maxthisunit = scaledCount(1)
-		unitDef.customparams = unitDef.customparams or {}
-
-		for key, value in pairs(customParams) do
-			unitDef.customparams[key] = value
+local function isTargetUnit(unitName)
+	for _, targetUnitName in ipairs(targetUnits) do
+		if unitName == targetUnitName then
+			return true
 		end
+	end
+	return false
+end
+
+local function applyConstructorWaveParams(unitDef)
+	unitDef.maxthisunit = scaledCount(1)
+	unitDef.customparams = unitDef.customparams or {}
+
+	for key, value in pairs(customParams) do
+		unitDef.customparams[key] = value
+	end
+end
+
+local oldUnitDef_Post = UnitDef_Post
+
+function UnitDef_Post(unitName, unitDef)
+	if oldUnitDef_Post and oldUnitDef_Post ~= UnitDef_Post then
+		oldUnitDef_Post(unitName, unitDef)
+	end
+
+	if unitDef and isTargetUnit(unitName) then
+		applyConstructorWaveParams(unitDef)
 	end
 end

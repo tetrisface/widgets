@@ -16,7 +16,7 @@
   "luahelper.format.extra_sep_at_table_end": true,
   "luahelper.format.tab_width": 2,
   "[lua]": {
-    "editor.defaultFormatter": "trixnz.vscode-lua"
+    "editor.defaultFormatter": "JohnnyMorganz.stylua"
   },
   "Lua.completion.autoRequire": false,
   "stylua.targetReleaseVersion": "latest",
