@@ -1,416 +1,387 @@
 -- BioPrinter, T4 Converter and buildoption inserts
 -- Authos: Waffles_II
-local unitDefs, tableMerge,bioprinter =
-	UnitDefs or {},
-	table.merge,
-	'grenadier',
-	'overseer',
-	'spitter',
-	'slinger',
-	'birdangler',
-	'regurgitator',
-	'birdofprey',
-	'overcom',
-	'bioprinter'
+local unitDefs, tableMerge, bioprinter =
+	UnitDefs or {}, table.merge, 'grenadier', 'overseer', 'spitter', 'slinger', 'birdangler', 'regurgitator', 'birdofprey', 'overcom', 'bioprinter'
 
+unitDefs.grenadier = tableMerge(unitDefs['raptorartillery'], {
+	name = 'Grenadier',
+	energycost = 33500,
+	metalcost = 1800,
+	health = 3200,
+	unitname = 'grenadier',
+	customparams = {
+		i18n_en_humanname = 'Grenadier Beetle',
+		i18n_en_tooltip = 'Grenadier Beetle',
+	},
+	weapondefs = {
+		goolauncher = {
+			accuracy = 280,
+			reloadtime = 7,
+			range = 1350,
+			impulsefactor = 2.4,
+			intensity = 28,
+		},
+	},
+})
 
-unitDefs.grenadier = tableMerge(
-	unitDefs['raptorartillery'],
-	{
-		name='Grenadier',
-		energycost = 33500,
-		metalcost = 1800,
-		health = 3200,
-		unitname = "grenadier",
-		customparams = {
-			i18n_en_humanname = 'Grenadier Beetle',
-			i18n_en_tooltip = 'Grenadier Beetle',
-		},
-		weapondefs = {
-			goolauncher = {
-				accuracy = 280,
-				reloadtime = 7,
-				range = 1350,
-				impulsefactor = 2.4,
-				intensity = 28,
-			}
-		},
-	}
-)
-
-unitDefs.spitter = tableMerge(
-	unitDefs['raptor_turret_basic_t2_v1'],
-	{
-		name='Spitter',
-		energycost = 19000,
-		metalcost = 870,
-		health = 2230,
-		buildtime = 19000,
-		reclaimable = true,
-		canrepeat = true,
-		unitname = "spitter",
-		builddistance = 0,
-		workertime = 0,
-		customparams = {
-			i18n_en_humanname = 'Spitter',
-			i18n_en_tooltip = 'Launches AoE Projectiles',
-		},
-		weapondefs = {
-			weapon = {
-				reloadtime = 2.1,
-				areaofeffect = 192,
-				range = 850,
-				name = "GOOLAUNCHER",
-				sprayangle = 512,
-				damage = {
-					default = 680,
-				},
+unitDefs.spitter = tableMerge(unitDefs['raptor_turret_basic_t2_v1'], {
+	name = 'Spitter',
+	energycost = 19000,
+	metalcost = 870,
+	health = 2230,
+	buildtime = 19000,
+	reclaimable = true,
+	canrepeat = true,
+	unitname = 'spitter',
+	builddistance = 0,
+	workertime = 0,
+	customparams = {
+		i18n_en_humanname = 'Spitter',
+		i18n_en_tooltip = 'Launches AoE Projectiles',
+	},
+	weapondefs = {
+		weapon = {
+			reloadtime = 2.1,
+			areaofeffect = 192,
+			range = 850,
+			name = 'GOOLAUNCHER',
+			sprayangle = 512,
+			damage = {
+				default = 680,
 			},
 		},
-	}
-)
+	},
+})
 
-unitDefs.slinger = tableMerge(
-	unitDefs['raptor_turret_basic_t3_v1'],
-	{
-		name='Slinger',
-		energycost = 49000,
-		metalcost = 3700,
-		health = 4230,
-		buildtime = 47000,
-		reclaimable = true,
-		canrepeat = true,
-		unitname = "slinger",
-		builddistance = 0,
-		workertime = 0,
-		customparams = {
-			i18n_en_humanname = 'Slinger',
-			i18n_en_tooltip = 'Launches big Projectiles over greater distance',
-		},
-		weapondefs = {
-			weapon = {
-				accuracy = 468,
-				reloadtime = 9,
-				areaofeffect = 128,
-				range = 1850,
-				name = "GOOLAUNCHER",
-				sprayangle = 1024,
-				damage = {
-					default = 380,
-					shields = 320,
-				},
+unitDefs.slinger = tableMerge(unitDefs['raptor_turret_basic_t3_v1'], {
+	name = 'Slinger',
+	energycost = 49000,
+	metalcost = 3700,
+	health = 4230,
+	buildtime = 47000,
+	reclaimable = true,
+	canrepeat = true,
+	unitname = 'slinger',
+	builddistance = 0,
+	workertime = 0,
+	customparams = {
+		i18n_en_humanname = 'Slinger',
+		i18n_en_tooltip = 'Launches big Projectiles over greater distance',
+	},
+	weapondefs = {
+		weapon = {
+			accuracy = 468,
+			reloadtime = 9,
+			areaofeffect = 128,
+			range = 1850,
+			name = 'GOOLAUNCHER',
+			sprayangle = 1024,
+			damage = {
+				default = 380,
+				shields = 320,
 			},
 		},
-	}
-)
+	},
+})
 
-unitDefs.birdangler = tableMerge(
-	unitDefs['raptor_turret_antiair_t3_v1'],
-	{
-		name='Bird Angler',
-		energycost = 85000,
-		metalcost = 3300,
-		health = 3230,
-		buildtime = 23000,
-		reclaimable = true,
-		canrepeat = true,
-		unitname = "birdangler",
-		builddistance = 0,
-		workertime = 0,
-		customparams = {
-			i18n_en_humanname = 'Bird Angler',
-			i18n_en_tooltip = 'Heavy long range Anti Air Turret',
-		},
-		weapondefs = {
-			weapon = {
-				reloadtime = 4.3,
-				cameraShake = 700,
-				range = 2400,
-				flighttime = 8,
-				name = "Deadly Defensive Spores",
-				damage = {
-					vtol = 5500,
-				},
+unitDefs.birdangler = tableMerge(unitDefs['raptor_turret_antiair_t3_v1'], {
+	name = 'Bird Angler',
+	energycost = 85000,
+	metalcost = 3300,
+	health = 3230,
+	buildtime = 23000,
+	reclaimable = true,
+	canrepeat = true,
+	unitname = 'birdangler',
+	builddistance = 0,
+	workertime = 0,
+	customparams = {
+		i18n_en_humanname = 'Bird Angler',
+		i18n_en_tooltip = 'Heavy long range Anti Air Turret',
+	},
+	weapondefs = {
+		weapon = {
+			reloadtime = 4.3,
+			cameraShake = 700,
+			range = 2200,
+			flighttime = 8,
+			name = 'Deadly Defensive Spores',
+			damage = {
+				vtol = 5500,
 			},
 		},
-		weapons = {
-			[1] = { badtargetcategory = "LIGHTAIRSCOUT", }
-		}
-	}
-)
+	},
+	weapons = {
+		[1] = { badtargetcategory = 'LIGHTAIRSCOUT' },
+	},
+})
 
-unitDefs.regurgitator = tableMerge(
-	unitDefs['raptor_air_gunship_acid_t2_v1'],
-	{
-		name='Regurgitator',
-		energycost = 35000,
-		metalcost = 820,
-		health = 980,
-		buildtime = 24000,
-		reclaimable = true,
-		canrepeat = true,
-		unitname = "regurgitator",
-		customparams = {
-			i18n_en_humanname = 'Regurgitator',
-			i18n_en_tooltip = 'Sprays Acid on enemies',
-		},
-		weapondefs = {
-			acidspit = {
-				burst = 2,
-				burstrate = 0.5,
-				name = "Regurgitation",
-				customparams = {
-					area_onhit_ceg = "acid-area-150-repeat",
-					area_onhit_damageCeg = "acid-damage-gen",
-					area_onhit_time = 10,
-					area_onhit_damage = 120,
-					area_onhit_range = 150,
-					area_onhit_resistance = "_RAPTORACID_",
-					nofire = true,
-				},
-				damage = {
-					default = 1,
-				},
+unitDefs.regurgitator = tableMerge(unitDefs['raptor_air_gunship_acid_t2_v1'], {
+	name = 'Regurgitator',
+	energycost = 35000,
+	metalcost = 820,
+	health = 980,
+	buildtime = 24000,
+	reclaimable = true,
+	canrepeat = true,
+	unitname = 'regurgitator',
+	customparams = {
+		i18n_en_humanname = 'Regurgitator',
+		i18n_en_tooltip = 'Sprays Acid on enemies',
+	},
+	weapondefs = {
+		acidspit = {
+			burst = 2,
+			burstrate = 0.5,
+			name = 'Regurgitation',
+			customparams = {
+				area_onhit_ceg = 'acid-area-150-repeat',
+				area_onhit_damageCeg = 'acid-damage-gen',
+				area_onhit_time = 10,
+				area_onhit_damage = 120,
+				area_onhit_range = 150,
+				area_onhit_resistance = '_RAPTORACID_',
+				nofire = true,
+			},
+			damage = {
+				default = 1,
 			},
 		},
-	}
-)
+	},
+})
 
-unitDefs.birdofprey = tableMerge(
-	unitDefs['raptor_air_fighter_basic_t4_v1'],
-	{
-		name='Bird of Prey',
-		energycost = 15000,
-		metalcost = 460,
-		health = 630,
-		buildtime = 19000,
-		reclaimable = true,
-		canrepeat = true,
-		unitname = "birdofprey",
-		builddistance = 0,
-		workertime = 0,
-		customparams = {
-			i18n_en_humanname = 'Bird of Prey',
-			i18n_en_tooltip = 'Khrathm... no, not that one! Air Fighter',
+unitDefs.birdofprey = tableMerge(unitDefs['raptor_air_fighter_basic_t4_v1'], {
+	name = 'Bird of Prey',
+	energycost = 15000,
+	metalcost = 460,
+	health = 630,
+	buildtime = 19000,
+	reclaimable = true,
+	canrepeat = true,
+	unitname = 'birdofprey',
+	builddistance = 0,
+	workertime = 0,
+	customparams = {
+		i18n_en_humanname = 'Bird of Prey',
+		i18n_en_tooltip = 'Khrathm... no, not that one! Air Fighter',
+	},
+	weapondefs = {
+		weapon = {
+			reloadtime = 0.8,
+			range = 1200,
+			damage = { default = 750 },
 		},
-		weapondefs = {
-			weapon = {
-				reloadtime = 0.7,
+	},
+})
+
+unitDefs.overseer = tableMerge(unitDefs['raptorh5'], {
+	name = 'Raptor Overseer',
+	energycost = 49500,
+	metalcost = 3550,
+	buildtime = 36000,
+	autoheal = 1,
+	canrepair = true,
+	canreclaim = true,
+	reclaimable = true,
+	canrepeat = true,
+	workertime = 1800,
+	sightdistance = 800,
+	unitname = 'raptorOverseer',
+	customparams = {
+		i18n_en_humanname = 'Raptor Overseer',
+		i18n_en_tooltip = 'Raptor Overseer',
+	},
+	buildoptions = {
+		[1] = 'raptorh1b',
+		[2] = 'raptor_land_swarmer_heal_t4_v1',
+		[3] = 'birdofprey',
+		[4] = 'regurgitator',
+		[5] = 'spitter',
+		[6] = 'slinger',
+		[7] = 'birdangler',
+	},
+	weapondefs = {
+		weapon = {
+			reloadtime = 0.5,
+			range = 400,
+			avoidfriendly = true,
+			damage = {
+				raptor = 1,
+				default = 100,
 			},
 		},
-	}
-)
+	},
+})
 
+unitDefs.bioprinter = tableMerge(unitDefs['lootboxnano_t4_var3'], {
+	name = 'Black Market BioPrinter',
+	metalcost = 12300,
+	energycost = 172000,
+	buildtime = 97300,
+	buildpic = 'scavengers/SCAVBEACON.DDS',
+	canrepeat = true,
+	movestate = 0,
+	canmove = true,
+	reclaimable = true,
+	canpatrol = true,
+	health = 23500,
+	maxthisunit = 1234,
+	unitname = 'bioprinter',
+	yardmap = 'oooooooooooooooooooooooooooooooooooo',
+	customparams = {
+		i18n_en_humanname = 'Black Market BioPrinter',
+		i18n_en_tooltip = 'The most anticipated barely illegal underground Bio Printer',
+	},
+	workertime = 6500,
+	builddistance = 550,
+	buildoptions = {
+		[1] = 'raptor_allterrain_swarmer_emp_t2_v1',
+		[2] = 'grenadier',
+		[3] = 'raptor_allterrain_arty_basic_t4_v1',
+		[4] = 'raptor_allterrain_arty_brood_t4_v1',
+		[5] = 'raptor_land_swarmer_heal_t4_v1',
+		[6] = 'raptor_matriarch_fire',
+		[7] = 'raptor_matriarch_electric',
+		[8] = 'raptor_matriarch_acid',
+		[9] = 'raptor_matriarch_spectre',
+		[10] = 'raptorh1b',
+		[11] = 'overseer',
+		[12] = 'birdofprey',
+		[13] = 'regurgitator',
+	},
+})
 
-unitDefs.overseer = tableMerge(
-	unitDefs['raptorh5'],
-	{
-		name='Raptor Overseer',
-		energycost = 49500,
-		metalcost = 3550,
-		buildtime = 36000,
-		autoheal = 1,
-		canrepair = true,
-		canreclaim = true,
-		reclaimable = true,
-		canrepeat = true,
-		workertime = 2000,
-		sightdistance = 800,
-		unitname = "raptorOverseer",
-		customparams = {
-			i18n_en_humanname = 'Raptor Overseer',
-			i18n_en_tooltip = 'Raptor Overseer',
+unitDefs.overcom = tableMerge(unitDefs['armcomboss'], {
+	name = 'Metal OverCommander',
+	buildpic = 'scavengers/ARMCOM.DDS',
+	autoheal = 0,
+	maxacc = 0.4,
+	maxdec = 0.6,
+	metalcost = 480000,
+	energycost = 14000000,
+	buildtime = 4100000,
+	builddistance = 650,
+	canresurrect = true,
+	energymake = 3500,
+	metalmake = 60,
+	health = 1800000,
+	workertime = 9000,
+	speed = 35,
+	maxthisunit = 1234,
+	unitname = 'overcom',
+	customparams = {
+		i18n_en_humanname = 'Metal OverCommander',
+		i18n_en_tooltip = 'When hope was lost, he kept building',
+		techlevel = 4,
+	},
+	buildoptions = {
+		[1] = 'armbanth',
+		[2] = 'corkorg',
+		[3] = 'legeheatraymech',
+		[4] = 'armck',
+		[5] = 'armack',
+		[6] = 'corck',
+		[7] = 'corack',
+		[8] = 'legck',
+		[9] = 'legack',
+		[10] = 'portfus',
+		[11] = 'portafus',
+		[12] = 'infinitybox',
+		[13] = 'armmmkrt3_cold200',
+		[14] = 'armmoho',
+		[15] = 'legmohocon',
+		[16] = 'cormexp',
+		[17] = 'leggatet3',
+		[18] = 'armgatet3',
+		[19] = 'corgatet3',
+		[20] = 'armalab',
+		[21] = 'coralab',
+		[22] = 'legalab',
+		[23] = 'armshltx',
+		[24] = 'corgant',
+		[25] = 'leggant',
+		[26] = 'armamd',
+		[27] = 'corfort',
+		[28] = 'armveil',
+		[29] = 'legarad',
+		[30] = 'armflak',
+		[31] = 'legflak',
+		[32] = 'corscreamer',
+		[33] = 'leglraa',
+		[34] = 'corwint2',
+	},
+	featuredefs = {
+		dead = {
+			metal = 325400,
 		},
-		buildoptions={
-			[1] = 'raptorh1b',
-			[2] = 'raptor_land_swarmer_heal_t4_v1',
-			[3] = 'birdofprey',
-			[4] = 'regurgitator',
-			[5] = 'spitter',
-			[6] = 'slinger',
-			[7] = 'birdangler',
+		heap = {
+			metal = 120000,
 		},
-		weapondefs = {
-			weapon = {
-				reloadtime = 0.5,
-				range = 400,
-				avoidfriendly = true,
-				damage = {
-					raptor = 1,
-					default = 100,
-				},
+	},
+	weapondefs = {
+		emplightning = {
+			areaofeffect = 48,
+			avoidfeature = false,
+			beamttl = 1,
+			burst = 10,
+			burstrate = 0.03333,
+			craterareaofeffect = 0,
+			craterboost = 0,
+			cratermult = 0,
+			duration = 0.2,
+			edgeeffectiveness = 0.15,
+			energypershot = 650,
+			explosiongenerator = 'custom:genericshellexplosion-large-lightning-thor',
+			falloffrate = 0.5,
+			firestarter = 50,
+			hardstop = false,
+			impactonly = 1,
+			impulsefactor = 0,
+			intensity = 40,
+			name = 'EMP Heavy Lighting Cannon',
+			noselfdamage = true,
+			paralyzer = true,
+			paralyzetime = 12,
+			range = 940,
+			reloadtime = 0.3,
+			rgbcolor = '0.5 0.5 1',
+			soundhit = 'lasrfir2',
+			soundhitwet = 'sizzle',
+			soundstart = 'lghthvy1',
+			soundtrigger = true,
+			thickness = 2.8,
+			turret = true,
+			weapontype = 'LightningCannon',
+			weaponvelocity = 400,
+			customparams = {
+				noattackrangearc = 1,
+				spark_ceg = 'genericshellexplosion-splash-large-lightning',
+				spark_forkdamage = '0.25',
+				spark_maxunits = '5',
+				spark_range = '175',
+				weapons_group = 1,
+			},
+			damage = {
+				default = 800,
+				subs = 300,
 			},
 		},
-	}
-)
-
-unitDefs.bioprinter = tableMerge(
-	unitDefs['lootboxnano_t4_var3'],
-	{
-		name = 'Black Market BioPrinter',
-		metalcost = 12300,
-		energycost = 172000,
-		buildtime = 97300,
-		buildpic = "scavengers/SCAVBEACON.DDS",
-		canrepeat = true,
-		movestate = 0,
-		canmove = true,
-		reclaimable = true,
-		canpatrol = true,
-		health = 23500,
-		maxthisunit = 1234,
-		unitname = "bioprinter",
-		yardmap = "oooooooooooooooooooooooooooooooooooo",
-		customparams = {
-			i18n_en_humanname = 'Black Market BioPrinter',
-			i18n_en_tooltip = 'The most anticipated barely illegal underground Bio Printer',
+		armcomsealaserboss = { range = 1050, energypershot = 1000, damage = { default = 2300 } },
+		disintegratorxl = {
+			avoidfriendly = true,
+			weaponvelocity = 450,
+			gravityaffected = false,
+			energypershot = 200000,
+			reloadtime = 1.5,
+			customparams = { weapons_group = 2 },
+			damage = { default = 15000, scavboss = 6000, commanders = 2000 },
 		},
-		workertime=6500,
-		builddistance=550,
-		buildoptions={
-			[1] = 'raptor_allterrain_swarmer_emp_t2_v1',
-			[2] = 'grenadier',
-			[3] = 'raptor_allterrain_arty_basic_t4_v1',
-			[4] = 'raptor_allterrain_arty_brood_t4_v1',
-			[5] = 'raptor_land_swarmer_heal_t4_v1',
-			[6] = 'raptor_matriarch_fire',
-			[7] = 'raptor_matriarch_electric',
-			[8] = 'raptor_matriarch_acid',
-			[9] = 'raptor_matriarch_spectre',
-			[10] = 'raptorh1b',
-			[11] = 'overseer',
-			[12] = 'birdofprey',
-			[13] = 'regurgitator',
-		},
-	}
-)
-
-unitDefs.overcom = tableMerge(
-	unitDefs['armcomboss'],
-	{
-		name = 'Metal OverCommander',
-		buildpic = "scavengers/ARMCOM.DDS",
-		autoheal = 0,
-		maxacc = 0.4,
-		maxdec = 0.6,
-		metalcost = 480000,
-		energycost = 14000000,
-		buildtime = 4100000,
-		builddistance = 650,
-		canresurrect = true,
-		energymake = 3500,
-		metalmake = 60,
-		health = 1800000,
-		workertime = 9000,
-		speed=35,
-		maxthisunit=1234,
-		unitname = "overcom",
-		customparams = {
-			i18n_en_humanname = 'Metal OverCommander',
-			i18n_en_tooltip = 'When hope was lost, he kept building',
-			techlevel = 4,
-		},
-		buildoptions = {
-			[1] = "armbanth",
-			[2] = "corkorg",
-			[3] = "legeheatraymech",
-			[4] = "armck",
-			[5] = "armack",
-			[6] = "corck",
-			[7] = "corack",
-			[8] = "legck",
-			[9] = "legack",
-			[10] = "portfus",
-			[11] = "portafus",
-			[12] = "infinitybox",
-			[13] = "armmmkrt3_cold200",
-			[14] = "armmoho",
-			[15] = "legmohocon",
-			[16] = "cormexp",
-			[17] = "leggatet3",
-			[18] = "armgatet3",
-			[19] = "corgatet3",
-			[20] = "armalab",
-			[21] = "coralab",
-			[22] = "legalab",
-			[23] = "armshltx",
-			[24] = "corgant",
-			[25] = "leggant",
-			[26] = "armamd",
-			[27] = "corfort",
-			[28] = "armveil",
-			[29] = "legarad",
-			[30] = "armflak",
-			[31] = "legflak",
-			[32] = "corscreamer",
-			[33] = "leglraa",
-			[34] = "corwint2",
-		},
-		featuredefs = {
-			dead = {
-				metal = 325400,
-			},
-			heap = {
-				metal = 120000,
-			},
-		},
-		weapondefs = {
-			emplightning = {
-				areaofeffect = 48,
-				avoidfeature = false,
-				beamttl = 1,
-				burst = 10,
-				burstrate = 0.03333,
-				craterareaofeffect = 0,
-				craterboost = 0,
-				cratermult = 0,
-				duration = 0.2,
-				edgeeffectiveness = 0.15,
-				energypershot = 650,
-				explosiongenerator = "custom:genericshellexplosion-large-lightning-thor",
-				falloffrate = 0.5,
-				firestarter = 50,
-				hardstop = false,
-				impactonly = 1,
-				impulsefactor = 0,
-				intensity = 40,
-				name = "EMP Heavy Lighting Cannon",
-				noselfdamage = true,
-				paralyzer = true,
-				paralyzetime = 12,
-				range = 940,
-				reloadtime = 0.3,
-				rgbcolor = "0.5 0.5 1",
-				soundhit = "lasrfir2",
-				soundhitwet = "sizzle",
-				soundstart = "lghthvy1",
-				soundtrigger = true,
-				thickness = 2.8,
-				turret = true,
-				weapontype = "LightningCannon",
-				weaponvelocity = 400,
-				customparams = {
-					noattackrangearc = 1,
-					spark_ceg = "genericshellexplosion-splash-large-lightning",
-					spark_forkdamage = "0.25",
-					spark_maxunits = "5",
-					spark_range = "175",
-					weapons_group = 1,
-				},
-				damage = {
-					default = 800,
-					subs = 300,
-				},
-			},
-			armcomsealaserboss={range=1050,energypershot=1000,damage={default=2300}},
-			disintegratorxl={avoidfriendly=true,weaponvelocity=450,gravityaffected = false,energypershot=200000,reloadtime=1.5,customparams = {weapons_group = 2,},damage = {default = 15000,scavboss=6000,commanders = 2000}},
-		},
-		weapons={
-			[1]={def = "emplightning", badtargetcategory = "GROUNDSCOUT", fastautoretargeting = true, onlytargetcategory = "EMPABLE",},
-			[2]={onlytargetcategory="SURFACE"},
-		},
-	}
-)
+	},
+	weapons = {
+		[1] = { def = 'emplightning', badtargetcategory = 'GROUNDSCOUT', fastautoretargeting = true, onlytargetcategory = 'EMPABLE' },
+		[2] = { onlytargetcategory = 'SURFACE' },
+	},
+})
 
 local a = UnitDefs or {}
 local b = a
@@ -501,7 +472,6 @@ for c, c in ipairs(d) do
 	end
 end
 
-
 for c, c in pairs(c) do
 	local d = c:sub(1, 3)
 	local e = a[c].buildoptions
@@ -511,7 +481,7 @@ for c, c in pairs(c) do
 	end
 	local a = (d == 'leg')
 	local a = a and 'legadveconvt3' or (d .. 'mmkrt3')
-	local a = {		
+	local a = {
 		'portfus',
 		'portafus',
 		'epicunitprinter',
@@ -522,6 +492,6 @@ for c, c in pairs(c) do
 	for a, a in ipairs(a) do
 		if b[a] then
 			e[#e + 1] = a
-		end 
+		end
 	end
-end 
+end
