@@ -557,116 +557,190 @@ local function getMetalMakersUpkeep()
   return totalUpKeep
 end
 
-local function recomputePowerNeed(metalCurrent, metalIncome, metalExpenseActual, energyCurrent, energyIncome, energyExpenseActual)
-  if anyBuildWillMStall or anyBuildWillEStall or isMetalStalling or isEnergyStalling then
-    powerNeed = 0
-  elseif not anyBuildWillStall then
-    log('power no stall 1')
-    powerNeed = 1
-  elseif anyBuildWillMStall or anyBuildWillEStall then
-    powerNeed = 0
-  elseif positiveMMLevel then
-    powerNeed = math.max(0, math.min(1,
-      (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or metalLevel)
-      * (regularizedNegativeEnergy and Interpolate((energyExpenseActual - energyIncome) / energyCurrent, 0, 10, 1, 0)
-          or (not needMM and metalLevel or energyLevel))
-    ))
-  else
-    powerNeed = math.max(0, math.min(1,
-      (regularizedNegativeMetal and Interpolate((metalExpenseActual - metalIncome) / metalCurrent, 0, 10, 1, 0) or metalLevel)
-      * (regularizedNegativeEnergy and Interpolate((energyExpenseActual - energyIncome) / energyCurrent, 0, 10, 1, 0)
-          or energyLevel)
-    ))
+local function Clamp01(value)
+  if not value or value < 0 then
+    return 0
   end
+  if value > 1 then
+    return 1
+  end
+  return value
 end
 
-local function recomputeEnergyAndMMNeed(energyIncome, energyExpenseActual, energyExpenseWanted, metalExpenseActual, metalExpenseWanted)
+local function SafeDivide(numerator, denominator, fallback)
+  if denominator and denominator ~= 0 then
+    return numerator / denominator
+  end
+  return fallback or 0
+end
+
+local function readResourceSnapshot(resourceType)
+  local current, storage, expenseWanted, income, expenseActual, shareSlider, sent, received =
+    GetTeamResources(myTeamId, resourceType)
+
+  current = current or 0
+  storage = storage or 0
+  income = income or 0
+  expenseActual = expenseActual or 0
+
+  local localDelta = income - expenseActual
+  local level = SafeDivide(current, storage, 0)
+
+  return {
+    current = current,
+    storage = storage,
+    expenseWanted = expenseWanted or 0,
+    income = income,
+    expenseActual = expenseActual,
+    shareSlider = shareSlider or 0,
+    sent = sent or 0,
+    received = received or 0,
+    localDelta = localDelta,
+    level = level,
+    isOverflowing = level > LEAK_LEVEL,
+    isLocallyPositive = localDelta > 0,
+    isLocallyNegative = localDelta < 0
+  }
+end
+
+local function ResourceDrainPressure(resourceSnapshot)
+  if resourceSnapshot.current <= 0 then
+    return 0
+  end
+  return Interpolate(
+    (resourceSnapshot.expenseActual - resourceSnapshot.income) / resourceSnapshot.current,
+    0, 10, 1, 0
+  )
+end
+
+local function areMetalMakersSaturated()
+  return getMetalMakersUpkeep() >= possibleMetalMakersUpkeep
+end
+
+local function recomputePowerNeed(metalSnapshot, energySnapshot)
+  if not needPower or anyBuildWillMStall or anyBuildWillEStall or isMetalStalling or isEnergyStalling then
+    powerNeed = 0
+    return
+  end
+
+  local metalPressure = regularizedNegativeMetal and ResourceDrainPressure(metalSnapshot) or metalSnapshot.level
+  local energyPressure = regularizedNegativeEnergy and ResourceDrainPressure(energySnapshot) or energySnapshot.level
+
+  if positiveMMLevel and not needMM and not regularizedNegativeEnergy then
+    energyPressure = metalSnapshot.level
+  end
+
+  powerNeed = Clamp01(metalPressure * energyPressure)
+end
+
+local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
   energyNeed = 0
   mMMNeed = 0
-  if positiveMMLevel or not (regularizedNegativeEnergy and regularizedPositiveEnergy) then
-    if positiveMMLevel then
-      energyNeed = Interpolate(
-        1 - (energyLevel - metalMakersLevel) - (getMetalMakersUpkeep() >= possibleMetalMakersUpkeep and 0.5 or 0),
-        0, 1, 0, 0.5
-      )
-      if regularizedPositiveEnergy and energyIncome > math.max(energyExpenseActual, energyExpenseWanted) then
-        log('mm pos e', energyLevel, metalMakersLevel)
-        if energyExpenseWanted > energyExpenseActual and metalExpenseWanted > metalExpenseActual then
-          local eRatio = energyExpenseWanted / energyExpenseActual
-          local mRatio = metalExpenseWanted / metalExpenseActual
-          energyNeed = eRatio / (eRatio + mRatio)
-          mMMNeed = mRatio / (eRatio + mRatio)
-          log(string.format('ratios e %0.2f m %0.2f need e %0.2f m %0.2f', eRatio, mRatio, energyNeed, mMMNeed))
-        else
-          mMMNeed = Interpolate(energyLevel, metalMakersLevel, 1, 0.75, 1)
-        end
-      elseif not regularizedPositiveEnergy and energyIncome <= math.max(energyExpenseActual, energyExpenseWanted) then
-        log('mm neg e', energyLevel, metalMakersLevel)
-        energyNeed = 1
-        mMMNeed = 0
-      elseif anyBuildWillEStall then
-        mMMNeed = 0
-      else
-        mMMNeed = Interpolate(energyLevel, metalMakersLevel, 1, 0.5, 1)
-      end
-    elseif not (regularizedNegativeEnergy and regularizedPositiveEnergy) then
-      -- stable
-      if anyBuildWillMStall or anyBuildWillEStall then
-        energyNeed = Interpolate(energyLevel, 0, metalMakersLevel, 1, 0.75)
-      else
-        energyNeed = 0.5
-      end
-      mMMNeed = 0
+
+  if isEnergyStalling then
+    energyNeed = 1
+    return
+  end
+
+  local metalOverflowing = isMetalLeaking or metalSnapshot.isOverflowing
+  local energyAboveMMLevel = energySnapshot.level > metalMakersLevel
+  local energyInvestmentBlocked =
+    energySnapshot.isOverflowing or isEnergyLeaking or
+    (energyAboveMMLevel and energySnapshot.isLocallyNegative)
+
+  if energyInvestmentBlocked then
+    if
+      not metalOverflowing and energyAboveMMLevel and areMetalMakersSaturated() and
+        not anyBuildWillEStall
+     then
+      mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.75, 1)
     end
-  elseif regularizedNegativeEnergy then
-    energyNeed = Interpolate(energyLevel, 0, metalMakersLevel, 0.5, 1)
-    mMMNeed = 0
+    return
+  end
+
+  if anyBuildWillEStall or regularizedNegativeEnergy then
+    energyNeed = Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75)
+    return
+  end
+
+  if positiveMMLevel then
+    energyNeed = Interpolate(
+      1 - (energySnapshot.level - metalMakersLevel) - (areMetalMakersSaturated() and 0.5 or 0),
+      0, 1, 0, 0.5
+    )
+
+    if energySnapshot.isLocallyPositive and energySnapshot.income > math.max(energySnapshot.expenseActual, energySnapshot.expenseWanted) then
+      log('mm pos e', energySnapshot.level, metalMakersLevel)
+      if
+        energySnapshot.expenseWanted > energySnapshot.expenseActual and
+          metalSnapshot.expenseWanted > metalSnapshot.expenseActual and
+          energySnapshot.expenseActual > 0 and
+          metalSnapshot.expenseActual > 0
+       then
+        local eRatio = energySnapshot.expenseWanted / energySnapshot.expenseActual
+        local mRatio = metalSnapshot.expenseWanted / metalSnapshot.expenseActual
+        local ratioTotal = eRatio + mRatio
+        if ratioTotal > 0 then
+          energyNeed = eRatio / ratioTotal
+          mMMNeed = mRatio / ratioTotal
+          log(string.format('ratios e %0.2f m %0.2f need e %0.2f m %0.2f', eRatio, mRatio, energyNeed, mMMNeed))
+        end
+      else
+        mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.75, 1)
+      end
+    else
+      mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.5, 1)
+    end
   elseif regularizedPositiveEnergy then
-    energyNeed = Interpolate(energyLevel, 0, metalMakersLevel, 1, 0.75)
+    energyNeed = Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75)
+  else
+    energyNeed = anyBuildWillMStall and Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75) or 0.5
   end
 
   -- clamp: don't build more of a resource type that is already overflowing
-  if isEnergyLeaking then
+  if isEnergyLeaking or energySnapshot.isOverflowing then
     energyNeed = 0
   end
-  if isMetalLeaking then
+  if metalOverflowing then
     mMMNeed = 0
   end
 end
 
 local function UpdateResourceNeeds()
-  local metalCurrent, metalStorage, metalExpenseWanted, metalIncome, metalExpenseActual =
-    GetTeamResources(myTeamId, 'metal')
-  local energyCurrent, energyStorage, energyExpenseWanted, energyIncome, energyExpenseActual =
-    GetTeamResources(myTeamId, 'energy')
+  local metalSnapshot = readResourceSnapshot('metal')
+  local energySnapshot = readResourceSnapshot('energy')
 
   regularizationCounter = (regularizationCounter % REGULARIZATION_WINDOW) + 1
-  regularizedResourceDerivativesMetal[regularizationCounter] = (metalIncome - metalExpenseActual) > 0
-  regularizedResourceDerivativesEnergy[regularizationCounter] = (energyIncome - energyExpenseActual) > 0
+  regularizedResourceDerivativesMetal[regularizationCounter] = metalSnapshot.isLocallyPositive
+  regularizedResourceDerivativesEnergy[regularizationCounter] = energySnapshot.isLocallyPositive
   regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
   regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
   regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
   regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
 
-  metalLevel = metalCurrent / metalStorage
-  energyLevel = energyCurrent / energyStorage
+  metalLevel = metalSnapshot.level
+  energyLevel = energySnapshot.level
 
   metalMakersLevel = Spring.GetTeamRulesParam(myTeamId, 'mmLevel') + MM_LEVEL_BIAS
-  positiveMMLevel = getMetalMakersUpkeep() >= possibleMetalMakersUpkeep and energyLevel > metalMakersLevel
+  positiveMMLevel = areMetalMakersSaturated() and energyLevel > metalMakersLevel
 
   isMetalStalling = metalLevel < STALL_LEVEL and not regularizedPositiveMetal
   isEnergyStalling = energyLevel < STALL_LEVEL and not regularizedPositiveEnergy
-  isMetalLeaking = metalLevel > LEAK_LEVEL and regularizedPositiveMetal
-  isEnergyLeaking = energyLevel > LEAK_LEVEL and regularizedPositiveEnergy
+  isMetalLeaking = metalSnapshot.isOverflowing and regularizedPositiveMetal
+  isEnergyLeaking = energySnapshot.isOverflowing and regularizedPositiveEnergy
 
   needPower =
     (metalLevel > METAL_LEVEL_HIGH or (regularizedPositiveMetal and metalLevel > METAL_LEVEL_LOW)) and
     (positiveMMLevel or not regularizedNegativeEnergy)
-  needEnergy = (not (regularizedPositiveEnergy and isEnergyLeaking and positiveMMLevel)) or isEnergyStalling
-  needMM = positiveMMLevel and (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
+  needEnergy =
+    isEnergyStalling or
+    not (energySnapshot.isOverflowing or isEnergyLeaking or (energyLevel > metalMakersLevel and energySnapshot.isLocallyNegative))
+  needMM =
+    positiveMMLevel and not metalSnapshot.isOverflowing and
+    (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
 
-  recomputePowerNeed(metalCurrent, metalIncome, metalExpenseActual, energyCurrent, energyIncome, energyExpenseActual)
-  recomputeEnergyAndMMNeed(energyIncome, energyExpenseActual, energyExpenseWanted, metalExpenseActual, metalExpenseWanted)
+  recomputePowerNeed(metalSnapshot, energySnapshot)
+  recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
 end
 
 local function GetResourceStatus(type)
@@ -675,14 +749,14 @@ local function GetResourceStatus(type)
     return c[1], c[2], c[3], c[4], c[5]
   end
 
-  local lvl, storage, pullExpWanted, inc, expActual, shareSlider, sent, recieved = GetTeamResources(myTeamId, type)
+  local lvl, storage, pullExpWanted, inc, expActual, shareSlider, sent, received = GetTeamResources(myTeamId, type)
 
   if not inc then
     return
   end
-  -- local total = recieved + inc - exp
+  -- local total = received + inc - exp
   --  todo maybe remove
-  local total = recieved
+  local total = received or 0
   local exp = 0
   local units = GetTeamUnits(myTeamId)
 
@@ -850,9 +924,40 @@ end
 -- ============================================================
 -- Build prioritization & feature scanning
 -- ============================================================
-local function SortMAndMM(a, b)
-  return ((a.def.extractsMetal / a.def.cost) > (b.def.extractsMetal / b.def.cost)) or
-    (MetalMakingEfficiencyDef(a.def) > MetalMakingEfficiencyDef(b.def))
+local function UnitCost(unitDef)
+  local cost = unitDef and (unitDef.cost or unitDef.metalCost) or 1
+  return cost > 0 and cost or 1
+end
+
+local function BuildPowerScore(unitDef)
+  if unitDef and unitDef.buildOptions and #unitDef.buildOptions > 0 then
+    return 1.01
+  end
+  return Interpolate((unitDef and unitDef.buildSpeed) or 0, 0, 1000, 0, 1)
+end
+
+local function EnergyScore(unitDef)
+  return Clamp01(SafeDivide(EnergyMakeDef(unitDef), UnitCost(unitDef), 0) * 3)
+end
+
+local function MetalAndMMScore(unitDef)
+  local cost = UnitCost(unitDef)
+  local extractScore = SafeDivide((unitDef and unitDef.extractsMetal) or 0, cost, 0) * 50
+  local metalMakeScore = SafeDivide((unitDef and (unitDef.metalMake or unitDef.makesMetal)) or 0, cost, 0) * 50
+  local metalMakerEfficiencyScore = MetalMakingEfficiencyDef(unitDef) * 50
+
+  return Clamp01(math.max(extractScore, metalMakeScore, metalMakerEfficiencyScore))
+end
+
+local function scoreEcoCandidate(candidate)
+  if not candidate or not candidate.def then
+    return 0
+  end
+
+  return
+    powerNeed * BuildPowerScore(candidate.def) +
+    energyNeed * EnergyScore(candidate.def) +
+    mMMNeed * MetalAndMMScore(candidate.def)
 end
 
 local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, _cmdQueueTagg)
@@ -949,70 +1054,27 @@ local function getReclaimableFeatures(x, z, radius)
   return features, nAll
 end
 
-local function SortFactor(a, b)
-  -- Convert boolean comparison to 1 or 0
-  local buildSpeedA =
-    a.def.buildoptions and #a.def.buildoptions > 0 and 1.01 or Interpolate(a.def.buildSpeed, 0, 1000, 0, 1)
-  local buildSpeedB =
-    a.def.buildoptions and #a.def.buildoptions > 0 and 1.01 or Interpolate(b.def.buildSpeed, 0, 1000, 0, 1)
-  -- Calculate energy efficiency ratios
-  local energyMakeDefA = EnergyMakeDef(a.def) / a.def.cost
-  local energyMakeDefB = EnergyMakeDef(b.def) / b.def.cost
-  -- Determine energy factor
-  local energyMakeDef = 0
-  if energyMakeDefA > 0 and energyMakeDefB > 0 then
-    energyMakeDef = Interpolate(energyMakeDefA / energyMakeDefB, 0.2, 2, 0, 1)
-  elseif energyMakeDefA > 0 then
-    energyMakeDef = 1
-  end
-
-  -- Get M and MM sort factor
-  local sortMAndMM = SortMAndMM(a, b) and 1 or 0
-  -- Calculate scores for each option
-  local scoreA = powerNeed * buildSpeedA + energyNeed * energyMakeDef + mMMNeed * sortMAndMM
-  local scoreB = powerNeed * buildSpeedB + energyNeed * (1 - energyMakeDef) + mMMNeed * (1 - sortMAndMM)
-
-  -- Log results if needed
-  -- log('sort2', a.def.name, b.def.name,
-  --   scoreA,
-  --   scoreB,
-  --   'b a',
-  --   buildSpeedA,
-  --   'b b',
-  --   buildSpeedB,
-  --   'e a',
-  --   energyMakeDefA,
-  --   'e b',
-  --   energyMakeDefB,
-  --   'm m',
-  --   sortMAndMM,
-  --   'p',
-  --   powerNeed,
-  --   'e',
-  --   energyNeed,
-  --   'm',
-  --   mMMNeed
-  -- )
-
-  -- Return true if A scores higher than B
-  return scoreA > scoreB
-end
-
 local function SortBuildEcoPrio(a, b)
   if a == nil or b == nil then
     return false
   end
-  -- log('sort1', a.def.translatedHumanName, b.def.translatedHumanName, SortFactor(a, b))
-  local result =
-    ((a.defId == b.defId) and (a.build > b.build)) or SortFactor(a, b) or
-    (not needPower and not needEnergy and not needMM and
-      ((a.def.buildSpeed / a.def.cost) > (b.def.buildSpeed / b.def.cost)))
+  if a.defId == b.defId and a.build ~= b.build then
+    return a.build > b.build
+  end
+
+  local scoreA = scoreEcoCandidate(a)
+  local scoreB = scoreEcoCandidate(b)
+  if scoreA ~= scoreB then
+    return scoreA > scoreB
+  end
+
+  if a.build ~= b.build then
+    return a.build > b.build
+  end
   -- if a and b then
-  -- log('Sort Eco p', powerNeed, 'e', energyNeed, 'm', mMMNeed, result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
-  -- log('SortBuildEcoPrio p', math.floor(0.5 + powerNeed * 100), 'e', math.floor(0.5 + energyNeed * 100), 'm', math.floor(0.5 + mMMNeed * 100), result, a.def.translatedHumanName, b.def.translatedHumanName, energyMakeDef(a.def) / a.def.cost, energyMakeDef(b.def) / b.def.cost, a.build, b.build)
-  -- log(string.format('sort %s p %.0f e %.0f m %.0f %s %s', tostring(result), powerNeed * 100, energyNeed * 100, mMMNeed * 100, a.def.translatedHumanName, b.def.translatedHumanName))
+  -- log('SortBuildEcoPrio p', math.floor(0.5 + powerNeed * 100), 'e', math.floor(0.5 + energyNeed * 100), 'm', math.floor(0.5 + mMMNeed * 100), scoreA, scoreB, a.def.translatedHumanName, b.def.translatedHumanName, a.build, b.build)
   -- end
-  return result
+  return (a.id or 0) < (b.id or 0)
 end
 
 -- ============================================================
@@ -1234,32 +1296,60 @@ end
 -- ============================================================
 -- Batch eco assignment
 -- ============================================================
-local function BatchOrder(gameFrame)
+local function NormalizedPositiveNeeds()
   local needs = {
     {'power', powerNeed},
     {'energy', energyNeed},
     {'mMM', mMMNeed}
   }
+  local positiveNeeds = {}
+
+  for _, need in ipairs(needs) do
+    if need[2] and need[2] > 0 then
+      table.insert(positiveNeeds, need)
+    end
+  end
+
+  if #positiveNeeds == 0 then
+    return positiveNeeds
+  end
 
   table.sort(
-    needs,
+    positiveNeeds,
     function(a, b)
-      return math.abs(a[2]) > math.abs(b[2])
+      if a[2] == b[2] then
+        return a[1] < b[1]
+      end
+      return a[2] > b[2]
     end
   )
 
-  table.remove(needs)
+  while #positiveNeeds > 2 do
+    table.remove(positiveNeeds)
+  end
+
   -- normalize need values so that they sum to 1
   local sum = 0
-  for _, need in ipairs(needs) do
+  for _, need in ipairs(positiveNeeds) do
     sum = sum + need[2]
   end
-  for _, need in ipairs(needs) do
+  if sum <= 0 then
+    return {}
+  end
+  for _, need in ipairs(positiveNeeds) do
     need[2] = need[2] / sum
   end
 
+  return positiveNeeds
+end
+
+local function BatchOrder(gameFrame)
+  local needs = NormalizedPositiveNeeds()
+  if #needs == 0 then
+    return
+  end
+
   local assignedBuilders = {}
-  local nAssignedBuilders = 0
   for _, need in ipairs(needs) do
     local needName = need[1]
     local needValue = need[2]
@@ -1353,62 +1443,65 @@ local function BatchOrder(gameFrame)
     -- Assign a subset of builders to assist or start new builds
     local targets = {}
     local nTotalBuilders = math.max(correctTypeBuilders + incorrectTypeBuilders, #candidateBuilders)
-    local fulfilledNeed = 0
-    -- log(needName, 'total', nTotalBuilders, 'correct', correctTypeBuilders, 'incorrect', incorrectTypeBuilders)
-    for _, candidateAlternative in ipairs(candidateAlternatives) do
-      for _, builderId in ipairs(candidateAlternative.builderIds) do
-        if not assignedBuilders[builderId] then
-          if fulfilledNeed <= needValue then
-            if targets[candidateAlternative.id] == nil then
-              targets[candidateAlternative.id] = {}
-            end
+    if nTotalBuilders > 0 then
+      local assignedForNeed = 0
+      local fulfilledNeed = 0
+      -- log(needName, 'total', nTotalBuilders, 'correct', correctTypeBuilders, 'incorrect', incorrectTypeBuilders)
+      for _, candidateAlternative in ipairs(candidateAlternatives) do
+        for _, builderId in ipairs(candidateAlternative.builderIds) do
+          if not assignedBuilders[builderId] then
+            if fulfilledNeed < needValue then
+              if targets[candidateAlternative.id] == nil then
+                targets[candidateAlternative.id] = {}
+              end
 
-            assignedBuilders[builderId] = true
-            nAssignedBuilders = nAssignedBuilders + 1
-            fulfilledNeed = nAssignedBuilders / nTotalBuilders
+              assignedBuilders[builderId] = true
+              assignedForNeed = assignedForNeed + 1
+              fulfilledNeed = assignedForNeed / nTotalBuilders
 
-            if not candidateAlternative.alreadyBuilding[builderId] then
-              table.insert(targets[candidateAlternative.id], builderId)
-              WG['ObjectSpotlight'].addSpotlight(
-                'unit',
-                'me',
-                builderId,
-                {0, 1, 0, 1},
-                {duration = 25, radius = 2, heightCoefficient = 5}
-              )
-              BuilderById(builderId).targetId = candidateAlternative.id
-              SetBuilderLastOrder(builderId)
+              if not candidateAlternative.alreadyBuilding[builderId] then
+                table.insert(targets[candidateAlternative.id], builderId)
+                WG['ObjectSpotlight'].addSpotlight(
+                  'unit',
+                  'me',
+                  builderId,
+                  {0, 1, 0, 1},
+                  {duration = 25, radius = 2, heightCoefficient = 5}
+                )
+                BuilderById(builderId).targetId = candidateAlternative.id
+                SetBuilderLastOrder(builderId)
+              end
+            else
+              break
             end
-          else
-            break
           end
         end
+        if fulfilledNeed >= needValue then
+          break
+        end
       end
-      if fulfilledNeed > needValue then
-        break
-      end
-    end
 
-    -- If there are builders to assign, issue a batch order
-    if nAssignedBuilders > 0 then
-      for targetId, _builders in pairs(targets) do
-        if #_builders > 1 then
-          -- log(string.format('p %0i e %i m %i', powerNeed * 100, energyNeed * 100, mMMNeed * 100))
-          log(
-            needName ..
-              string.format(
-                ' batch %.2f builders %s/%s %s target ',
-                needValue,
-                #_builders,
-                nTotalBuilders,
-                table.tostring(_builders)
-              ) ..
-                targetId,
-            UnitDefs[GetUnitDefID(targetId)].translatedHumanName,
-            gameFrame
-          )
+      -- If there are builders to assign, issue a batch order
+      if assignedForNeed > 0 then
+        for targetId, _builders in pairs(targets) do
+          if #_builders > 0 then
+            -- log(string.format('p %0i e %i m %i', powerNeed * 100, energyNeed * 100, mMMNeed * 100))
+            log(
+              needName ..
+                string.format(
+                  ' batch %.2f builders %s/%s %s target ',
+                  needValue,
+                  #_builders,
+                  nTotalBuilders,
+                  table.tostring(_builders)
+                ) ..
+                  targetId,
+              UnitDefs[GetUnitDefID(targetId)].translatedHumanName,
+              gameFrame
+            )
 
-          Spring.GiveOrderToUnitArray(_builders, CMD.INSERT, {0, CMD.REPAIR, CMD.OPT_CTRL, targetId}, {'alt'})
+            Spring.GiveOrderToUnitArray(_builders, CMD.INSERT, {0, CMD.REPAIR, CMD.OPT_CTRL, targetId}, {'alt'})
+          end
         end
       end
     end

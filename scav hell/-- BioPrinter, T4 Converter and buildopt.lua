@@ -1,5 +1,5 @@
--- BioPrinter, T4 Converter and buildoption inserts
--- Authos: Waffles_II
+--BioPrinter, T4 Converter and buildoption inserts
+-- Authors: Waffles_II
 local unitDefs, tableMerge, bioprinter =
 	UnitDefs or {}, table.merge, 'grenadier', 'overseer', 'spitter', 'slinger', 'birdangler', 'regurgitator', 'birdofprey', 'overcom', 'bioprinter'
 
