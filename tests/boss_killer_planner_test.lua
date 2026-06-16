@@ -1,0 +1,301 @@
+-- Run with: lua tests/boss_killer_planner_test.lua
+
+BOSS_KILLER_PLANNER_TEST = true
+local modules = dofile('rmlwidgets/boss_killer_planner/boss_killer_planner.lua')
+BOSS_KILLER_PLANNER_TEST = nil
+
+local BossInfoAdapter = modules.BossInfoAdapter
+local UnitCatalog = modules.UnitCatalog
+local EngagementTracker = modules.EngagementTracker
+local ScoringEngine = modules.ScoringEngine
+local KnowledgeStore = modules.KnowledgeStore
+
+local function assertEq(actual, expected, message)
+	if actual ~= expected then
+		error(string.format('%s expected %s got %s', message or 'assertEq', tostring(expected), tostring(actual)))
+	end
+end
+
+local function assertNear(actual, expected, epsilon, message)
+	if math.abs(actual - expected) > epsilon then
+		error(string.format('%s expected %.4f got %.4f', message or 'assertNear', expected, actual))
+	end
+end
+
+local function assertTrue(value, message)
+	if value ~= true then
+		error(message or 'expected true')
+	end
+end
+
+local function assertFalse(value, message)
+	if value ~= false then
+		error(message or 'expected false')
+	end
+end
+
+print('Running Boss Killer Planner tests...')
+
+do
+	local savedG = _G
+	local dofileFn = dofile
+	_G = nil
+	local ok, err = pcall(dofileFn, 'rmlwidgets/boss_killer_planner/boss_killer_planner.lua')
+	_G = savedG
+	assertTrue(ok, 'nil _G widget load guard: ' .. tostring(err))
+	print('  [PASS] nil _G widget load guard')
+end
+
+do
+	local info = BossInfoAdapter.Normalize(nil, {mode = 'raptor'})
+	assertEq(info.mode, 'raptor', 'mode default')
+	assertEq(info.bossCount, 0, 'empty boss count')
+	assertEq(info.healthPercent, 0, 'empty health percent')
+
+	local decoded = BossInfoAdapter.DecodePveBossInfo('', {decode = function() error('should not decode') end})
+	assertEq(type(decoded.resistances), 'table', 'nil-safe resistances')
+	print('  [PASS] pveBossInfo nil-safe defaults')
+end
+
+do
+	local raw = {
+		resistances = {
+			['11'] = {percent = 1.2, damage = 1200},
+			['12'] = {percent = 0.25, damage = 250},
+		},
+		statuses = {
+			['90'] = {health = 500, maxHealth = 1000},
+			['91'] = {health = 0, maxHealth = 1000, isDead = true},
+		},
+		playerDamages = {['2'] = 333},
+	}
+	local info = BossInfoAdapter.Normalize(raw, {mode = 'scav'})
+	assertNear(info.resistances[11].percent, 0.98, 0.0001, 'scav cap')
+	assertNear(info.resistances[12].percent, 0.25, 0.0001, 'resistance percent')
+	assertEq(info.bossCount, 2, 'boss status count')
+	assertEq(info.aliveMaxHealth, 1000, 'alive max health')
+	assertEq(info.playerDamages[2], 333, 'team damage')
+	print('  [PASS] boss info decode and scav cap')
+end
+
+do
+	assertNear(ScoringEngine.EffectiveResistance(0.8, true), 0.4, 0.0001, 'stagger halves resistance')
+	assertNear(ScoringEngine.EffectiveResistance(0.8, false), 0.8, 0.0001, 'normal resistance')
+	assertNear(ScoringEngine.EffectiveResistance(0.8, false, 'scav'), 0.96, 0.0001, 'scav double resistance')
+	assertNear(ScoringEngine.EffectiveResistance(0.8, true, 'scav'), 0.88, 0.0001, 'scav staggered double resistance')
+	assertNear(ScoringEngine.BossPhaseDamageMultiplier(55), 2, 0.0001, 'high-health phase multiplier')
+	assertNear(ScoringEngine.BossPhaseDamageMultiplier(7), 0.5, 0.0001, 'low-health phase multiplier')
+	local projected = ScoringEngine.ProjectResistance({percent = 0.2, damage = 200}, 300, 1000, 0.95)
+	assertNear(projected, 0.5, 0.0001, 'project resistance')
+	print('  [PASS] resistance and stagger math')
+end
+
+do
+	local rows = {
+		{name = 'High Resist', resistancePercent = 0.6},
+		{name = 'Low Resist', resistancePercent = 0.1},
+	}
+	ScoringEngine.SortRows(rows, 'resistancePercent', true)
+	assertEq(rows[1].name, 'Low Resist', 'resistance ascending first row')
+	assertEq(rows[2].name, 'High Resist', 'resistance ascending second row')
+	print('  [PASS] resistance sorting ascending')
+end
+
+do
+	local unitDefs = {
+		[1] = {
+			id = 1,
+			name = 'armcom',
+			translatedHumanName = 'Commander',
+			buildOptions = {2, 3},
+			isBuilder = true,
+			metalCost = 1000,
+			energyCost = 1000,
+		},
+		[2] = {
+			id = 2,
+			name = 'bioprinter',
+			translatedHumanName = 'BioPrinter',
+			buildoptions = {[21] = 'grenadier'},
+			isBuilder = true,
+			metalCost = 12000,
+			energyCost = 170000,
+			weapons = {},
+		},
+		[3] = {
+			id = 3,
+			name = 'shipyard',
+			translatedHumanName = 'Shipyard',
+			buildOptions = {5},
+			isBuilder = true,
+			metalCost = 800,
+			energyCost = 2000,
+		},
+		[4] = {
+			id = 4,
+			name = 'grenadier',
+			translatedHumanName = 'Grenadier Beetle',
+			metalCost = 1800,
+			energyCost = 33500,
+			buildTime = 19000,
+			weapons = {{damage = {default = 700}, reloadtime = 2, range = 1200}},
+		},
+		[5] = {
+			id = 5,
+			name = 'subkiller',
+			translatedHumanName = 'Sub Killer',
+			minWaterDepth = 20,
+			metalCost = 500,
+			energyCost = 5000,
+			weapons = {{damage = {default = 100}, reloadtime = 1, range = 500}},
+		},
+		[6] = {
+			id = 6,
+			name = 'unbuilt',
+			translatedHumanName = 'Unbuilt Gun',
+			metalCost = 500,
+			energyCost = 1000,
+			weapons = {{damage = {default = 100}, reloadtime = 1}},
+		},
+	}
+	local catalog = UnitCatalog.Build({
+		unitDefs = unitDefs,
+		unitDefNames = {grenadier = {id = 4}},
+		resistanceMap = {[4] = {percent = 0.1}},
+		hasMeaningfulWater = false,
+		ownedSourceDefIDs = {[4] = true},
+	})
+
+	assertTrue(catalog.candidates[4].reachable, 'grenadier reachable')
+	assertEq(catalog.candidates[4].sourceLabel, 'Commander > BioPrinter', 'source chain')
+	assertFalse(catalog.candidates[5].mapViable, 'sea unit hidden on dry map')
+	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'owned')[4].name, 'grenadier', 'owned filter keeps owned source')
+	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'match')[6], nil, 'match filter drops unreachable')
+	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'all')[6].name, 'unbuilt', 'all filter keeps unreachable')
+	local tracker = EngagementTracker.New()
+	EngagementTracker.UpdateUnit(tracker, 100, 2, 1, true, 1)
+	local _, _, ownedSources = EngagementTracker.BuildCounts(tracker, {
+		unitDefs = unitDefs,
+		unitDefNames = {grenadier = {id = 4}},
+		candidateMap = {},
+	})
+	assertTrue(ownedSources[4], 'owned source handles sparse string buildoptions')
+	print('  [PASS] build-source graph and availability filters')
+end
+
+do
+	local disintegrator = {
+		weapondefs = {
+			disintegratorxl = {
+				reloadtime = 1.5,
+				energypershot = 150000,
+				damage = {default = 12000},
+			},
+		},
+		weapons = {{def = 'disintegratorxl'}},
+	}
+	local operating = UnitCatalog.EstimateOperatingCost(disintegrator, {})
+	assertNear(operating.fireEnergyPerSecond, 100000, 0.0001, 'energy per shot operating cost')
+	assertNear(operating.energyPerSecond, 100000, 0.0001, 'total energy operating cost')
+
+	local launcher = {
+		weapondefs = {
+			launcher = {
+				stockpiletime = 8,
+				stockpilelimit = 50,
+				burst = 2,
+				metalpershot = 13000,
+				energypershot = 180000,
+				damage = {default = 30000},
+			},
+		},
+	}
+	local stockpileOperating = UnitCatalog.EstimateOperatingCost(launcher, {})
+	assertNear(stockpileOperating.fireMetalPerSecond, 3250, 0.0001, 'stockpile metal per second')
+	assertNear(stockpileOperating.fireEnergyPerSecond, 45000, 0.0001, 'stockpile energy per second')
+	print('  [PASS] weapon operating cost estimation')
+end
+
+do
+	local candidate = {
+		defID = 4,
+		name = 'grenadier',
+		displayName = 'Grenadier Beetle',
+		icon = '#4',
+		sourceLabel = 'BioPrinter',
+		metalCost = 1800,
+		energyCost = 35000,
+		buildTime = 20000,
+		estimatedDps = 350,
+		operatingMetalPerSecond = 0,
+		operatingEnergyPerSecond = 70000,
+		mapViable = true,
+		reachable = true,
+	}
+	local rows = ScoringEngine.BuildRows({
+		candidates = {[4] = candidate},
+		bossInfo = {
+			resistances = {[4] = {percent = 0.25, damage = 250}},
+			aliveMaxHealth = 1000,
+			healthPercent = 40,
+			resistanceCap = 0.95,
+			staggerActive = false,
+			mode = 'raptor',
+		},
+		countsByDef = {[4] = {alive = 2, ready = 1, far = 1, building = 1, queuedOwn = 3, teams = {}}},
+		samplesByDef = {[4] = 500},
+		energyPerMetal = 70,
+		costMode = 'build',
+	})
+	local fullRows = ScoringEngine.BuildRows({
+		candidates = {[4] = candidate},
+		bossInfo = {
+			resistances = {[4] = {percent = 0.25, damage = 250}},
+			aliveMaxHealth = 1000,
+			healthPercent = 40,
+			resistanceCap = 0.95,
+			staggerActive = false,
+			mode = 'raptor',
+		},
+		countsByDef = {[4] = {alive = 2, ready = 1, far = 1, building = 1, queuedOwn = 3, teams = {}}},
+		samplesByDef = {[4] = 500},
+		energyPerMetal = 70,
+		costMode = 'full',
+	})
+	assertEq(#rows, 1, 'one score row')
+	assertNear(rows[1].metalEq, 2300, 0.0001, 'metal equivalent')
+	assertNear(fullRows[1].operatingMetalEqPerSecond, 1000, 0.0001, 'operating metal-equivalent per second')
+	assertNear(fullRows[1].scoreCostMetalEq, 32300, 0.0001, 'full score cost includes operating window')
+	assertTrue(fullRows[1].marginalDamagePerMetalEq < rows[1].marginalDamagePerMetalEq, 'full cost deflates expensive weapon score')
+	assertTrue(rows[1].marginalDamagePerMetalEq > 0, 'positive marginal score')
+	assertEq(rows[1].confidence, 'high', 'live sample confidence')
+	print('  [PASS] metal-equivalent scoring')
+end
+
+do
+	local store = KnowledgeStore.New()
+	KnowledgeStore.Merge(store, 'raptor', 'epic', {name = 'grenadier'}, {
+		score = 10,
+		costMode = 'build',
+		energyPerMetal = 70,
+		scoreWindowSeconds = 30,
+	})
+	KnowledgeStore.Merge(store, 'raptor', 'epic', {name = 'grenadier'}, {
+		score = 20,
+		costMode = 'full',
+		energyPerMetal = 60,
+		scoreWindowSeconds = 30,
+	})
+	local row = store.rows[KnowledgeStore.Key('raptor', 'epic', 'grenadier')]
+	assertEq(row.samples, 2, 'knowledge samples')
+	assertNear(row.averageScore, 15, 0.0001, 'knowledge average')
+	assertEq(row.schemaVersion, 2, 'knowledge schema version')
+	assertEq(row.costMode, 'full', 'knowledge stores latest cost mode')
+	local rows = KnowledgeStore.Rows(store)
+	assertEq(#rows, 1, 'knowledge rows export count')
+	assertEq(rows[1].unitName, 'grenadier', 'knowledge rows unit name')
+	assertNear(rows[1].bestScore, 20, 0.0001, 'knowledge rows best score')
+	print('  [PASS] knowledge store merge')
+end
+
+print('\n=== All Boss Killer Planner tests passed! ===')

@@ -1,0 +1,162 @@
+<!-- license: GPLv2, or later -->
+
+<rml>
+<head>
+	<title>Boss Killer Planner</title>
+	<link rel="stylesheet" href="boss_killer_planner.rcss" type="text/rcss" />
+</head>
+<body id="boss-killer-planner-widget">
+	<div id="bkp-panel" class="panel" data-model="boss_killer_planner" onmouseup="widget:OnDragEnd(event)">
+		<div id="bkp-title-bar" class="title-bar">
+			<handle move_target="bkp-panel">
+				<div class="title-content">
+					<span class="title-text">Boss Killer</span>
+					<span class="status-text">{{status_text}}</span>
+					<span class="stagger-text" data-if="stagger_label != ''">{{stagger_label}}</span>
+				</div>
+			</handle>
+			<div class="title-controls">
+				<div class="ctrl-btn" onclick="widget:CycleAvailability(event)">{{availability_label}}</div>
+				<div class="ctrl-btn" onclick="widget:CycleSort(event)">{{sort_label}}</div>
+				<div class="ctrl-btn" onclick="widget:ToggleSortDirection(event)">{{sort_direction}}</div>
+				<div class="ctrl-btn" onclick="widget:ToggleCostMode(event)">{{cost_mode_label}}</div>
+				<div class="energy-control">
+					<div class="mini-btn" data-delta="-5" onclick="widget:AdjustEnergy(event)">-</div>
+					<span class="energy-label">E/M {{energy_per_metal}}</span>
+					<div class="mini-btn" data-delta="5" onclick="widget:AdjustEnergy(event)">+</div>
+				</div>
+				<div class="close-btn" onclick="widget:CloseWidget(event)">X</div>
+			</div>
+		</div>
+
+		<div class="tab-bar">
+			<div class="tab-btn" data-tab="ranked" data-class-active="is_ranked" onclick="widget:SetTab(event)">Ranked</div>
+			<div class="tab-btn" data-tab="resist" data-class-active="is_resist" onclick="widget:SetTab(event)">Resist</div>
+			<div class="tab-btn" data-tab="teams" data-class-active="is_teams" onclick="widget:SetTab(event)">Teams</div>
+			<div class="tab-btn" data-tab="sources" data-class-active="is_sources" onclick="widget:SetTab(event)">Sources</div>
+			<div class="tab-btn" data-tab="history" data-class-active="is_history" onclick="widget:SetTab(event)">History</div>
+		</div>
+
+		<div class="empty-state" data-if="!has_rows &amp;&amp; !is_history">
+			<span class="empty-text">Waiting for boss or unit data</span>
+		</div>
+
+		<div class="table-area" data-if="is_ranked &amp;&amp; has_rows">
+			<div class="header-row unit-grid">
+				<span class="h-name">Unit</span>
+				<span class="h-source">Source</span>
+				<span class="h-num">Res</span>
+				<span class="h-num">Score</span>
+				<span class="h-num">{{cost_header}}</span>
+				<span class="h-num">Op/s</span>
+				<span class="h-team">Teams</span>
+			</div>
+			<div data-for="row : ranked_rows" class="unit-row unit-grid">
+				<texture class="unit-icon" data-attr-src="row.icon"/>
+				<span class="unit-name">{{row.name}}</span>
+				<span class="source-label">{{row.source}}</span>
+				<span class="num-cell">{{row.resistance}}</span>
+				<span class="num-cell strong">{{row.score}}</span>
+				<span class="num-cell">{{row.cost}}</span>
+				<span class="num-cell">{{row.operating_cost}}</span>
+				<div class="team-cells">
+					<span data-for="cell : row.ally_cells" class="team-cell" data-attr-style="cell.style">
+						{{cell.label}}
+						<span class="team-cell-tooltip">{{cell.tooltip}}</span>
+					</span>
+				</div>
+			</div>
+		</div>
+
+		<div class="table-area" data-if="is_resist &amp;&amp; has_rows">
+			<div class="header-row unit-grid resist-grid">
+				<span class="h-name">Unit</span>
+				<span class="h-source">Source</span>
+				<span class="h-num">Res</span>
+				<span class="h-num">Abs</span>
+				<span class="h-num">Proj</span>
+				<span class="h-team">Teams</span>
+			</div>
+			<div data-for="row : resist_rows" class="unit-row unit-grid resist-grid">
+				<texture class="unit-icon" data-attr-src="row.icon"/>
+				<span class="unit-name">{{row.name}}</span>
+				<span class="source-label">{{row.source}}</span>
+				<span class="num-cell strong">{{row.resistance}}</span>
+				<span class="num-cell">{{row.resistance_damage}}</span>
+				<span class="num-cell">{{row.projected}}</span>
+				<div class="team-cells">
+					<span data-for="cell : row.ally_cells" class="team-cell" data-attr-style="cell.style">
+						{{cell.label}}
+						<span class="team-cell-tooltip">{{cell.tooltip}}</span>
+					</span>
+				</div>
+			</div>
+		</div>
+
+		<div class="table-area" data-if="is_teams &amp;&amp; has_rows">
+			<div data-for="team : team_rows" class="team-row">
+				<div class="team-header">
+					<div class="team-accent" data-style-background-color="team.color"></div>
+					<span class="team-name">{{team.name}}</span>
+					<span class="team-damage">{{team.damage_label}}</span>
+				</div>
+				<div class="team-unit-list">
+					<div data-for="unit : team.units" class="team-unit">
+						<texture class="small-icon" data-attr-src="unit.icon"/>
+						<span class="team-unit-name">{{unit.name}}</span>
+						<span class="team-unit-count">{{unit.ready_alive}}</span>
+						<span class="team-unit-building" data-if="unit.building != '0'">+{{unit.building}}</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="table-area" data-if="is_sources &amp;&amp; has_rows">
+			<div class="header-row source-grid">
+				<span class="h-name">Unit</span>
+				<span class="h-source">Build Source</span>
+				<span class="h-num">Cost</span>
+				<span class="h-num">Avail</span>
+			</div>
+			<div data-for="row : source_rows" class="source-row source-grid">
+				<texture class="unit-icon" data-attr-src="row.icon"/>
+				<span class="unit-name">{{row.name}}</span>
+				<span class="source-label">{{row.source}}</span>
+				<span class="num-cell">{{row.cost}}</span>
+				<span class="num-cell">{{row.availability}}</span>
+			</div>
+		</div>
+
+		<div class="empty-state" data-if="is_history &amp;&amp; !has_history">
+			<span class="empty-text">No stored history yet</span>
+		</div>
+
+		<div class="table-area" data-if="is_history &amp;&amp; has_history">
+			<div class="header-row history-grid">
+				<span class="hist-unit">Unit</span>
+				<span class="hist-mode">Mode</span>
+				<span class="hist-num">Avg</span>
+				<span class="hist-num">Last</span>
+				<span class="hist-num">Best</span>
+				<span class="hist-small">N</span>
+				<span class="hist-small">Seen</span>
+				<span class="hist-small">Cost</span>
+			</div>
+			<div data-for="row : history_rows" class="history-row history-grid">
+				<span class="hist-unit">{{row.unit}}</span>
+				<span class="hist-mode">{{row.mode}}</span>
+				<span class="hist-num strong">{{row.avg}}</span>
+				<span class="hist-num">{{row.last}}</span>
+				<span class="hist-num">{{row.best}}</span>
+				<span class="hist-small">{{row.samples}}</span>
+				<span class="hist-small">{{row.seen}}</span>
+				<span class="hist-small">{{row.cost}}</span>
+			</div>
+		</div>
+
+		<handle size_target="bkp-panel" class="resize-handle">
+			<div class="resize-grip"></div>
+		</handle>
+	</div>
+</body>
+</rml>

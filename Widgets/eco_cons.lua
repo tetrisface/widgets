@@ -51,6 +51,7 @@ local LEAK_LEVEL = 0.99            -- resource fraction above this == leaking
 local METAL_LEVEL_HIGH = 0.8       -- metal level deemed comfortably high
 local METAL_LEVEL_LOW = 0.15       -- metal level above this still allows power building
 local MM_LEVEL_BIAS = 0.12         -- bias added to mmLevel rules param
+local POWER_NEED_AFFORDABLE_FLOOR = 0.75 -- minimum buildpower priority when eco can afford it
 
 -- scanning / timing
 local CANDIDATE_SCAN_PADDING = 250 -- buildDistance + this == idle-candidate scan radius
@@ -630,7 +631,7 @@ local function recomputePowerNeed(metalSnapshot, energySnapshot)
     energyPressure = metalSnapshot.level
   end
 
-  powerNeed = Clamp01(metalPressure * energyPressure)
+  powerNeed = math.max(POWER_NEED_AFFORDABLE_FLOOR, Clamp01(metalPressure * energyPressure))
 end
 
 local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
@@ -1296,6 +1297,24 @@ end
 -- ============================================================
 -- Batch eco assignment
 -- ============================================================
+local function getCandidateAlternatives(ecoBuildingList)
+  local candidateAlternatives = {}
+  local candidateAlternativeUnitIds = Spring.GetTeamUnitsByDefs(myTeamId, ecoBuildingList)
+
+  for i = 1, #candidateAlternativeUnitIds do
+    local unitId = candidateAlternativeUnitIds[i]
+    local build = select(5, GetUnitHealth(unitId))
+    if build < 1 then
+      table.insert(
+        candidateAlternatives,
+        {id = unitId, build = build, buildSpeed = 0, builderIds = {}, alreadyBuilding = {}}
+      )
+    end
+  end
+
+  return candidateAlternatives
+end
+
 local function NormalizedPositiveNeeds()
   local needs = {
     {'power', powerNeed},
@@ -1305,8 +1324,18 @@ local function NormalizedPositiveNeeds()
   local positiveNeeds = {}
 
   for _, need in ipairs(needs) do
-    if need[2] and need[2] > 0 then
-      table.insert(positiveNeeds, need)
+    local needName = need[1]
+    local needValue = need[2]
+    if needValue and needValue > 0 then
+      local ecoBuildingList = ecoBuildingTypeDefIds[needName].list
+      local candidateAlternatives = getCandidateAlternatives(ecoBuildingList)
+      if #candidateAlternatives > 0 then
+        table.insert(positiveNeeds, {
+          name = needName,
+          value = needValue,
+          candidateAlternatives = candidateAlternatives
+        })
+      end
     end
   end
 
@@ -1317,27 +1346,23 @@ local function NormalizedPositiveNeeds()
   table.sort(
     positiveNeeds,
     function(a, b)
-      if a[2] == b[2] then
-        return a[1] < b[1]
+      if a.value == b.value then
+        return a.name < b.name
       end
-      return a[2] > b[2]
+      return a.value > b.value
     end
   )
-
-  while #positiveNeeds > 2 do
-    table.remove(positiveNeeds)
-  end
 
   -- normalize need values so that they sum to 1
   local sum = 0
   for _, need in ipairs(positiveNeeds) do
-    sum = sum + need[2]
+    sum = sum + need.value
   end
   if sum <= 0 then
     return {}
   end
   for _, need in ipairs(positiveNeeds) do
-    need[2] = need[2] / sum
+    need.value = need.value / sum
   end
 
   return positiveNeeds
@@ -1351,26 +1376,13 @@ local function BatchOrder(gameFrame)
 
   local assignedBuilders = {}
   for _, need in ipairs(needs) do
-    local needName = need[1]
-    local needValue = need[2]
+    local needName = need.name
+    local needValue = need.value
     -- Get the ecoBuildingDefIds[type].map for the current need type
     local ecoBuildingMap = ecoBuildingTypeDefIds[needName].map
-    local ecoBuildingList = ecoBuildingTypeDefIds[needName].list
 
     -- Get candidates for alternative builds (units to assist or start new builds)
-    local candidateAlternatives = {}
-    local candidateAlternativeUnitIds = Spring.GetTeamUnitsByDefs(myTeamId, ecoBuildingList)
-
-    for i = 1, #candidateAlternativeUnitIds do
-      local unitId = candidateAlternativeUnitIds[i]
-      local build = select(5, GetUnitHealth(unitId))
-      if build < 1 then
-        table.insert(
-          candidateAlternatives,
-          {id = unitId, build = build, buildSpeed = 0, builderIds = {}, alreadyBuilding = {}}
-        )
-      end
-    end
+    local candidateAlternatives = need.candidateAlternatives
 
     -- Filter builders not selected and not throttled
     local candidateBuilders = {}
