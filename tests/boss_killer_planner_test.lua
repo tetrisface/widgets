@@ -9,6 +9,7 @@ local UnitCatalog = modules.UnitCatalog
 local EngagementTracker = modules.EngagementTracker
 local ScoringEngine = modules.ScoringEngine
 local KnowledgeStore = modules.KnowledgeStore
+local helpers = modules._helpers
 
 local function assertEq(actual, expected, message)
 	if actual ~= expected then
@@ -54,6 +55,9 @@ do
 
 	local decoded = BossInfoAdapter.DecodePveBossInfo('', {decode = function() error('should not decode') end})
 	assertEq(type(decoded.resistances), 'table', 'nil-safe resistances')
+	local sentinel = BossInfoAdapter.Normalize(nil, {mode = 'scav', healthPercent = -2147483648, anger = 26})
+	assertEq(sentinel.healthPercent, 0, 'pre-boss health sentinel clamps to zero')
+	assertEq(sentinel.anger, 26, 'valid anger percent remains visible')
 	print('  [PASS] pveBossInfo nil-safe defaults')
 end
 
@@ -70,12 +74,12 @@ do
 		playerDamages = {['2'] = 333},
 	}
 	local info = BossInfoAdapter.Normalize(raw, {mode = 'scav'})
-	assertNear(info.resistances[11].percent, 0.98, 0.0001, 'scav cap')
+	assertNear(info.resistances[11].percent, 0.95, 0.0001, 'resistance cap')
 	assertNear(info.resistances[12].percent, 0.25, 0.0001, 'resistance percent')
 	assertEq(info.bossCount, 2, 'boss status count')
 	assertEq(info.aliveMaxHealth, 1000, 'alive max health')
 	assertEq(info.playerDamages[2], 333, 'team damage')
-	print('  [PASS] boss info decode and scav cap')
+	print('  [PASS] boss info decode and resistance cap')
 end
 
 do
@@ -98,7 +102,60 @@ do
 	ScoringEngine.SortRows(rows, 'resistancePercent', true)
 	assertEq(rows[1].name, 'Low Resist', 'resistance ascending first row')
 	assertEq(rows[2].name, 'High Resist', 'resistance ascending second row')
+
+	local namedRows = {
+		{name = 'Zeus', sourceLabel = 'Bot Lab'},
+		{name = 'Arbiter', sourceLabel = 'Vehicle Lab'},
+	}
+	ScoringEngine.SortRows(namedRows, 'name', true)
+	assertEq(namedRows[1].name, 'Arbiter', 'string sort ascending')
 	print('  [PASS] resistance sorting ascending')
+end
+
+do
+	local first = helpers.paginate(241, 1, 90, 90)
+	assertEq(first.startIndex, 1, 'first page start')
+	assertEq(first.endIndex, 90, 'first page end')
+	assertEq(first.pageCount, 3, 'page count rounds up')
+	assertTrue(first.hasNext, 'first page has next')
+	assertFalse(first.hasPrev, 'first page has no prev')
+
+	local last = helpers.paginate(241, 99, 90, 90)
+	assertEq(last.page, 3, 'page clamps high')
+	assertEq(last.startIndex, 181, 'last page start')
+	assertEq(last.endIndex, 241, 'last page end')
+	assertFalse(last.hasNext, 'last page has no next')
+
+	local empty = helpers.paginate(0, 3, 90, 90)
+	assertEq(empty.label, '0 rows', 'empty page label')
+	assertEq(empty.startIndex, 1, 'empty start index')
+	assertEq(empty.endIndex, 0, 'empty end index')
+	print('  [PASS] pagination bounds')
+end
+
+do
+	local oversized = helpers.clampPanelRect(
+		{x = 120, y = 80, width = 2000, height = 1000},
+		{width = 800, height = 600},
+		620,
+		180
+	)
+	assertEq(oversized.x, 0, 'oversized panel snaps to viewport left')
+	assertEq(oversized.y, 80, 'oversized panel keeps reachable y position')
+	assertEq(oversized.width, 776, 'oversized panel width falls back below viewport')
+	assertEq(oversized.height, 430, 'oversized panel height falls back to default')
+
+	local tinyViewport = helpers.clampPanelRect(
+		{x = -40, y = -20, width = 120, height = 90},
+		{width = 500, height = 140},
+		620,
+		180
+	)
+	assertEq(tinyViewport.x, 0, 'negative panel x clamps into viewport')
+	assertEq(tinyViewport.y, 0, 'negative panel y clamps into viewport')
+	assertEq(tinyViewport.width, 476, 'viewport width beats preferred minimum')
+	assertEq(tinyViewport.height, 116, 'viewport height beats preferred minimum')
+	print('  [PASS] panel viewport bounds')
 end
 
 do
@@ -174,6 +231,11 @@ do
 	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'all')[6].name, 'unbuilt', 'all filter keeps unreachable')
 	local tracker = EngagementTracker.New()
 	EngagementTracker.UpdateUnit(tracker, 100, 2, 1, true, 1)
+	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, {
+		unitDefs = unitDefs,
+		unitDefNames = {grenadier = {id = 4}},
+	})
+	assertTrue(ownedSourceDefIDs[4], 'owned source helper handles sparse string buildoptions')
 	local _, _, ownedSources = EngagementTracker.BuildCounts(tracker, {
 		unitDefs = unitDefs,
 		unitDefNames = {grenadier = {id = 4}},
@@ -262,10 +324,27 @@ do
 		energyPerMetal = 70,
 		costMode = 'full',
 	})
+	local normalizedRows = ScoringEngine.BuildRows({
+		candidates = {[4] = candidate},
+		bossInfo = {
+			resistances = {[4] = {percent = 0.25, damage = 250}},
+			aliveMaxHealth = 1000,
+			healthPercent = 40,
+			resistanceCap = 0.95,
+			staggerActive = false,
+			mode = 'raptor',
+		},
+		countsByDef = {[4] = {alive = 2, ready = 1, far = 1, building = 1, queuedOwn = 3, teams = {}}},
+		samplesByDef = {[4] = 300},
+		energyPerMetal = 70,
+		costMode = 'build',
+		sampleWindowSeconds = 3,
+	})
 	assertEq(#rows, 1, 'one score row')
 	assertNear(rows[1].metalEq, 2300, 0.0001, 'metal equivalent')
 	assertNear(fullRows[1].operatingMetalEqPerSecond, 1000, 0.0001, 'operating metal-equivalent per second')
 	assertNear(fullRows[1].scoreCostMetalEq, 32300, 0.0001, 'full score cost includes operating window')
+	assertNear(normalizedRows[1].liveContributionPerMetalEq, 3000 / 2300, 0.0001, 'live sample normalizes to score window')
 	assertTrue(fullRows[1].marginalDamagePerMetalEq < rows[1].marginalDamagePerMetalEq, 'full cost deflates expensive weapon score')
 	assertTrue(rows[1].marginalDamagePerMetalEq > 0, 'positive marginal score')
 	assertEq(rows[1].confidence, 'high', 'live sample confidence')

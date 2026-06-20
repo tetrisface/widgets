@@ -12,9 +12,9 @@ body, div {
 
 .panel {
 	position: absolute;
-	width: 620dp;
-	min-width: 360dp;
-	min-height: 180dp;
+	width: 820dp;
+	min-width: 0dp;
+	min-height: 0dp;
 	background-color: #0D0D0DEB;
 	font-family: Exo 2;
 	font-size: 12dp;
@@ -60,7 +60,6 @@ body, div {
 	font-size: 0.833em;
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .stagger-text {
@@ -94,6 +93,38 @@ body, div {
 	display: flex;
 	align-items: center;
 	gap: 2dp;
+}
+
+.page-label {
+	color: #8DA6B8;
+	font-size: 0.75em;
+	white-space: nowrap;
+	padding: 0 2dp;
+}
+
+.pager-row {
+	height: 21dp;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4dp;
+	padding: 0 8dp;
+	background-color: #0E1419;
+	border-bottom-width: 1dp;
+	border-bottom-color: #182129;
+	flex-shrink: 0;
+}
+
+.sort-label {
+	color: #708698;
+	font-size: 0.75em;
+	white-space: nowrap;
+	margin-right: 8dp;
+}
+
+.pager-btn {
+	padding-left: 4dp;
+	padding-right: 4dp;
 }
 
 .energy-label {
@@ -170,33 +201,27 @@ body, div {
 	border-bottom-color: #2B343D;
 }
 
+.sortable {
+	cursor: pointer;
+}
+
+.sortable:hover {
+	color: #D7E9F7;
+}
+
 .unit-grid {
 	display: flex;
 	align-items: center;
 }
 
-.resist-grid {
-	display: flex;
-}
-
-.source-grid {
-	display: flex;
-	align-items: center;
-}
-
-.history-grid {
-	display: flex;
-	align-items: center;
-}
-
-.unit-row, .source-row, .history-row {
+.unit-row {
 	min-height: 23dp;
 	color: #D6E2EA;
 	border-bottom-width: 1dp;
 	border-bottom-color: #151B20;
 }
 
-.unit-row:hover, .source-row:hover, .history-row:hover, .team-unit:hover {
+.unit-row:hover, .team-unit:hover {
 	background-color: #1B2730;
 }
 
@@ -214,13 +239,12 @@ body, div {
 .unit-name, .source-label {
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .unit-name {
 	color: #E8F2F8;
 	font-weight: bold;
-	width: 132dp;
+	width: 128dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
 }
@@ -228,9 +252,20 @@ body, div {
 .source-label {
 	color: #A4B6C4;
 	font-size: 0.833em;
-	width: 128dp;
+	width: 116dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
+}
+
+.avail-cell {
+	color: #AFC3D0;
+	text-align: right;
+	font-size: 0.833em;
+	white-space: nowrap;
+	width: 42dp;
+	flex-shrink: 0;
+	margin-left: 4dp;
+	overflow: hidden;
 }
 
 .num-cell {
@@ -238,9 +273,10 @@ body, div {
 	text-align: right;
 	font-size: 0.833em;
 	white-space: nowrap;
-	width: 48dp;
+	width: 46dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
+	overflow: hidden;
 }
 
 .num-cell.strong {
@@ -249,21 +285,28 @@ body, div {
 }
 
 .h-name {
-	width: 156dp;
+	width: 152dp;
 	flex-shrink: 0;
 	padding-left: 2dp;
 }
 
 .h-source {
 	text-align: left;
-	width: 128dp;
+	width: 116dp;
+	flex-shrink: 0;
+	margin-left: 4dp;
+}
+
+.h-avail {
+	text-align: right;
+	width: 42dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
 }
 
 .h-num {
 	text-align: right;
-	width: 48dp;
+	width: 46dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
 }
@@ -271,8 +314,16 @@ body, div {
 .h-team {
 	text-align: left;
 	padding-left: 4dp;
-	flex: 1;
-	min-width: 80dp;
+	width: 68dp;
+	flex-shrink: 0;
+	overflow: hidden;
+}
+
+.h-hist {
+	text-align: right;
+	width: 50dp;
+	flex-shrink: 0;
+	margin-left: 4dp;
 }
 
 .team-cells {
@@ -280,16 +331,46 @@ body, div {
 	gap: 4dp;
 	overflow: visible;
 	min-width: 0;
-	flex: 1;
+	width: 68dp;
+	flex-shrink: 0;
 	margin-left: 4dp;
+	height: 17dp;
+	align-items: center;
+}
+
+.hist-cell {
+	color: #A4B6C4;
+	text-align: right;
+	font-size: 0.833em;
+	white-space: nowrap;
+	width: 50dp;
+	flex-shrink: 0;
+	margin-left: 4dp;
+	overflow: visible;
+	position: relative;
+	cursor: help;
+}
+
+.hist-cell:hover .team-cell-tooltip {
+	display: block;
+	left: -132dp;
 }
 
 .team-cell {
+	display: block;
 	font-size: 0.833em;
 	font-weight: bold;
 	white-space: nowrap;
+	max-width: 80dp;
 	position: relative;
 	cursor: help;
+}
+
+.team-label {
+	display: block;
+	white-space: nowrap;
+	overflow: hidden;
+	max-width: 80dp;
 }
 
 .team-cell-tooltip {
@@ -339,7 +420,6 @@ body, div {
 	flex: 1;
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .team-damage {
@@ -369,7 +449,6 @@ body, div {
 	flex: 1;
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: ellipsis;
 	margin-left: 4dp;
 }
 
@@ -387,71 +466,6 @@ body, div {
 	width: 22dp;
 	text-align: right;
 	padding-right: 3dp;
-}
-
-.source-row .unit-name {
-	width: 150dp;
-}
-
-.source-row .source-label {
-	flex: 1;
-	width: auto;
-}
-
-.source-grid .h-name {
-	width: 174dp;
-}
-
-.source-grid .h-source {
-	flex: 1;
-	width: auto;
-}
-
-.hist-unit {
-	color: #E8F2F8;
-	font-weight: bold;
-	width: 150dp;
-	flex-shrink: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	margin-left: 2dp;
-}
-
-.hist-mode {
-	color: #A4B6C4;
-	font-size: 0.833em;
-	width: 92dp;
-	flex-shrink: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	margin-left: 4dp;
-}
-
-.hist-num {
-	color: #B9CBD7;
-	text-align: right;
-	font-size: 0.833em;
-	width: 54dp;
-	flex-shrink: 0;
-	white-space: nowrap;
-	margin-left: 4dp;
-}
-
-.hist-num.strong {
-	color: #7ED4FF;
-	font-weight: bold;
-}
-
-.hist-small {
-	color: #A4B6C4;
-	text-align: right;
-	font-size: 0.833em;
-	width: 42dp;
-	flex-shrink: 0;
-	white-space: nowrap;
-	margin-left: 4dp;
 }
 
 .resize-handle {

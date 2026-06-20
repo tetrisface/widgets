@@ -17,8 +17,6 @@
 			</handle>
 			<div class="title-controls">
 				<div class="ctrl-btn" onclick="widget:CycleAvailability(event)">{{availability_label}}</div>
-				<div class="ctrl-btn" onclick="widget:CycleSort(event)">{{sort_label}}</div>
-				<div class="ctrl-btn" onclick="widget:ToggleSortDirection(event)">{{sort_direction}}</div>
 				<div class="ctrl-btn" onclick="widget:ToggleCostMode(event)">{{cost_mode_label}}</div>
 				<div class="energy-control">
 					<div class="mini-btn" data-delta="-5" onclick="widget:AdjustEnergy(event)">-</div>
@@ -30,66 +28,55 @@
 		</div>
 
 		<div class="tab-bar">
-			<div class="tab-btn" data-tab="ranked" data-class-active="is_ranked" onclick="widget:SetTab(event)">Ranked</div>
-			<div class="tab-btn" data-tab="resist" data-class-active="is_resist" onclick="widget:SetTab(event)">Resist</div>
+			<div class="tab-btn" data-tab="units" data-class-active="is_units" onclick="widget:SetTab(event)">Units</div>
 			<div class="tab-btn" data-tab="teams" data-class-active="is_teams" onclick="widget:SetTab(event)">Teams</div>
-			<div class="tab-btn" data-tab="sources" data-class-active="is_sources" onclick="widget:SetTab(event)">Sources</div>
-			<div class="tab-btn" data-tab="history" data-class-active="is_history" onclick="widget:SetTab(event)">History</div>
+		</div>
+		<div class="pager-row" data-if="page_label != ''">
+			<span class="sort-label">Sort {{sort_label}} {{sort_direction}}</span>
+			<div class="mini-btn pager-btn" data-attr-style="prev_page_style" onclick="widget:PrevPage(event)">Prev</div>
+			<span class="page-label">{{page_label}}</span>
+			<div class="mini-btn pager-btn" data-attr-style="next_page_style" onclick="widget:NextPage(event)">Next</div>
 		</div>
 
-		<div class="empty-state" data-if="!has_rows &amp;&amp; !is_history">
+		<div class="empty-state" data-if="!has_rows &amp;&amp; is_units">
 			<span class="empty-text">Waiting for boss or unit data</span>
 		</div>
 
-		<div class="table-area" data-if="is_ranked &amp;&amp; has_rows">
+		<div class="table-area" data-if="is_units &amp;&amp; has_rows">
 			<div class="header-row unit-grid">
-				<span class="h-name">Unit</span>
-				<span class="h-source">Source</span>
-				<span class="h-num">Res</span>
-				<span class="h-num">Score</span>
-				<span class="h-num">{{cost_header}}</span>
-				<span class="h-num">Op/s</span>
-				<span class="h-team">Teams</span>
+				<span class="h-name sortable" data-sort="name" onclick="widget:SetSort(event)">Unit</span>
+				<span class="h-source sortable" data-sort="sourceLabel" onclick="widget:SetSort(event)">Source</span>
+				<span class="h-avail sortable" data-sort="availabilityRank" onclick="widget:SetSort(event)">Avail</span>
+				<span class="h-num sortable" data-sort="resistancePercent" onclick="widget:SetSort(event)">Res</span>
+				<span class="h-num sortable" data-sort="resistanceDamage" onclick="widget:SetSort(event)">Dmg</span>
+				<span class="h-num sortable" data-sort="marginalDamagePerMetalEq" onclick="widget:SetSort(event)">Marg</span>
+				<span class="h-num sortable" data-sort="liveContributionPerMetalEq" onclick="widget:SetSort(event)">Live</span>
+				<span class="h-num sortable" data-sort="scoreCostMetalEq" onclick="widget:SetSort(event)">{{cost_header}}</span>
+				<span class="h-num sortable" data-sort="operatingMetalEqPerSecond" onclick="widget:SetSort(event)">Use/s</span>
+				<span class="h-team sortable" data-sort="teamSort" onclick="widget:SetSort(event)">Teams</span>
+				<span class="h-hist sortable" data-sort="historyAverage" onclick="widget:SetSort(event)">Hist</span>
 			</div>
-			<div data-for="row : ranked_rows" class="unit-row unit-grid">
+			<div data-for="row : unit_rows" class="unit-row unit-grid">
 				<texture class="unit-icon" data-attr-src="row.icon"/>
 				<span class="unit-name">{{row.name}}</span>
 				<span class="source-label">{{row.source}}</span>
+				<span class="avail-cell">{{row.availability}}</span>
 				<span class="num-cell">{{row.resistance}}</span>
+				<span class="num-cell">{{row.resistance_damage}}</span>
 				<span class="num-cell strong">{{row.score}}</span>
+				<span class="num-cell">{{row.live_score}}</span>
 				<span class="num-cell">{{row.cost}}</span>
 				<span class="num-cell">{{row.operating_cost}}</span>
 				<div class="team-cells">
-					<span data-for="cell : row.ally_cells" class="team-cell" data-attr-style="cell.style">
-						{{cell.label}}
+					<span data-for="cell : row.ally_cells" class="team-cell" data-style-color="cell.color">
+						<span class="team-label">{{cell.label}}</span>
 						<span class="team-cell-tooltip">{{cell.tooltip}}</span>
 					</span>
 				</div>
-			</div>
-		</div>
-
-		<div class="table-area" data-if="is_resist &amp;&amp; has_rows">
-			<div class="header-row unit-grid resist-grid">
-				<span class="h-name">Unit</span>
-				<span class="h-source">Source</span>
-				<span class="h-num">Res</span>
-				<span class="h-num">Abs</span>
-				<span class="h-num">Proj</span>
-				<span class="h-team">Teams</span>
-			</div>
-			<div data-for="row : resist_rows" class="unit-row unit-grid resist-grid">
-				<texture class="unit-icon" data-attr-src="row.icon"/>
-				<span class="unit-name">{{row.name}}</span>
-				<span class="source-label">{{row.source}}</span>
-				<span class="num-cell strong">{{row.resistance}}</span>
-				<span class="num-cell">{{row.resistance_damage}}</span>
-				<span class="num-cell">{{row.projected}}</span>
-				<div class="team-cells">
-					<span data-for="cell : row.ally_cells" class="team-cell" data-attr-style="cell.style">
-						{{cell.label}}
-						<span class="team-cell-tooltip">{{cell.tooltip}}</span>
-					</span>
-				</div>
+				<span class="hist-cell">
+					{{row.history}}
+					<span class="team-cell-tooltip">{{row.history_tooltip}}</span>
+				</span>
 			</div>
 		</div>
 
@@ -108,49 +95,6 @@
 						<span class="team-unit-building" data-if="unit.building != '0'">+{{unit.building}}</span>
 					</div>
 				</div>
-			</div>
-		</div>
-
-		<div class="table-area" data-if="is_sources &amp;&amp; has_rows">
-			<div class="header-row source-grid">
-				<span class="h-name">Unit</span>
-				<span class="h-source">Build Source</span>
-				<span class="h-num">Cost</span>
-				<span class="h-num">Avail</span>
-			</div>
-			<div data-for="row : source_rows" class="source-row source-grid">
-				<texture class="unit-icon" data-attr-src="row.icon"/>
-				<span class="unit-name">{{row.name}}</span>
-				<span class="source-label">{{row.source}}</span>
-				<span class="num-cell">{{row.cost}}</span>
-				<span class="num-cell">{{row.availability}}</span>
-			</div>
-		</div>
-
-		<div class="empty-state" data-if="is_history &amp;&amp; !has_history">
-			<span class="empty-text">No stored history yet</span>
-		</div>
-
-		<div class="table-area" data-if="is_history &amp;&amp; has_history">
-			<div class="header-row history-grid">
-				<span class="hist-unit">Unit</span>
-				<span class="hist-mode">Mode</span>
-				<span class="hist-num">Avg</span>
-				<span class="hist-num">Last</span>
-				<span class="hist-num">Best</span>
-				<span class="hist-small">N</span>
-				<span class="hist-small">Seen</span>
-				<span class="hist-small">Cost</span>
-			</div>
-			<div data-for="row : history_rows" class="history-row history-grid">
-				<span class="hist-unit">{{row.unit}}</span>
-				<span class="hist-mode">{{row.mode}}</span>
-				<span class="hist-num strong">{{row.avg}}</span>
-				<span class="hist-num">{{row.last}}</span>
-				<span class="hist-num">{{row.best}}</span>
-				<span class="hist-small">{{row.samples}}</span>
-				<span class="hist-small">{{row.seen}}</span>
-				<span class="hist-small">{{row.cost}}</span>
 			</div>
 		</div>
 

@@ -1,15 +1,23 @@
 local WIDGET_NAME = 'Boss Killer Planner'
 local MODEL_NAME = 'boss_killer_planner'
 local RML_PATH = 'luaui/rmlwidgets/boss_killer_planner/boss_killer_planner.rml'
-local UPDATE_FREQUENCY = 30
-local QUEUE_SCAN_FREQUENCY = 90
+local BOSS_INFO_FREQUENCY = 90
+local QUEUE_SCAN_FREQUENCY = 300
+local RML_UPDATE_FREQUENCY = 90
 local READY_MARGIN = 700
 local DEFAULT_READY_RADIUS = 1800
 local DEFAULT_ENERGY_PER_METAL = 70
 local SCORE_WINDOW_SECONDS = 30
+local GAME_FRAMES_PER_SECOND = 30
 local KNOWLEDGE_PATH = 'LuaUI/Config/boss_killer_planner_stats.lua'
 local KNOWLEDGE_SCHEMA_VERSION = 2
 local MAX_KNOWLEDGE_ROWS = 256
+local RANKED_ROW_LIMIT = 90
+local PANEL_DEFAULT_WIDTH = 820
+local PANEL_DEFAULT_HEIGHT = 430
+local PANEL_MIN_WIDTH = 620
+local PANEL_MIN_HEIGHT = 180
+local PANEL_VIEWPORT_MARGIN = 24
 
 --------------------------------------------------------------------------------
 -- Pure helpers
@@ -31,6 +39,10 @@ local function safeNumber(value, fallback)
 		return fallback or 0
 	end
 	return value
+end
+
+local function safePercent(value, fallback)
+	return clamp(safeNumber(value, fallback or 0), 0, 100)
 end
 
 local function safeDivide(numerator, denominator)
@@ -64,6 +76,66 @@ local function formatSI(value)
 		return string.format('%.2f', value)
 	end
 	return '0'
+end
+
+local function paginate(totalRows, requestedPage, pageSize, defaultPageSize)
+	totalRows = math.max(0, safeNumber(totalRows, 0))
+	pageSize = math.max(1, safeNumber(pageSize, defaultPageSize or 1))
+	local pageCount = math.max(1, math.ceil(totalRows / pageSize))
+	local page = clamp(math.floor(safeNumber(requestedPage, 1)), 1, pageCount)
+	if totalRows <= 0 then
+		return {
+			startIndex = 1,
+			endIndex = 0,
+			page = 1,
+			pageCount = pageCount,
+			label = '0 rows',
+			hasPrev = false,
+			hasNext = false,
+		}
+	end
+
+	local startIndex = (page - 1) * pageSize + 1
+	local endIndex = math.min(totalRows, startIndex + pageSize - 1)
+	return {
+		startIndex = startIndex,
+		endIndex = endIndex,
+		page = page,
+		pageCount = pageCount,
+		label = string.format('%d-%d / %d', startIndex, endIndex, totalRows),
+		hasPrev = page > 1,
+		hasNext = page < pageCount,
+	}
+end
+
+local function clampPanelRect(rect, viewport, minWidth, minHeight)
+	rect = rect or {}
+	viewport = viewport or {}
+	local viewWidth = safeNumber(viewport.width, 0)
+	local viewHeight = safeNumber(viewport.height, 0)
+	local preferredMinWidth = math.max(1, safeNumber(minWidth, PANEL_MIN_WIDTH))
+	local preferredMinHeight = math.max(1, safeNumber(minHeight, PANEL_MIN_HEIGHT))
+	local widthMargin = viewWidth > 0 and math.min(PANEL_VIEWPORT_MARGIN, math.max(0, viewWidth - 1)) or 0
+	local heightMargin = viewHeight > 0 and math.min(PANEL_VIEWPORT_MARGIN, math.max(0, viewHeight - 1)) or 0
+	local maxWidth = viewWidth > 0 and math.max(1, viewWidth - widthMargin) or math.max(preferredMinWidth, safeNumber(rect.width, preferredMinWidth))
+	local maxHeight = viewHeight > 0 and math.max(1, viewHeight - heightMargin) or math.max(preferredMinHeight, safeNumber(rect.height, preferredMinHeight))
+	local effectiveMinWidth = viewWidth > 0 and math.min(preferredMinWidth, maxWidth) or preferredMinWidth
+	local effectiveMinHeight = viewHeight > 0 and math.min(preferredMinHeight, maxHeight) or preferredMinHeight
+	local fallbackWidth = math.min(PANEL_DEFAULT_WIDTH, maxWidth)
+	local fallbackHeight = math.min(PANEL_DEFAULT_HEIGHT, maxHeight)
+	local requestedWidth = safeNumber(rect.width, fallbackWidth)
+	local requestedHeight = safeNumber(rect.height, fallbackHeight)
+	local width = requestedWidth > maxWidth and fallbackWidth or clamp(requestedWidth, effectiveMinWidth, maxWidth)
+	local height = requestedHeight > maxHeight and fallbackHeight or clamp(requestedHeight, effectiveMinHeight, maxHeight)
+	local maxX = viewWidth > 0 and math.max(0, viewWidth - width - widthMargin) or safeNumber(rect.x, 0)
+	local maxY = viewHeight > 0 and math.max(0, viewHeight - height - heightMargin) or safeNumber(rect.y, 0)
+
+	return {
+		x = math.floor(viewWidth > 0 and clamp(safeNumber(rect.x, 0), 0, maxX) or safeNumber(rect.x, 0)),
+		y = math.floor(viewHeight > 0 and clamp(safeNumber(rect.y, 0), 0, maxY) or safeNumber(rect.y, 0)),
+		width = math.floor(width),
+		height = math.floor(height),
+	}
 end
 
 local function tableSize(tbl)
@@ -139,7 +211,7 @@ function BossInfoAdapter.Normalize(rawInfo, options)
 	rawInfo = rawInfo or {}
 
 	local mode = options.mode or 'unknown'
-	local cap = mode == 'scav' and 0.98 or 0.95
+	local cap = 0.95
 	if options.resistanceCap then
 		cap = options.resistanceCap
 	end
@@ -200,10 +272,10 @@ function BossInfoAdapter.Normalize(rawInfo, options)
 		aliveMaxHealth = aliveMaxHealth,
 		totalHealth = totalHealth,
 		totalMaxHealth = totalMaxHealth,
-		healthPercent = totalMaxHealth > 0 and (totalHealth / totalMaxHealth * 100) or safeNumber(options.healthPercent, 0),
-		anger = safeNumber(options.anger, 0),
+		healthPercent = totalMaxHealth > 0 and safePercent(totalHealth / totalMaxHealth * 100, 0) or safePercent(options.healthPercent, 0),
+		anger = safePercent(options.anger, 0),
 		staggerActive = options.staggerActive == true or options.staggerActive == 1,
-		staggerPercent = safeNumber(options.staggerPercent, 0),
+		staggerPercent = safePercent(options.staggerPercent, 0),
 	}
 end
 
@@ -621,6 +693,28 @@ function EngagementTracker.RemoveUnit(tracker, unitID)
 	tracker.units[unitID] = nil
 end
 
+function EngagementTracker.OwnedSourceDefIDs(tracker, env)
+	env = env or {}
+	local unitDefs = env.unitDefs or {}
+	local unitDefNames = env.unitDefNames or {}
+	local ownedSourceDefIDs = {}
+
+	for _, unit in pairs((tracker and tracker.units) or {}) do
+		local unitDef = unitDefs[unit.defID]
+		if isBuilderOrFactory(unitDef) then
+			local buildOptions = unitDef.buildOptions or unitDef.buildoptions
+			for _, buildOption in pairs(buildOptions or {}) do
+				local builtDefID = normalizeBuildOption(buildOption, unitDefNames)
+				if builtDefID then
+					ownedSourceDefIDs[builtDefID] = true
+				end
+			end
+		end
+	end
+
+	return ownedSourceDefIDs
+end
+
 local function distanceSq(ax, az, bx, bz)
 	local dx = ax - bx
 	local dz = az - bz
@@ -788,13 +882,14 @@ function ScoringEngine.BossPhaseDamageMultiplier(healthPercent)
 end
 
 function ScoringEngine.ProjectResistance(resistance, expectedAccumulatorDelta, aliveMaxHealth, cap)
-	local currentPercent = clamp(safeNumber(resistance and resistance.percent, 0), 0, safeNumber(cap, 0.98))
+	local resistanceCap = safeNumber(cap, 0.95)
+	local currentPercent = clamp(safeNumber(resistance and resistance.percent, 0), 0, resistanceCap)
 	local currentDamage = safeNumber(resistance and resistance.damage, 0)
 	aliveMaxHealth = safeNumber(aliveMaxHealth, 0)
 	if aliveMaxHealth <= 0 then
 		return currentPercent
 	end
-	return clamp((currentDamage + math.max(0, safeNumber(expectedAccumulatorDelta, 0))) / aliveMaxHealth, 0, cap or 0.98)
+	return clamp((currentDamage + math.max(0, safeNumber(expectedAccumulatorDelta, 0))) / aliveMaxHealth, 0, resistanceCap)
 end
 
 local function confidenceFor(candidate, recentDelta, knowledge)
@@ -810,6 +905,19 @@ local function confidenceFor(candidate, recentDelta, knowledge)
 	return ''
 end
 
+local function availabilityFor(candidate)
+	if candidate.ownedSource then
+		return 'Owned', 0
+	end
+	if candidate.reachable and candidate.mapViable then
+		return 'Match', 1
+	end
+	if candidate.reachable then
+		return 'Sea', 2
+	end
+	return 'Unk', 3
+end
+
 function ScoringEngine.BuildRows(input)
 	input = input or {}
 	local bossInfo = input.bossInfo or {}
@@ -818,6 +926,7 @@ function ScoringEngine.BuildRows(input)
 	local knowledgeByDef = input.knowledgeByDef or {}
 	local energyPerMetal = input.energyPerMetal or DEFAULT_ENERGY_PER_METAL
 	local costMode = input.costMode or 'full'
+	local sampleWindowSeconds = math.max(1 / GAME_FRAMES_PER_SECOND, safeNumber(input.sampleWindowSeconds, SCORE_WINDOW_SECONDS))
 	local rows = {}
 
 	for defID, candidate in pairs(input.candidates or {}) do
@@ -825,6 +934,7 @@ function ScoringEngine.BuildRows(input)
 		local resistancePercent = safeNumber(resistance and resistance.percent, 0)
 		local resistanceDamage = safeNumber(resistance and resistance.damage, 0)
 		local recentDelta = safeNumber(samplesByDef[defID], 0)
+		local recentWindowDamage = recentDelta > 0 and recentDelta * SCORE_WINDOW_SECONDS / sampleWindowSeconds or 0
 		local metalEq = math.max(1, ScoringEngine.MetalEquivalent(candidate, energyPerMetal))
 		local scoreCostMetalEq, operatingWindowMetalEq = ScoringEngine.ScoreCost(
 			candidate,
@@ -836,7 +946,7 @@ function ScoringEngine.BuildRows(input)
 		local operatingMetalEqPerSecond = ScoringEngine.OperatingMetalEquivalentPerSecond(candidate, energyPerMetal)
 		local phaseMultiplier = ScoringEngine.BossPhaseDamageMultiplier(bossInfo.healthPercent)
 		local estimatedBaseDamage = safeNumber(candidate.estimatedDps, 0) * SCORE_WINDOW_SECONDS * phaseMultiplier
-		local estimatedWindowDamage = math.max(recentDelta, estimatedBaseDamage)
+		local estimatedWindowDamage = math.max(recentWindowDamage, estimatedBaseDamage)
 		local projectedResistance = ScoringEngine.ProjectResistance(
 			resistance,
 			estimatedWindowDamage,
@@ -849,6 +959,11 @@ function ScoringEngine.BuildRows(input)
 		local marginalDamage = estimatedBaseDamage * math.max(0, 1 - marginalResistance)
 		local counts = countsByDef[defID] or {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = 0, teams = {}}
 		local knowledge = knowledgeByDef[defID]
+		local availabilityLabel, availabilityRank = availabilityFor(candidate)
+		local teamSort = (counts.ready or 0) * 1000000
+			+ (counts.alive or 0) * 10000
+			+ (counts.building or 0) * 100
+			+ (counts.queuedOwn or 0)
 
 		rows[#rows + 1] = {
 			defID = defID,
@@ -874,8 +989,15 @@ function ScoringEngine.BuildRows(input)
 			estimatedDps = candidate.estimatedDps,
 			currentDamagePerMetalEq = currentDamage / scoreCostMetalEq,
 			marginalDamagePerMetalEq = marginalDamage / scoreCostMetalEq,
-			liveContributionPerMetalEq = recentDelta > 0 and recentDelta / scoreCostMetalEq or 0,
-			confidence = confidenceFor(candidate, recentDelta, knowledge),
+			liveContributionPerMetalEq = recentWindowDamage > 0 and recentWindowDamage / scoreCostMetalEq or 0,
+			confidence = confidenceFor(candidate, recentWindowDamage, knowledge),
+			availabilityLabel = availabilityLabel,
+			availabilityRank = availabilityRank,
+			teamSort = teamSort,
+			historyAverage = safeNumber(knowledge and knowledge.averageScore, 0),
+			historySamples = safeNumber(knowledge and knowledge.samples, 0),
+			historyBest = safeNumber(knowledge and knowledge.bestScore, 0),
+			historyLast = safeNumber(knowledge and knowledge.lastScore, 0),
 			counts = counts,
 			mapViable = candidate.mapViable,
 			reachable = candidate.reachable,
@@ -891,6 +1013,16 @@ function ScoringEngine.SortRows(rows, sortKey, ascending)
 	table.sort(rows, function(a, b)
 		local av = a[sortKey] or 0
 		local bv = b[sortKey] or 0
+		if type(av) == 'string' then
+			av = av:lower()
+		end
+		if type(bv) == 'string' then
+			bv = bv:lower()
+		end
+		if type(av) ~= type(bv) then
+			av = tostring(av)
+			bv = tostring(bv)
+		end
 		if av == bv then
 			return a.name < b.name
 		end
@@ -1025,6 +1157,8 @@ local Modules = {
 		clamp = clamp,
 		safeDivide = safeDivide,
 		formatSI = formatSI,
+		paginate = paginate,
+		clampPanelRect = clampPanelRect,
 	},
 }
 
@@ -1060,6 +1194,7 @@ function widget:GetInfo()
 end
 
 local spGetGameRulesParam = Spring.GetGameRulesParam
+local spGetGameFrame = Spring.GetGameFrame
 local spGetModOptions = Spring.GetModOptions
 local spGetConfigString = Spring.GetConfigString
 local spSetConfigString = Spring.SetConfigString
@@ -1089,14 +1224,18 @@ local modOptions = spGetModOptions()
 local document
 local dm_handle
 local dataDirty = false
+local forceRmlUpdate = false
 local frameCounter = 0
 local queueScanCounter = 0
+local lastRmlUpdateFrame = -RML_UPDATE_FREQUENCY
 local lastUIHiddenState = false
 local widgetPosX = 1320
 local widgetPosY = 300
-local widgetWidth = 620
-local widgetHeight = 430
-local activeTab = 'ranked'
+local widgetWidth = PANEL_DEFAULT_WIDTH
+local widgetHeight = PANEL_DEFAULT_HEIGHT
+local activeTab = 'units'
+local rowPage = 1
+local currentPageCount = 1
 local availabilityMode = 'match'
 local sortKey = 'marginalDamagePerMetalEq'
 local sortAscending = false
@@ -1109,6 +1248,8 @@ local fullView = false
 
 local tracker = EngagementTracker.New()
 local catalog = {candidates = {}, sourceByBuilt = {}}
+local catalogBuilt = false
+local cachedHasMeaningfulWater
 local bossInfo = BossInfoAdapter.Normalize(nil, {})
 local resistanceLast = {}
 local resistanceSamples = {}
@@ -1116,6 +1257,49 @@ local knowledgeStore = KnowledgeStore.New()
 
 local function configKey(suffix)
 	return 'BossKillerPlanner_' .. suffix
+end
+
+local function currentViewport()
+	if not spGetViewGeometry then
+		return nil
+	end
+	local viewWidth, viewHeight = spGetViewGeometry()
+	viewWidth = safeNumber(viewWidth, 0)
+	viewHeight = safeNumber(viewHeight, 0)
+	if viewWidth <= 0 or viewHeight <= 0 then
+		return nil
+	end
+	return {width = viewWidth, height = viewHeight}
+end
+
+local function clampWindowStateToViewport(viewport)
+	local rect = clampPanelRect({
+		x = widgetPosX,
+		y = widgetPosY,
+		width = widgetWidth,
+		height = widgetHeight,
+	}, viewport or currentViewport(), PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT)
+	local changed = rect.x ~= widgetPosX
+		or rect.y ~= widgetPosY
+		or rect.width ~= widgetWidth
+		or rect.height ~= widgetHeight
+	widgetPosX = rect.x
+	widgetPosY = rect.y
+	widgetWidth = rect.width
+	widgetHeight = rect.height
+	return changed
+end
+
+local function markDataDirty(force)
+	dataDirty = true
+	if force then
+		forceRmlUpdate = true
+	end
+end
+
+local function resetRowPage()
+	rowPage = 1
+	currentPageCount = 1
 end
 
 local function parsePair(value)
@@ -1134,10 +1318,13 @@ local function loadConfig()
 	end
 	local w, h = parsePair(spGetConfigString(configKey('Size'), ''))
 	if w and h then
-		widgetWidth = math.max(360, w)
-		widgetHeight = math.max(180, h)
+		widgetWidth = w
+		widgetHeight = h
 	end
 	activeTab = spGetConfigString(configKey('Tab'), activeTab)
+	if activeTab ~= 'units' and activeTab ~= 'teams' then
+		activeTab = 'units'
+	end
 	availabilityMode = spGetConfigString(configKey('Availability'), availabilityMode)
 	sortKey = spGetConfigString(configKey('SortKey'), sortKey)
 	if sortKey == 'metalEq' then
@@ -1149,6 +1336,7 @@ local function loadConfig()
 	if costMode ~= 'build' and costMode ~= 'full' then
 		costMode = 'full'
 	end
+	clampWindowStateToViewport()
 end
 
 local function saveConfig()
@@ -1159,6 +1347,8 @@ local function saveConfig()
 	spSetConfigString(configKey('EnergyPerMetal'), tostring(energyPerMetal))
 	spSetConfigString(configKey('CostMode'), costMode)
 end
+
+local updateDocumentPosition
 
 local function savePositionAndSize()
 	if not document then
@@ -1172,11 +1362,15 @@ local function savePositionAndSize()
 	widgetPosY = math.floor(panel.absolute_top)
 	widgetWidth = math.floor(panel.offset_width)
 	widgetHeight = math.floor(panel.offset_height)
+	local wasClamped = clampWindowStateToViewport()
+	if wasClamped then
+		updateDocumentPosition()
+	end
 	spSetConfigString(configKey('Position'), widgetPosX .. ',' .. widgetPosY)
 	spSetConfigString(configKey('Size'), widgetWidth .. ',' .. widgetHeight)
 end
 
-local function updateDocumentPosition()
+updateDocumentPosition = function()
 	if not document then
 		return
 	end
@@ -1184,6 +1378,7 @@ local function updateDocumentPosition()
 	if not panel then
 		return
 	end
+	clampWindowStateToViewport()
 	panel.style.left = widgetPosX .. 'px'
 	panel.style.top = widgetPosY .. 'px'
 	panel.style.width = widgetWidth .. 'dp'
@@ -1334,47 +1529,73 @@ local function updateResistanceSamples(newBossInfo)
 	end
 end
 
-local function buildCatalogWithOwnedSources(candidateMap)
-	local countsByDef, _, ownedSourceDefIDs = EngagementTracker.BuildCounts(tracker, {
+local function catalogNeedsRebuild()
+	if not catalogBuilt then
+		return true
+	end
+
+	for defID in pairs(bossInfo.resistances or {}) do
+		if UnitDefs[defID] and not catalog.candidates[defID] then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function applyOwnedSourceFlags(ownedSourceDefIDs)
+	for defID, candidate in pairs(catalog.candidates or {}) do
+		candidate.ownedSource = ownedSourceDefIDs[defID] == true
+	end
+end
+
+local function buildCatalogWithOwnedSources()
+	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, {
 		unitDefs = UnitDefs,
 		unitDefNames = UnitDefNames,
-		candidateMap = candidateMap or {},
 	})
-	catalog = UnitCatalog.Build({
-		unitDefs = UnitDefs,
-		unitDefNames = UnitDefNames,
-		weaponDefs = WeaponDefs,
-		resistanceMap = bossInfo.resistances,
-		hasMeaningfulWater = hasMeaningfulWater(),
-		ownedSourceDefIDs = ownedSourceDefIDs,
-	})
-	return countsByDef
+	if catalogNeedsRebuild() then
+		if cachedHasMeaningfulWater == nil then
+			cachedHasMeaningfulWater = hasMeaningfulWater()
+		end
+		catalog = UnitCatalog.Build({
+			unitDefs = UnitDefs,
+			unitDefNames = UnitDefNames,
+			weaponDefs = WeaponDefs,
+			resistanceMap = bossInfo.resistances,
+			hasMeaningfulWater = cachedHasMeaningfulWater,
+			ownedSourceDefIDs = ownedSourceDefIDs,
+		})
+		catalogBuilt = true
+		return
+	end
+
+	applyOwnedSourceFlags(ownedSourceDefIDs)
 end
 
 local function teamCellRows(counts)
-	local cells = {}
 	local totalActive = (counts.alive or 0) + (counts.building or 0) + (counts.queuedOwn or 0)
-	if totalActive > 0 then
-		local label = tostring(counts.ready or 0) .. '/' .. tostring(counts.alive or 0)
-		if (counts.building or 0) > 0 then
-			label = label .. '+' .. tostring(counts.building)
-		end
-		if (counts.queuedOwn or 0) > 0 then
-			label = label .. ' q' .. tostring(counts.queuedOwn)
-		end
-		cells[#cells + 1] = {
-			label = label,
-			color = '#E8F2F8',
-			style = 'color: #E8F2F8',
-			tooltip = string.format(
-				'Allyteam total | ready %d | far %d | building %d | own queued %d',
-				counts.ready or 0,
-				counts.far or 0,
-				counts.building or 0,
-				counts.queuedOwn or 0
-			),
-		}
+	if totalActive <= 0 then
+		return {}
 	end
+
+	local label = tostring(counts.ready or 0) .. '/' .. tostring(counts.alive or 0)
+	if (counts.building or 0) > 0 then
+		label = label .. '+' .. tostring(counts.building)
+	end
+	if (counts.queuedOwn or 0) > 0 then
+		label = label .. ' q' .. tostring(counts.queuedOwn)
+	end
+
+	local tooltip = {
+		string.format(
+			'Allyteam total | ready %d | far %d | building %d | own queued %d',
+			counts.ready or 0,
+			counts.far or 0,
+			counts.building or 0,
+			counts.queuedOwn or 0
+		),
+	}
 
 	local teamCounts = sortedValues(counts.teams or {}, function(a, b)
 		if (a.allyTeamID or 0) == (b.allyTeamID or 0) then
@@ -1383,41 +1604,32 @@ local function teamCellRows(counts)
 		return (a.allyTeamID or 0) < (b.allyTeamID or 0)
 	end)
 	for _, row in ipairs(teamCounts) do
-		local label = tostring(row.ready) .. '/' .. tostring(row.alive)
+		local teamLabel = tostring(row.ready) .. '/' .. tostring(row.alive)
 		if row.building > 0 then
-			label = label .. '+' .. tostring(row.building)
+			teamLabel = teamLabel .. '+' .. tostring(row.building)
 		end
-		cells[#cells + 1] = {
+		tooltip[#tooltip + 1] = row.name .. ' | ' .. teamLabel .. ' | far ' .. tostring(row.far)
+	end
+	return {
+		{
 			label = label,
-			color = row.color or '#CCCCCC',
-			style = 'color: ' .. (row.color or '#CCCCCC'),
-			tooltip = string.format(
-				'%s | ready %d | far %d | building %d | own queued %d',
-				row.name,
-				row.ready,
-				row.far,
-				row.building,
-				counts.queuedOwn or 0
-			),
-		}
-	end
-	if #cells == 0 and counts.queuedOwn and counts.queuedOwn > 0 then
-		cells[#cells + 1] = {
-			label = 'q' .. tostring(counts.queuedOwn),
-			color = '#CCE6FF',
-			style = 'color: #CCE6FF',
-			tooltip = 'Own queued: ' .. tostring(counts.queuedOwn),
-		}
-	end
-	return cells
+			color = '#E8F2F8',
+			tooltip = table.concat(tooltip, '\n'),
+		},
+	}
 end
 
 local function presentationRow(row)
+	local history = '-'
+	if (row.historySamples or 0) > 0 then
+		history = formatSI(row.historyAverage) .. '/' .. tostring(row.historySamples)
+	end
 	return {
 		def_id = row.defID,
 		name = row.name,
 		icon = row.icon,
 		source = row.sourceLabel,
+		availability = row.availabilityLabel,
 		resistance = string.format('%.0f%%', row.resistancePercent * 100),
 		resistance_value = row.resistancePercent,
 		resistance_damage = formatSI(row.resistanceDamage),
@@ -1430,7 +1642,15 @@ local function presentationRow(row)
 		operating_window_cost = row.operatingWindowMetalEq > 0 and formatSI(row.operatingWindowMetalEq) or '-',
 		build_time = formatSI(row.buildTime),
 		confidence = row.confidence,
-		availability = row.ownedSource and 'Owned' or (row.mapViable and 'Match' or 'Sea'),
+		history = history,
+		history_tooltip = string.format(
+			'Avg %s | Last %s | Best %s | Samples %d | Confidence %s',
+			formatSI(row.historyAverage),
+			row.historyLast > 0 and formatSI(row.historyLast) or '-',
+			row.historyBest > 0 and formatSI(row.historyBest) or '-',
+			row.historySamples or 0,
+			row.confidence ~= '' and row.confidence or '-'
+		),
 		ally_cells = teamCellRows(row.counts),
 		ready_alive = tostring(row.counts.ready or 0) .. '/' .. tostring(row.counts.alive or 0),
 		building = tostring(row.counts.building or 0),
@@ -1438,57 +1658,14 @@ local function presentationRow(row)
 	}
 end
 
-local function formatAge(timestamp)
-	timestamp = safeNumber(timestamp, 0)
-	if timestamp <= 0 or not os or not os.time then
-		return '-'
-	end
-	local delta = math.max(0, os.time() - timestamp)
-	if delta < 60 then
-		return 'now'
-	end
-	if delta < 3600 then
-		return tostring(math.floor(delta / 60)) .. 'm'
-	end
-	if delta < 86400 then
-		return tostring(math.floor(delta / 3600)) .. 'h'
-	end
-	return tostring(math.floor(delta / 86400)) .. 'd'
-end
-
-local function buildHistoryRows()
-	local rows = KnowledgeStore.Rows(knowledgeStore)
-	table.sort(rows, function(a, b)
-		local aCurrent = a.mode == bossInfo.mode and a.difficulty == bossInfo.difficulty
-		local bCurrent = b.mode == bossInfo.mode and b.difficulty == bossInfo.difficulty
-		if aCurrent ~= bCurrent then
-			return aCurrent
-		end
-		if a.averageScore == b.averageScore then
-			return a.unitName < b.unitName
-		end
-		return a.averageScore > b.averageScore
-	end)
-
-	local result = {}
-	for i = 1, math.min(120, #rows) do
-		local row = rows[i]
-		result[#result + 1] = {
-			unit = row.unitName,
-			mode = tostring(row.mode) .. ' ' .. tostring(row.difficulty),
-			avg = formatSI(row.averageScore),
-			last = row.lastScore > 0 and formatSI(row.lastScore) or '-',
-			best = row.bestScore > 0 and formatSI(row.bestScore) or '-',
-			samples = tostring(row.samples),
-			seen = formatAge(row.lastSeen),
-			cost = row.costMode == 'full' and 'Full' or (row.costMode == 'build' and 'Build' or '-'),
-		}
-	end
-	return result
+local function currentPageInfo(totalRows, pageSize)
+	local pageInfo = paginate(totalRows, rowPage, pageSize, RANKED_ROW_LIMIT)
+	rowPage = pageInfo.page
+	return pageInfo
 end
 
 local function buildRows()
-	local firstCounts = buildCatalogWithOwnedSources({})
+	buildCatalogWithOwnedSources()
 	local filteredCandidates = UnitCatalog.ApplyAvailability(catalog.candidates, availabilityMode)
 	local teamInfo = collectTeamInfo()
 	local countsByDef, teamRows = EngagementTracker.BuildCounts(tracker, {
@@ -1500,12 +1677,6 @@ local function buildRows()
 		teamInfo = teamInfo,
 	})
 
-	for defID, counts in pairs(firstCounts) do
-		if countsByDef[defID] then
-			countsByDef[defID].queuedOwn = countsByDef[defID].queuedOwn or counts.queuedOwn
-		end
-	end
-
 	local rows = ScoringEngine.BuildRows({
 		candidates = filteredCandidates,
 		bossInfo = bossInfo,
@@ -1514,94 +1685,78 @@ local function buildRows()
 		knowledgeByDef = KnowledgeStore.ByDefID(knowledgeStore, catalog, bossInfo.mode, bossInfo.difficulty),
 		energyPerMetal = energyPerMetal,
 		costMode = costMode,
+		sampleWindowSeconds = BOSS_INFO_FREQUENCY / GAME_FRAMES_PER_SECOND,
 	})
 
-	local rankedRows = shallowCopy(rows)
-	ScoringEngine.SortRows(rankedRows, sortKey, sortAscending)
-	local resistRows = shallowCopy(rows)
-	ScoringEngine.SortRows(resistRows, 'resistancePercent', true)
-
-	local ranked = {}
-	for i = 1, math.min(60, #rankedRows) do
-		ranked[#ranked + 1] = presentationRow(rankedRows[i])
-	end
-
-	local resist = {}
-	for i = 1, math.min(80, #resistRows) do
-		resist[#resist + 1] = presentationRow(resistRows[i])
+	local pageInfo = currentPageInfo(#rows, RANKED_ROW_LIMIT)
+	local unitRows = {}
+	if activeTab == 'units' then
+		local sortedRows = shallowCopy(rows)
+		ScoringEngine.SortRows(sortedRows, sortKey, sortAscending)
+		pageInfo = currentPageInfo(#sortedRows, RANKED_ROW_LIMIT)
+		for i = pageInfo.startIndex, pageInfo.endIndex do
+			unitRows[#unitRows + 1] = presentationRow(sortedRows[i])
+		end
 	end
 
 	local teamList = {}
-	for teamID, damage in pairs(bossInfo.playerDamages or {}) do
-		if not teamRows[teamID] then
-			local team = teamInfo[teamID] or {
-				teamID = teamID,
-				name = teamName(teamID),
-				color = teamColorString(teamID),
-			}
-			teamRows[teamID] = {
-				teamID = teamID,
-				name = team.name,
-				color = team.color,
-				damage = safeNumber(damage, 0),
-				units = {},
-			}
+	if activeTab == 'teams' then
+		for teamID, damage in pairs(bossInfo.playerDamages or {}) do
+			if not teamRows[teamID] then
+				local team = teamInfo[teamID] or {
+					teamID = teamID,
+					name = teamName(teamID),
+					color = teamColorString(teamID),
+				}
+				teamRows[teamID] = {
+					teamID = teamID,
+					name = team.name,
+					color = team.color,
+					damage = safeNumber(damage, 0),
+					units = {},
+				}
+			end
 		end
-	end
 
-	for teamID, team in pairs(teamRows) do
-		team.damage = safeNumber(bossInfo.playerDamages[teamID], 0)
-		team.damage_label = formatSI(team.damage)
-		team.units = {}
-		teamList[#teamList + 1] = team
-	end
-	table.sort(teamList, function(a, b)
-		if a.damage == b.damage then
-			return a.name < b.name
+		for teamID, team in pairs(teamRows) do
+			team.damage = safeNumber(bossInfo.playerDamages[teamID], 0)
+			team.damage_label = formatSI(team.damage)
+			team.units = {}
+			teamList[#teamList + 1] = team
 		end
-		return a.damage > b.damage
-	end)
+		table.sort(teamList, function(a, b)
+			if a.damage == b.damage then
+				return a.name < b.name
+			end
+			return a.damage > b.damage
+		end)
 
-	for _, row in ipairs(rows) do
-		for _, teamCounts in pairs(row.counts.teams or {}) do
-			for _, team in ipairs(teamList) do
-				if team.teamID == teamCounts.teamID then
-					team.units[#team.units + 1] = {
-						name = row.name,
-						icon = row.icon,
-						ready_alive = tostring(teamCounts.ready) .. '/' .. tostring(teamCounts.alive),
-						building = tostring(teamCounts.building),
-					}
-					break
+		for _, row in ipairs(rows) do
+			for _, teamCounts in pairs(row.counts.teams or {}) do
+				for _, team in ipairs(teamList) do
+					if team.teamID == teamCounts.teamID then
+						team.units[#team.units + 1] = {
+							name = row.name,
+							icon = row.icon,
+							ready_alive = tostring(teamCounts.ready) .. '/' .. tostring(teamCounts.alive),
+							building = tostring(teamCounts.building),
+						}
+						break
+					end
 				end
 			end
 		end
-	end
-	for _, team in ipairs(teamList) do
-		table.sort(team.units, function(a, b)
-			return a.name < b.name
-		end)
-	end
-
-	local sourceRows = {}
-	local sourceSorted = sortedValues(catalog.candidates, function(a, b)
-		if a.sourceLabel == b.sourceLabel then
-			return a.displayName < b.displayName
+		for _, team in ipairs(teamList) do
+			table.sort(team.units, function(a, b)
+				return a.name < b.name
+			end)
 		end
-		return a.sourceLabel < b.sourceLabel
-	end)
-	for i = 1, math.min(120, #sourceSorted) do
-		local candidate = sourceSorted[i]
-		if availabilityMode == 'all' or UnitCatalog.ApplyAvailability({[candidate.defID] = candidate}, availabilityMode)[candidate.defID] then
-			sourceRows[#sourceRows + 1] = {
-				def_id = candidate.defID,
-				name = candidate.displayName,
-				icon = candidate.icon,
-				source = candidate.sourceLabel ~= '' and candidate.sourceLabel or 'Unknown',
-				cost = formatSI(ScoringEngine.MetalEquivalent(candidate, energyPerMetal)),
-				availability = candidate.ownedSource and 'Owned' or (candidate.reachable and 'Reachable' or 'Unknown'),
-			}
-		end
+		pageInfo = {
+			label = #teamList == 1 and '1 team' or (tostring(#teamList) .. ' teams'),
+			hasPrev = false,
+			hasNext = false,
+			pageCount = 1,
+		}
 	end
 
 	for _, row in ipairs(rows) do
@@ -1619,7 +1774,7 @@ local function buildRows()
 		end
 	end
 
-	return ranked, resist, teamList, sourceRows, buildHistoryRows()
+	return unitRows, teamList, #rows > 0, pageInfo
 end
 
 local availabilityLabels = {
@@ -1630,11 +1785,42 @@ local availabilityLabels = {
 }
 
 local sortLabels = {
+	name = 'Unit',
+	sourceLabel = 'Source',
+	availabilityRank = 'Avail',
 	marginalDamagePerMetalEq = 'Marginal',
 	currentDamagePerMetalEq = 'Current',
 	liveContributionPerMetalEq = 'Live',
 	resistancePercent = 'Resist',
+	resistanceDamage = 'Damage',
 	scoreCostMetalEq = 'Cost',
+	operatingMetalEqPerSecond = 'Use/s',
+	teamSort = 'Teams',
+	historyAverage = 'History',
+}
+
+local defaultSortAscending = {
+	name = true,
+	sourceLabel = true,
+	availabilityRank = true,
+	resistancePercent = true,
+	scoreCostMetalEq = true,
+	operatingMetalEqPerSecond = true,
+}
+
+local validSortKeys = {
+	name = true,
+	sourceLabel = true,
+	availabilityRank = true,
+	resistancePercent = true,
+	resistanceDamage = true,
+	marginalDamagePerMetalEq = true,
+	currentDamagePerMetalEq = true,
+	liveContributionPerMetalEq = true,
+	scoreCostMetalEq = true,
+	operatingMetalEqPerSecond = true,
+	teamSort = true,
+	historyAverage = true,
 }
 
 local costModeLabels = {
@@ -1647,21 +1833,25 @@ local function updateRmlData()
 		return
 	end
 
-	local rankedRows, resistRows, teamRows, sourceRows, historyRows = buildRows()
-	local statusText = bossInfo.mode == 'unknown' and 'Waiting for boss data' or string.format(
-		'%s %s - %.0f%% HP - %.0f%% anger',
-		bossInfo.mode,
-		bossInfo.difficulty or '',
-		bossInfo.healthPercent or 0,
-		bossInfo.anger or 0
-	)
+	local unitRows, teamRows, hasCandidateRows, pageInfo = buildRows()
+	local statusText
+	if bossInfo.mode == 'unknown' then
+		statusText = 'Waiting for boss data'
+	elseif bossInfo.bossCount <= 0 and safeNumber(bossInfo.healthPercent, 0) <= 0 then
+		statusText = string.format('%s %s - waiting for boss - %.0f%% anger', bossInfo.mode, bossInfo.difficulty or '', bossInfo.anger or 0)
+	else
+		statusText = string.format(
+			'%s %s - %.0f%% HP - %.0f%% anger',
+			bossInfo.mode,
+			bossInfo.difficulty or '',
+			bossInfo.healthPercent or 0,
+			bossInfo.anger or 0
+		)
+	end
 
 	dm_handle.active_tab = activeTab
-	dm_handle.is_ranked = activeTab == 'ranked'
-	dm_handle.is_resist = activeTab == 'resist'
+	dm_handle.is_units = activeTab == 'units'
 	dm_handle.is_teams = activeTab == 'teams'
-	dm_handle.is_sources = activeTab == 'sources'
-	dm_handle.is_history = activeTab == 'history'
 	dm_handle.status_text = statusText
 	dm_handle.availability_label = availabilityLabels[availabilityMode] or availabilityMode
 	dm_handle.sort_label = sortLabels[sortKey] or sortKey
@@ -1670,13 +1860,31 @@ local function updateRmlData()
 	dm_handle.cost_mode_label = costModeLabels[costMode] or costMode
 	dm_handle.cost_header = costMode == 'full' and 'Full' or 'Build'
 	dm_handle.stagger_label = bossInfo.staggerActive and ('Stagger ' .. tostring(round(bossInfo.staggerPercent)) .. '%') or ''
-	dm_handle.ranked_rows = rankedRows
-	dm_handle.resist_rows = resistRows
+	dm_handle.page_label = pageInfo.label
+	dm_handle.has_prev_page = pageInfo.hasPrev
+	dm_handle.has_next_page = pageInfo.hasNext
+	dm_handle.prev_page_style = pageInfo.hasPrev and 'color: #9EB7C8' or 'color: #46515A'
+	dm_handle.next_page_style = pageInfo.hasNext and 'color: #9EB7C8' or 'color: #46515A'
+	currentPageCount = pageInfo.pageCount or 1
+	dm_handle.unit_rows = unitRows
 	dm_handle.team_rows = teamRows
-	dm_handle.source_rows = sourceRows
-	dm_handle.history_rows = historyRows
-	dm_handle.has_history = #historyRows > 0
-	dm_handle.has_rows = #rankedRows > 0 or #resistRows > 0 or #historyRows > 0
+	dm_handle.has_rows = hasCandidateRows or #unitRows > 0
+end
+
+local function maybeUpdateRmlData(force)
+	if not force and not dataDirty then
+		return
+	end
+
+	local frame = spGetGameFrame and spGetGameFrame() or 0
+	if not force and not forceRmlUpdate and frame - lastRmlUpdateFrame < RML_UPDATE_FREQUENCY then
+		return
+	end
+
+	updateRmlData()
+	dataDirty = false
+	forceRmlUpdate = false
+	lastRmlUpdateFrame = frame
 end
 
 local function refreshBossInfo()
@@ -1693,6 +1901,10 @@ end
 
 function widget:Initialize()
 	loadConfig()
+	if not validSortKeys[sortKey] then
+		sortKey = 'marginalDamagePerMetalEq'
+		sortAscending = false
+	end
 	loadKnowledge()
 	myTeamID = spGetMyTeamID()
 	gaiaTeamID = spGetGaiaTeamID()
@@ -1708,11 +1920,8 @@ function widget:Initialize()
 
 	local initialModel = {
 		active_tab = activeTab,
-		is_ranked = true,
-		is_resist = false,
-		is_teams = false,
-		is_sources = false,
-		is_history = false,
+		is_units = activeTab == 'units',
+		is_teams = activeTab == 'teams',
 		status_text = 'Starting...',
 		availability_label = availabilityLabels[availabilityMode],
 		sort_label = sortLabels[sortKey],
@@ -1721,12 +1930,13 @@ function widget:Initialize()
 		cost_mode_label = costModeLabels[costMode],
 		cost_header = costMode == 'full' and 'Full' or 'Build',
 		stagger_label = '',
-		ranked_rows = {},
-		resist_rows = {},
+		page_label = '',
+		has_prev_page = false,
+		has_next_page = false,
+		prev_page_style = 'color: #46515A',
+		next_page_style = 'color: #46515A',
+		unit_rows = {},
 		team_rows = {},
-		source_rows = {},
-		history_rows = {},
-		has_history = false,
 		has_rows = false,
 	}
 
@@ -1752,8 +1962,8 @@ function widget:Initialize()
 	refreshBossInfo()
 	rebuildTrackedUnits()
 	scanOwnQueues()
-	dataDirty = true
-	updateRmlData()
+	markDataDirty(true)
+	maybeUpdateRmlData(true)
 	return true
 end
 
@@ -1768,12 +1978,13 @@ function widget:Update()
 			document:Hide()
 		else
 			document:Show()
+			markDataDirty(true)
 		end
 	end
-	if dataDirty then
-		updateRmlData()
-		dataDirty = false
+	if isHidden then
+		return
 	end
+	maybeUpdateRmlData(false)
 end
 
 function widget:GameFrame()
@@ -1783,39 +1994,39 @@ function widget:GameFrame()
 	if queueScanCounter >= QUEUE_SCAN_FREQUENCY then
 		queueScanCounter = 0
 		scanOwnQueues()
-		dataDirty = true
+		markDataDirty(false)
 	end
 
-	if frameCounter >= UPDATE_FREQUENCY then
+	if frameCounter >= BOSS_INFO_FREQUENCY then
 		frameCounter = 0
 		refreshBossInfo()
-		dataDirty = true
+		markDataDirty(false)
 	end
 end
 
 function widget:UnitCreated(unitID, unitDefID, teamID)
 	refreshUnit(unitID, unitDefID, teamID, false)
-	dataDirty = true
+	markDataDirty(false)
 end
 
 function widget:UnitFinished(unitID, unitDefID, teamID)
 	refreshUnit(unitID, unitDefID, teamID, true)
-	dataDirty = true
+	markDataDirty(false)
 end
 
 function widget:UnitDestroyed(unitID)
 	EngagementTracker.RemoveUnit(tracker, unitID)
-	dataDirty = true
+	markDataDirty(false)
 end
 
 function widget:UnitGiven(unitID, unitDefID, newTeamID)
 	refreshUnit(unitID, unitDefID, newTeamID, true)
-	dataDirty = true
+	markDataDirty(false)
 end
 
 function widget:UnitTaken(unitID)
 	EngagementTracker.RemoveUnit(tracker, unitID)
-	dataDirty = true
+	markDataDirty(false)
 end
 
 function widget:PlayerChanged()
@@ -1824,7 +2035,22 @@ function widget:PlayerChanged()
 	isSpectator = spec
 	fullView = full
 	rebuildTrackedUnits()
-	dataDirty = true
+	markDataDirty(true)
+end
+
+function widget:ViewResize(viewSizeX, viewSizeY)
+	local viewport = {
+		width = safeNumber(viewSizeX, 0),
+		height = safeNumber(viewSizeY, 0),
+	}
+	if viewport.width <= 0 or viewport.height <= 0 then
+		viewport = currentViewport()
+	end
+	if clampWindowStateToViewport(viewport) then
+		updateDocumentPosition()
+		spSetConfigString(configKey('Position'), widgetPosX .. ',' .. widgetPosY)
+		spSetConfigString(configKey('Size'), widgetWidth .. ',' .. widgetHeight)
+	end
 end
 
 function widget:Shutdown()
@@ -1855,11 +2081,47 @@ end
 function widget:SetTab(event)
 	local element = event and event.current_element
 	local tab = element and element:GetAttribute('data-tab')
-	if tab == 'ranked' or tab == 'resist' or tab == 'teams' or tab == 'sources' or tab == 'history' then
+	if tab == 'units' or tab == 'teams' then
+		if activeTab ~= tab then
+			resetRowPage()
+		end
 		activeTab = tab
-		dataDirty = true
+		markDataDirty(true)
 		saveConfig()
 	end
+end
+
+function widget:SetSort(event)
+	local element = event and event.current_element
+	local key = element and element:GetAttribute('data-sort')
+	if not validSortKeys[key] then
+		return
+	end
+	if sortKey == key then
+		sortAscending = not sortAscending
+	else
+		sortKey = key
+		sortAscending = defaultSortAscending[key] == true
+	end
+	resetRowPage()
+	markDataDirty(true)
+	saveConfig()
+end
+
+function widget:PrevPage()
+	if rowPage <= 1 then
+		return
+	end
+	rowPage = rowPage - 1
+	markDataDirty(true)
+end
+
+function widget:NextPage()
+	if rowPage >= currentPageCount then
+		return
+	end
+	rowPage = rowPage + 1
+	markDataDirty(true)
 end
 
 function widget:CycleAvailability()
@@ -1872,34 +2134,15 @@ function widget:CycleAvailability()
 	else
 		availabilityMode = 'match'
 	end
-	dataDirty = true
-	saveConfig()
-end
-
-function widget:CycleSort()
-	local keys = {'marginalDamagePerMetalEq', 'currentDamagePerMetalEq', 'liveContributionPerMetalEq', 'resistancePercent', 'scoreCostMetalEq'}
-	local current = 1
-	for i, key in ipairs(keys) do
-		if key == sortKey then
-			current = i
-			break
-		end
-	end
-	sortKey = keys[(current % #keys) + 1]
-	sortAscending = sortKey == 'resistancePercent' or sortKey == 'scoreCostMetalEq'
-	dataDirty = true
+	resetRowPage()
+	markDataDirty(true)
 	saveConfig()
 end
 
 function widget:ToggleCostMode()
 	costMode = costMode == 'full' and 'build' or 'full'
-	dataDirty = true
-	saveConfig()
-end
-
-function widget:ToggleSortDirection()
-	sortAscending = not sortAscending
-	dataDirty = true
+	resetRowPage()
+	markDataDirty(true)
 	saveConfig()
 end
 
@@ -1907,7 +2150,8 @@ function widget:AdjustEnergy(event)
 	local element = event and event.current_element
 	local delta = tonumber(element and element:GetAttribute('data-delta')) or 0
 	energyPerMetal = clamp(energyPerMetal + delta, 1, 500)
-	dataDirty = true
+	resetRowPage()
+	markDataDirty(true)
 	saveConfig()
 end
 
