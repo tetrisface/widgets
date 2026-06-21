@@ -23,6 +23,11 @@
 					<span class="energy-label">E/M {{energy_per_metal}}</span>
 					<div class="mini-btn" data-delta="5" onclick="widget:AdjustEnergy(event)">+</div>
 				</div>
+				<div class="font-control">
+					<div class="mini-btn" data-delta="-0.05" onclick="widget:AdjustTableFont(event)">-</div>
+					<span class="font-label">{{table_font_label}}</span>
+					<div class="mini-btn" data-delta="0.05" onclick="widget:AdjustTableFont(event)">+</div>
+				</div>
 				<div class="close-btn" onclick="widget:CloseWidget(event)">X</div>
 			</div>
 		</div>
@@ -42,7 +47,7 @@
 			<span class="empty-text">Waiting for boss or unit data</span>
 		</div>
 
-		<div class="table-area" data-if="is_units &amp;&amp; has_rows">
+		<div id="bkp-units-table-area" class="table-area" data-if="is_units &amp;&amp; has_rows">
 			<div class="header-row unit-grid">
 				<span class="h-name sortable" data-sort="name" onclick="widget:SetSort(event)">Unit</span>
 				<span class="h-source sortable" data-sort="sourceLabel" onclick="widget:SetSort(event)">Source</span>
@@ -59,7 +64,10 @@
 			<div data-for="row : unit_rows" class="unit-row unit-grid">
 				<texture class="unit-icon" data-attr-src="row.icon"/>
 				<span class="unit-name">{{row.name}}</span>
-				<span class="source-label">{{row.source}}</span>
+				<div class="source-cell">
+					<span class="source-label">{{row.source}}</span>
+					<span class="source-tooltip">{{row.source_tooltip}}</span>
+				</div>
 				<span class="avail-cell">{{row.availability}}</span>
 				<span class="num-cell">{{row.resistance}}</span>
 				<span class="num-cell">{{row.resistance_damage}}</span>
@@ -68,9 +76,9 @@
 				<span class="num-cell">{{row.cost}}</span>
 				<span class="num-cell">{{row.operating_cost}}</span>
 				<div class="team-cells">
-					<span data-for="cell : row.ally_cells" class="team-cell" data-style-color="cell.color">
-						<span class="team-label">{{cell.label}}</span>
-						<span class="team-cell-tooltip">{{cell.tooltip}}</span>
+					<span class="team-cell" data-style-color="row.team_color">
+						<span class="team-label">{{row.team_label}}</span>
+						<span class="team-cell-tooltip">{{row.team_tooltip}}</span>
 					</span>
 				</div>
 				<span class="hist-cell">
@@ -80,7 +88,7 @@
 			</div>
 		</div>
 
-		<div class="table-area" data-if="is_teams &amp;&amp; has_rows">
+		<div id="bkp-teams-table-area" class="table-area" data-if="is_teams &amp;&amp; has_rows">
 			<div data-for="team : team_rows" class="team-row">
 				<div class="team-header">
 					<div class="team-accent" data-style-background-color="team.color"></div>

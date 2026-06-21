@@ -159,6 +159,108 @@ do
 end
 
 do
+	assertNear(helpers.clampTableFontScale('not-a-number'), 1, 0.0001, 'invalid table font scale defaults')
+	assertNear(helpers.clampTableFontScale(0.2), 0.75, 0.0001, 'table font scale clamps low')
+	assertNear(helpers.clampTableFontScale(2), 1.35, 0.0001, 'table font scale clamps high')
+	assertEq(helpers.tableFontScaleLabel(0.75), 'T 75%', 'table font label minimum')
+	assertEq(helpers.tableFontScaleLabel(1), 'T 100%', 'table font label default')
+	assertEq(helpers.tableFontScaleLabel(1.35), 'T 135%', 'table font label maximum')
+	assertEq(helpers.tableFontScaleDp(1), '12dp', 'table font dp default')
+	print('  [PASS] table font scale helpers')
+end
+
+do
+	local empty = helpers.presentTeamCell({})
+	assertEq(empty.label, '-', 'empty team cell label')
+	assertEq(empty.color, '#708698', 'empty team cell color')
+	assertTrue(empty.tooltip:find('ready 0', 1, true) ~= nil, 'empty team tooltip includes ready count')
+
+	local active = helpers.presentTeamCell({
+		ready = 2,
+		alive = 5,
+		far = 4,
+		building = 1,
+		queuedOwn = 3,
+		teams = {
+			[9] = {teamID = 9, allyTeamID = 1, name = 'Blue', ready = 1, alive = 2, building = 1, far = 1},
+		},
+	})
+	assertEq(active.label, '2/5+1 q3', 'active team cell compact label')
+	assertEq(active.color, '#E8F2F8', 'active team cell color')
+	assertTrue(active.tooltip:find('own queued 3', 1, true) ~= nil, 'active team tooltip includes queued count')
+	assertTrue(active.tooltip:find('Blue | 1/2+1 | far 1', 1, true) ~= nil, 'active team tooltip includes team breakdown')
+	print('  [PASS] team cell presentation')
+end
+
+do
+	local rows = ScoringEngine.BuildRows({
+		candidates = {
+			[10] = {
+				defID = 10,
+				displayName = 'History Champ',
+				sourceLabel = 'Lab',
+				metalCost = 100,
+				energyCost = 0,
+				estimatedDps = 1,
+				mapViable = true,
+				reachable = true,
+			},
+			[11] = {
+				defID = 11,
+				displayName = 'Alpha Low Estimate',
+				sourceLabel = 'Lab',
+				metalCost = 100,
+				energyCost = 0,
+				estimatedDps = 100,
+				mapViable = true,
+				reachable = true,
+			},
+			[12] = {
+				defID = 12,
+				displayName = 'Zulu High Estimate',
+				sourceLabel = 'Lab',
+				metalCost = 100,
+				energyCost = 0,
+				estimatedDps = 300,
+				mapViable = true,
+				reachable = true,
+			},
+			[13] = {
+				defID = 13,
+				displayName = 'Aardvark No Damage',
+				sourceLabel = 'Lab',
+				metalCost = 100,
+				energyCost = 0,
+				estimatedDps = 0,
+				mapViable = true,
+				reachable = true,
+			},
+		},
+		bossInfo = {resistances = {}, healthPercent = 100, resistanceCap = 0.95, mode = 'scav'},
+		countsByDef = {},
+		samplesByDef = {},
+		knowledgeByDef = {[10] = {averageScore = 10, samples = 3}},
+		energyPerMetal = 70,
+		costMode = 'build',
+	})
+	ScoringEngine.SortRows(rows, 'preBossSortScore', false)
+	assertEq(rows[1].name, 'History Champ', 'history score beats static estimate')
+	assertEq(rows[1].preBossSortSource, 'hist', 'history pre-boss source')
+	assertEq(rows[2].name, 'Zulu High Estimate', 'estimated dps per cost beats alphabetic order')
+	assertNear(rows[2].preBossSortScore, 3, 0.0001, 'estimated pre-boss score')
+	assertEq(rows[2].preBossSortSource, 'est', 'estimated pre-boss source')
+	assertEq(rows[#rows].name, 'Aardvark No Damage', 'no dps estimate falls to bottom')
+	assertEq(rows[#rows].preBossSortSource, '', 'empty pre-boss source for no evidence')
+	local zeroRows = {
+		{name = 'Alpha Expensive', preBossSortScore = 0, estimatedDps = 0, scoreCostMetalEq = 5000},
+		{name = 'Zulu Cheap', preBossSortScore = 0, estimatedDps = 0, scoreCostMetalEq = 100},
+	}
+	ScoringEngine.SortRows(zeroRows, 'preBossSortScore', false)
+	assertEq(zeroRows[1].name, 'Zulu Cheap', 'zero pre-boss scores prefer cheaper rows over alphabetic order')
+	print('  [PASS] pre-boss sort score fallback')
+end
+
+do
 	local unitDefs = {
 		[1] = {
 			id = 1,
@@ -214,6 +316,23 @@ do
 			energyCost = 1000,
 			weapons = {{damage = {default = 100}, reloadtime = 1}},
 		},
+		[7] = {
+			id = 7,
+			name = 'raptor_healer',
+			translatedHumanName = 'Healer',
+			buildOptions = {8},
+			isBuilder = true,
+			metalCost = 400,
+			energyCost = 1000,
+		},
+		[8] = {
+			id = 8,
+			name = 'acid_tentacle',
+			translatedHumanName = 'Acid Tentacle',
+			metalCost = 500,
+			energyCost = 1000,
+			weapons = {{damage = {default = 100}, reloadtime = 1}},
+		},
 	}
 	local catalog = UnitCatalog.Build({
 		unitDefs = unitDefs,
@@ -230,22 +349,58 @@ do
 	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'match')[6], nil, 'match filter drops unreachable')
 	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'all')[6].name, 'unbuilt', 'all filter keeps unreachable')
 	local tracker = EngagementTracker.New()
-	EngagementTracker.UpdateUnit(tracker, 100, 2, 1, true, 1)
+	EngagementTracker.UpdateUnit(tracker, 100, 1, 1, true, 1)
+	EngagementTracker.UpdateUnit(tracker, 101, 7, 2, true, 1)
+	EngagementTracker.UpdateUnit(tracker, 102, 2, 1, false, 0.5)
 	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, {
 		unitDefs = unitDefs,
 		unitDefNames = {grenadier = {id = 4}},
+		sourceTeamID = 1,
 	})
-	assertTrue(ownedSourceDefIDs[4], 'owned source helper handles sparse string buildoptions')
+	assertTrue(ownedSourceDefIDs[2], 'owned source includes direct build option')
+	assertTrue(ownedSourceDefIDs[4], 'owned source helper traverses sparse string buildoptions')
+	assertEq(ownedSourceDefIDs[8], nil, 'owned source excludes other team build trees')
+	local enemySourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, {
+		unitDefs = unitDefs,
+		unitDefNames = {grenadier = {id = 4}},
+		sourceTeamID = 2,
+	})
+	assertTrue(enemySourceDefIDs[8], 'owned source can traverse selected raptor team when selected')
 	local _, _, ownedSources = EngagementTracker.BuildCounts(tracker, {
 		unitDefs = unitDefs,
 		unitDefNames = {grenadier = {id = 4}},
 		candidateMap = {},
+		sourceTeamID = 1,
 	})
-	assertTrue(ownedSources[4], 'owned source handles sparse string buildoptions')
+	assertTrue(ownedSources[4], 'build counts owned source uses transitive selected-team closure')
+	assertEq(ownedSources[8], nil, 'build counts owned source excludes non-selected team closure')
+	local selectedCatalog = UnitCatalog.Build({
+		unitDefs = unitDefs,
+		unitDefNames = {grenadier = {id = 4}},
+		resistanceMap = {[4] = {percent = 0.1}, [8] = {percent = 0.1}},
+		hasMeaningfulWater = true,
+		ownedSourceDefIDs = ownedSourceDefIDs,
+	})
+	local buildable = UnitCatalog.ApplyAvailability(selectedCatalog.candidates, 'owned')
+	assertEq(buildable[4].name, 'grenadier', 'buildable filter keeps selected team closure')
+	assertEq(buildable[8], nil, 'buildable filter drops other team raptor closure')
 	print('  [PASS] build-source graph and availability filters')
 end
 
 do
+	local runtimeWeaponUnit = {
+		weapons = {{weaponDef = 12}},
+	}
+	local runtimeWeaponDefs = {
+		[12] = {
+			reloadtime = 2,
+			damages = {default = 600},
+			energypershot = 1200,
+		},
+	}
+	assertNear(UnitCatalog.EstimateDps(runtimeWeaponUnit, runtimeWeaponDefs), 300, 0.0001, 'runtime WeaponDefs.damages DPS estimate')
+	assertNear(UnitCatalog.EstimateOperatingCost(runtimeWeaponUnit, runtimeWeaponDefs).fireEnergyPerSecond, 600, 0.0001, 'runtime WeaponDefs.damages operating cost')
+
 	local disintegrator = {
 		weapondefs = {
 			disintegratorxl = {
@@ -365,15 +520,23 @@ do
 		energyPerMetal = 60,
 		scoreWindowSeconds = 30,
 	})
+	KnowledgeStore.Merge(store, 'scav', 'epic', {name = 'grenadier'}, {
+		score = 99,
+		costMode = 'full',
+		energyPerMetal = 70,
+		scoreWindowSeconds = 30,
+	})
 	local row = store.rows[KnowledgeStore.Key('raptor', 'epic', 'grenadier')]
+	local scavRow = store.rows[KnowledgeStore.Key('scav', 'epic', 'grenadier')]
 	assertEq(row.samples, 2, 'knowledge samples')
 	assertNear(row.averageScore, 15, 0.0001, 'knowledge average')
+	assertEq(scavRow.samples, 1, 'scav knowledge separate samples')
+	assertNear(scavRow.averageScore, 99, 0.0001, 'scav knowledge separate average')
 	assertEq(row.schemaVersion, 2, 'knowledge schema version')
 	assertEq(row.costMode, 'full', 'knowledge stores latest cost mode')
 	local rows = KnowledgeStore.Rows(store)
-	assertEq(#rows, 1, 'knowledge rows export count')
+	assertEq(#rows, 2, 'knowledge rows export count')
 	assertEq(rows[1].unitName, 'grenadier', 'knowledge rows unit name')
-	assertNear(rows[1].bestScore, 20, 0.0001, 'knowledge rows best score')
 	print('  [PASS] knowledge store merge')
 end
 

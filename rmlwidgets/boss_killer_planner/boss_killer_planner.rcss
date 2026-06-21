@@ -89,7 +89,7 @@ body, div {
 	background-color: #26323C;
 }
 
-.energy-control {
+.energy-control, .font-control {
 	display: flex;
 	align-items: center;
 	gap: 2dp;
@@ -127,11 +127,16 @@ body, div {
 	padding-right: 4dp;
 }
 
-.energy-label {
+.energy-label, .font-label {
 	color: #8DA6B8;
 	font-size: 0.75em;
 	padding: 0 2dp;
 	white-space: nowrap;
+}
+
+.font-label {
+	min-width: 34dp;
+	text-align: center;
 }
 
 .close-btn {
@@ -252,9 +257,38 @@ body, div {
 .source-label {
 	color: #A4B6C4;
 	font-size: 0.833em;
+	display: block;
+	width: 100%;
+}
+
+.source-cell {
 	width: 116dp;
 	flex-shrink: 0;
 	margin-left: 4dp;
+	position: relative;
+	overflow: visible;
+	cursor: help;
+}
+
+.source-tooltip {
+	display: none;
+	position: absolute;
+	left: 0;
+	top: 16dp;
+	width: 280dp;
+	padding: 4dp 5dp;
+	color: #D6E2EA;
+	background-color: #090D10F2;
+	border-width: 1dp;
+	border-color: #34424C;
+	font-size: 0.917em;
+	font-weight: normal;
+	white-space: normal;
+	z-index: 24;
+}
+
+.source-cell:hover .source-tooltip {
+	display: block;
 }
 
 .avail-cell {

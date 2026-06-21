@@ -18,6 +18,12 @@ local PANEL_DEFAULT_HEIGHT = 430
 local PANEL_MIN_WIDTH = 620
 local PANEL_MIN_HEIGHT = 180
 local PANEL_VIEWPORT_MARGIN = 24
+local TABLE_FONT_BASE_DP = 12
+local TABLE_FONT_DEFAULT_SCALE = 1
+local TABLE_FONT_MIN_SCALE = 0.75
+local TABLE_FONT_MAX_SCALE = 1.35
+local TEAM_CELL_EMPTY_COLOR = '#708698'
+local TEAM_CELL_ACTIVE_COLOR = '#E8F2F8'
 
 --------------------------------------------------------------------------------
 -- Pure helpers
@@ -161,6 +167,75 @@ local function sortedValues(map, compare)
 	end
 	table.sort(values, compare)
 	return values
+end
+
+local function clampTableFontScale(value)
+	return math.floor(clamp(safeNumber(value, TABLE_FONT_DEFAULT_SCALE), TABLE_FONT_MIN_SCALE, TABLE_FONT_MAX_SCALE) * 100 + 0.5) / 100
+end
+
+local function tableFontScaleLabel(scale)
+	return string.format('T %.0f%%', clampTableFontScale(scale) * 100)
+end
+
+local function tableFontScaleDp(scale)
+	return tostring(round(TABLE_FONT_BASE_DP * clampTableFontScale(scale))) .. 'dp'
+end
+
+local function presentTeamCell(counts)
+	counts = counts or {}
+	local ready = safeNumber(counts.ready, 0)
+	local alive = safeNumber(counts.alive, 0)
+	local far = safeNumber(counts.far, 0)
+	local building = safeNumber(counts.building, 0)
+	local queuedOwn = safeNumber(counts.queuedOwn, 0)
+	local tooltip = {
+		string.format(
+			'Allyteam total | ready %d | far %d | building %d | own queued %d',
+			ready,
+			far,
+			building,
+			queuedOwn
+		),
+	}
+
+	if alive + building + queuedOwn <= 0 then
+		return {
+			label = '-',
+			color = TEAM_CELL_EMPTY_COLOR,
+			tooltip = tooltip[1],
+		}
+	end
+
+	local label = tostring(ready) .. '/' .. tostring(alive)
+	if building > 0 then
+		label = label .. '+' .. tostring(building)
+	end
+	if queuedOwn > 0 then
+		label = label .. ' q' .. tostring(queuedOwn)
+	end
+
+	local teamCounts = sortedValues(counts.teams or {}, function(a, b)
+		if (a.allyTeamID or 0) == (b.allyTeamID or 0) then
+			return (a.teamID or 0) < (b.teamID or 0)
+		end
+		return (a.allyTeamID or 0) < (b.allyTeamID or 0)
+	end)
+	for _, row in ipairs(teamCounts) do
+		local teamReady = safeNumber(row.ready, 0)
+		local teamAlive = safeNumber(row.alive, 0)
+		local teamBuilding = safeNumber(row.building, 0)
+		local teamLabel = tostring(teamReady) .. '/' .. tostring(teamAlive)
+		if teamBuilding > 0 then
+			teamLabel = teamLabel .. '+' .. tostring(teamBuilding)
+		end
+		tooltip[#tooltip + 1] = (row.name or ('Team ' .. tostring(row.teamID or '?'))) .. ' | ' .. teamLabel .. ' | far ' .. tostring(safeNumber(row.far, 0))
+	end
+
+	return {
+		label = label,
+		color = TEAM_CELL_ACTIVE_COLOR,
+		tooltip = table.concat(tooltip, '\n'),
+	}
 end
 
 local function getUnitDefField(unitDef, camelName, lowerName, fallback)
@@ -365,6 +440,13 @@ local function damageTableDefault(damageTable)
 	return safeNumber(damageTable.default or damageTable.scavboss or damageTable.raptor or damageTable.commanders, 0)
 end
 
+local function weaponDamageDefault(weaponDef)
+	if not weaponDef then
+		return 0
+	end
+	return damageTableDefault(weaponDef.damage or weaponDef.damages)
+end
+
 local function resolveWeaponDef(weapon, weaponDefs, inlineDefs)
 	if not weapon then
 		return nil
@@ -453,14 +535,14 @@ function UnitCatalog.EstimateDps(unitDef, weaponDefs)
 		local weaponDef = resolveWeaponDef(weapon, weaponDefs, inlineDefs)
 		local reload = weaponCycleSeconds(weaponDef)
 		local burst = math.max(1, safeNumber(weaponDef.burst, 1))
-		total = total + (damageTableDefault(weaponDef.damage) * burst / math.max(0.1, reload))
+		total = total + (weaponDamageDefault(weaponDef) * burst / math.max(0.1, reload))
 	end
 
 	if type(inlineDefs) == 'table' and total <= 0 then
 		for _, weaponDef in pairs(inlineDefs) do
 			local reload = weaponCycleSeconds(weaponDef)
 			local burst = math.max(1, safeNumber(weaponDef.burst, 1))
-			total = total + (damageTableDefault(weaponDef.damage) * burst / math.max(0.1, reload))
+			total = total + (weaponDamageDefault(weaponDef) * burst / math.max(0.1, reload))
 		end
 	end
 
@@ -468,7 +550,7 @@ function UnitCatalog.EstimateDps(unitDef, weaponDefs)
 end
 
 local function addWeaponOperatingCost(totals, weaponDef)
-	if not weaponDef or damageTableDefault(weaponDef.damage) <= 0 then
+	if not weaponDef or weaponDamageDefault(weaponDef) <= 0 then
 		return
 	end
 	local metal, energy = weaponShotCost(weaponDef)
@@ -543,6 +625,25 @@ local function isBuilderOrFactory(unitDef)
 	end
 	local buildOptions = unitDef.buildOptions or unitDef.buildoptions
 	return type(buildOptions) == 'table' and next(buildOptions) ~= nil
+end
+
+local function addBuildOptionClosure(rootDefID, ownedSourceDefIDs, env, visited)
+	local unitDefs = env.unitDefs or {}
+	local unitDefNames = env.unitDefNames or {}
+	local unitDef = unitDefs[rootDefID]
+	local buildOptions = unitDef and (unitDef.buildOptions or unitDef.buildoptions)
+	if type(buildOptions) ~= 'table' then
+		return
+	end
+
+	for _, buildOption in pairs(buildOptions) do
+		local builtDefID = normalizeBuildOption(buildOption, unitDefNames)
+		if builtDefID and not visited[builtDefID] then
+			visited[builtDefID] = true
+			ownedSourceDefIDs[builtDefID] = true
+			addBuildOptionClosure(builtDefID, ownedSourceDefIDs, env, visited)
+		end
+	end
 end
 
 local function buildSourceLabel(defID, sourceByBuilt, unitDefs, depth, visited)
@@ -696,20 +797,22 @@ end
 function EngagementTracker.OwnedSourceDefIDs(tracker, env)
 	env = env or {}
 	local unitDefs = env.unitDefs or {}
-	local unitDefNames = env.unitDefNames or {}
+	local sourceTeamID = env.sourceTeamID
 	local ownedSourceDefIDs = {}
+	local rootDefIDs = {}
 
 	for _, unit in pairs((tracker and tracker.units) or {}) do
-		local unitDef = unitDefs[unit.defID]
-		if isBuilderOrFactory(unitDef) then
-			local buildOptions = unitDef.buildOptions or unitDef.buildoptions
-			for _, buildOption in pairs(buildOptions or {}) do
-				local builtDefID = normalizeBuildOption(buildOption, unitDefNames)
-				if builtDefID then
-					ownedSourceDefIDs[builtDefID] = true
-				end
+		local inSourceTeam = sourceTeamID == nil or unit.teamID == sourceTeamID
+		if inSourceTeam and unit.finished and unit.buildProgress >= 1 then
+			local unitDef = unitDefs[unit.defID]
+			if isBuilderOrFactory(unitDef) then
+				rootDefIDs[unit.defID] = true
 			end
 		end
+	end
+
+	for rootDefID in pairs(rootDefIDs) do
+		addBuildOptionClosure(rootDefID, ownedSourceDefIDs, env, {[rootDefID] = true})
 	end
 
 	return ownedSourceDefIDs
@@ -733,20 +836,10 @@ function EngagementTracker.BuildCounts(tracker, env)
 
 	local countsByDef = {}
 	local teamRowsByTeam = {}
-	local ownedSourceDefIDs = {}
+	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, env)
 
 	for unitID, unit in pairs(tracker.units) do
 		local candidate = candidateMap[unit.defID]
-		local unitDef = unitDefs[unit.defID]
-		if isBuilderOrFactory(unitDef) then
-			local buildOptions = unitDef.buildOptions or unitDef.buildoptions
-			for _, buildOption in pairs(buildOptions or {}) do
-				local builtDefID = normalizeBuildOption(buildOption, unitDefNames)
-				if builtDefID then
-					ownedSourceDefIDs[builtDefID] = true
-				end
-			end
-		end
 
 		if candidate then
 			local team = teamInfo[unit.teamID] or {teamID = unit.teamID, name = 'Team ' .. tostring(unit.teamID), allyTeamID = unit.teamID}
@@ -907,7 +1000,7 @@ end
 
 local function availabilityFor(candidate)
 	if candidate.ownedSource then
-		return 'Owned', 0
+		return 'Build', 0
 	end
 	if candidate.reachable and candidate.mapViable then
 		return 'Match', 1
@@ -960,6 +1053,15 @@ function ScoringEngine.BuildRows(input)
 		local counts = countsByDef[defID] or {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = 0, teams = {}}
 		local knowledge = knowledgeByDef[defID]
 		local availabilityLabel, availabilityRank = availabilityFor(candidate)
+		local historyAverage = safeNumber(knowledge and knowledge.averageScore, 0)
+		local historySamples = safeNumber(knowledge and knowledge.samples, 0)
+		local estimatedDamagePerCost = safeDivide(safeNumber(candidate.estimatedDps, 0), scoreCostMetalEq)
+		local preBossSortScore = estimatedDamagePerCost
+		local preBossSortSource = estimatedDamagePerCost > 0 and 'est' or ''
+		if historySamples > 0 and historyAverage > 0 then
+			preBossSortScore = historyAverage
+			preBossSortSource = 'hist'
+		end
 		local teamSort = (counts.ready or 0) * 1000000
 			+ (counts.alive or 0) * 10000
 			+ (counts.building or 0) * 100
@@ -994,10 +1096,12 @@ function ScoringEngine.BuildRows(input)
 			availabilityLabel = availabilityLabel,
 			availabilityRank = availabilityRank,
 			teamSort = teamSort,
-			historyAverage = safeNumber(knowledge and knowledge.averageScore, 0),
-			historySamples = safeNumber(knowledge and knowledge.samples, 0),
+			historyAverage = historyAverage,
+			historySamples = historySamples,
 			historyBest = safeNumber(knowledge and knowledge.bestScore, 0),
 			historyLast = safeNumber(knowledge and knowledge.lastScore, 0),
+			preBossSortScore = preBossSortScore,
+			preBossSortSource = preBossSortSource,
 			counts = counts,
 			mapViable = candidate.mapViable,
 			reachable = candidate.reachable,
@@ -1024,6 +1128,18 @@ function ScoringEngine.SortRows(rows, sortKey, ascending)
 			bv = tostring(bv)
 		end
 		if av == bv then
+			if sortKey == 'preBossSortScore' then
+				local adps = safeNumber(a.estimatedDps, 0)
+				local bdps = safeNumber(b.estimatedDps, 0)
+				if adps ~= bdps then
+					return adps > bdps
+				end
+				local acost = safeNumber(a.scoreCostMetalEq, 0)
+				local bcost = safeNumber(b.scoreCostMetalEq, 0)
+				if acost ~= bcost then
+					return acost < bcost
+				end
+			end
 			return a.name < b.name
 		end
 		if ascending then
@@ -1159,6 +1275,10 @@ local Modules = {
 		formatSI = formatSI,
 		paginate = paginate,
 		clampPanelRect = clampPanelRect,
+		clampTableFontScale = clampTableFontScale,
+		tableFontScaleLabel = tableFontScaleLabel,
+		tableFontScaleDp = tableFontScaleDp,
+		presentTeamCell = presentTeamCell,
 	},
 }
 
@@ -1209,6 +1329,7 @@ local spGetTeamColor = Spring.GetTeamColor
 local spGetPlayerInfo = Spring.GetPlayerInfo
 local spGetPlayerList = Spring.GetPlayerList
 local spGetMyTeamID = Spring.GetMyTeamID
+local spGetLocalTeamID = Spring.GetLocalTeamID
 local spGetGaiaTeamID = Spring.GetGaiaTeamID
 local spGetSpectatingState = Spring.GetSpectatingState
 local spIsUnitAllied = Spring.IsUnitAllied
@@ -1236,12 +1357,14 @@ local widgetHeight = PANEL_DEFAULT_HEIGHT
 local activeTab = 'units'
 local rowPage = 1
 local currentPageCount = 1
-local availabilityMode = 'match'
+local availabilityMode = 'owned'
 local sortKey = 'marginalDamagePerMetalEq'
 local sortAscending = false
 local energyPerMetal = DEFAULT_ENERGY_PER_METAL
 local costMode = 'full'
+local tableFontScale = TABLE_FONT_DEFAULT_SCALE
 local myTeamID
+local sourceTeamID
 local gaiaTeamID
 local isSpectator = false
 local fullView = false
@@ -1257,6 +1380,19 @@ local knowledgeStore = KnowledgeStore.New()
 
 local function configKey(suffix)
 	return 'BossKillerPlanner_' .. suffix
+end
+
+local function refreshTeamState()
+	myTeamID = spGetMyTeamID()
+	local localTeamID = spGetLocalTeamID and spGetLocalTeamID()
+	if localTeamID ~= nil and localTeamID >= 0 then
+		sourceTeamID = localTeamID
+	else
+		sourceTeamID = myTeamID
+	end
+	local spec, full = spGetSpectatingState()
+	isSpectator = spec
+	fullView = full
 end
 
 local function currentViewport()
@@ -1336,6 +1472,7 @@ local function loadConfig()
 	if costMode ~= 'build' and costMode ~= 'full' then
 		costMode = 'full'
 	end
+	tableFontScale = clampTableFontScale(spGetConfigString(configKey('TableFontScale'), tostring(TABLE_FONT_DEFAULT_SCALE)))
 	clampWindowStateToViewport()
 end
 
@@ -1346,9 +1483,11 @@ local function saveConfig()
 	spSetConfigString(configKey('SortAscending'), tostring(sortAscending))
 	spSetConfigString(configKey('EnergyPerMetal'), tostring(energyPerMetal))
 	spSetConfigString(configKey('CostMode'), costMode)
+	spSetConfigString(configKey('TableFontScale'), tostring(tableFontScale))
 end
 
 local updateDocumentPosition
+local applyTableFontScale
 
 local function savePositionAndSize()
 	if not document then
@@ -1383,6 +1522,21 @@ updateDocumentPosition = function()
 	panel.style.top = widgetPosY .. 'px'
 	panel.style.width = widgetWidth .. 'dp'
 	panel.style.height = widgetHeight .. 'dp'
+end
+
+applyTableFontScale = function()
+	if not document then
+		return
+	end
+	local fontSize = tableFontScaleDp(tableFontScale)
+	local unitsTable = document:GetElementById('bkp-units-table-area')
+	if unitsTable then
+		unitsTable.style['font-size'] = fontSize
+	end
+	local teamsTable = document:GetElementById('bkp-teams-table-area')
+	if teamsTable then
+		teamsTable.style['font-size'] = fontSize
+	end
 end
 
 local function loadKnowledge()
@@ -1440,13 +1594,10 @@ local function shouldTrackUnit(unitID, teamID)
 	if teamID == gaiaTeamID then
 		return false
 	end
-	if isSpectator and fullView then
-		return true
-	end
 	if unitID and spIsUnitAllied(unitID) then
 		return true
 	end
-	return spAreTeamsAllied and spAreTeamsAllied(teamID, myTeamID)
+	return spAreTeamsAllied and spAreTeamsAllied(teamID, sourceTeamID or myTeamID)
 end
 
 local function refreshUnit(unitID, unitDefID, teamID, finishedOverride)
@@ -1553,6 +1704,7 @@ local function buildCatalogWithOwnedSources()
 	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, {
 		unitDefs = UnitDefs,
 		unitDefNames = UnitDefNames,
+		sourceTeamID = sourceTeamID,
 	})
 	if catalogNeedsRebuild() then
 		if cachedHasMeaningfulWater == nil then
@@ -1573,62 +1725,23 @@ local function buildCatalogWithOwnedSources()
 	applyOwnedSourceFlags(ownedSourceDefIDs)
 end
 
-local function teamCellRows(counts)
-	local totalActive = (counts.alive or 0) + (counts.building or 0) + (counts.queuedOwn or 0)
-	if totalActive <= 0 then
-		return {}
-	end
-
-	local label = tostring(counts.ready or 0) .. '/' .. tostring(counts.alive or 0)
-	if (counts.building or 0) > 0 then
-		label = label .. '+' .. tostring(counts.building)
-	end
-	if (counts.queuedOwn or 0) > 0 then
-		label = label .. ' q' .. tostring(counts.queuedOwn)
-	end
-
-	local tooltip = {
-		string.format(
-			'Allyteam total | ready %d | far %d | building %d | own queued %d',
-			counts.ready or 0,
-			counts.far or 0,
-			counts.building or 0,
-			counts.queuedOwn or 0
-		),
-	}
-
-	local teamCounts = sortedValues(counts.teams or {}, function(a, b)
-		if (a.allyTeamID or 0) == (b.allyTeamID or 0) then
-			return (a.teamID or 0) < (b.teamID or 0)
-		end
-		return (a.allyTeamID or 0) < (b.allyTeamID or 0)
-	end)
-	for _, row in ipairs(teamCounts) do
-		local teamLabel = tostring(row.ready) .. '/' .. tostring(row.alive)
-		if row.building > 0 then
-			teamLabel = teamLabel .. '+' .. tostring(row.building)
-		end
-		tooltip[#tooltip + 1] = row.name .. ' | ' .. teamLabel .. ' | far ' .. tostring(row.far)
-	end
-	return {
-		{
-			label = label,
-			color = '#E8F2F8',
-			tooltip = table.concat(tooltip, '\n'),
-		},
-	}
-end
-
 local function presentationRow(row)
 	local history = '-'
 	if (row.historySamples or 0) > 0 then
 		history = formatSI(row.historyAverage) .. '/' .. tostring(row.historySamples)
 	end
+	local preBoss = '-'
+	if row.preBossSortSource and row.preBossSortSource ~= '' then
+		preBoss = row.preBossSortSource .. ' ' .. formatSI(row.preBossSortScore)
+	end
+	local counts = row.counts or {}
+	local teamCell = presentTeamCell(counts)
 	return {
 		def_id = row.defID,
 		name = row.name,
 		icon = row.icon,
 		source = row.sourceLabel,
+		source_tooltip = row.sourceLabel ~= '' and row.sourceLabel or 'No source path found',
 		availability = row.availabilityLabel,
 		resistance = string.format('%.0f%%', row.resistancePercent * 100),
 		resistance_value = row.resistancePercent,
@@ -1644,17 +1757,20 @@ local function presentationRow(row)
 		confidence = row.confidence,
 		history = history,
 		history_tooltip = string.format(
-			'Avg %s | Last %s | Best %s | Samples %d | Confidence %s',
+			'Avg %s | Last %s | Best %s | Samples %d | Pre-boss %s | Confidence %s',
 			formatSI(row.historyAverage),
 			row.historyLast > 0 and formatSI(row.historyLast) or '-',
 			row.historyBest > 0 and formatSI(row.historyBest) or '-',
 			row.historySamples or 0,
+			preBoss,
 			row.confidence ~= '' and row.confidence or '-'
 		),
-		ally_cells = teamCellRows(row.counts),
-		ready_alive = tostring(row.counts.ready or 0) .. '/' .. tostring(row.counts.alive or 0),
-		building = tostring(row.counts.building or 0),
-		queued = tostring(row.counts.queuedOwn or 0),
+		team_label = teamCell.label,
+		team_color = teamCell.color,
+		team_tooltip = teamCell.tooltip,
+		ready_alive = tostring(counts.ready or 0) .. '/' .. tostring(counts.alive or 0),
+		building = tostring(counts.building or 0),
+		queued = tostring(counts.queuedOwn or 0),
 	}
 end
 
@@ -1662,6 +1778,39 @@ local function currentPageInfo(totalRows, pageSize)
 	local pageInfo = paginate(totalRows, rowPage, pageSize, RANKED_ROW_LIMIT)
 	rowPage = pageInfo.page
 	return pageInfo
+end
+
+local historyFallbackSortKeys = {
+	currentDamagePerMetalEq = true,
+	marginalDamagePerMetalEq = true,
+	liveContributionPerMetalEq = true,
+}
+
+local function hasBossEvidence(rows)
+	if bossInfo.bossCount > 0 then
+		return true
+	end
+	for _, row in ipairs(rows or {}) do
+		if (row.resistanceDamage or 0) > 0 or (row.liveContributionPerMetalEq or 0) > 0 then
+			return true
+		end
+	end
+	return false
+end
+
+local function resolveUnitSort(rows)
+	if historyFallbackSortKeys[sortKey] and not hasBossEvidence(rows) then
+		return {
+			key = 'preBossSortScore',
+			ascending = false,
+			fallback = true,
+		}
+	end
+	return {
+		key = sortKey,
+		ascending = sortAscending,
+		fallback = false,
+	}
 end
 
 local function buildRows()
@@ -1675,6 +1824,7 @@ local function buildRows()
 		getUnitPosition = spGetUnitPosition,
 		candidateMap = filteredCandidates,
 		teamInfo = teamInfo,
+		sourceTeamID = sourceTeamID,
 	})
 
 	local rows = ScoringEngine.BuildRows({
@@ -1690,9 +1840,10 @@ local function buildRows()
 
 	local pageInfo = currentPageInfo(#rows, RANKED_ROW_LIMIT)
 	local unitRows = {}
+	local sortInfo = resolveUnitSort(rows)
 	if activeTab == 'units' then
 		local sortedRows = shallowCopy(rows)
-		ScoringEngine.SortRows(sortedRows, sortKey, sortAscending)
+		ScoringEngine.SortRows(sortedRows, sortInfo.key, sortInfo.ascending)
 		pageInfo = currentPageInfo(#sortedRows, RANKED_ROW_LIMIT)
 		for i = pageInfo.startIndex, pageInfo.endIndex do
 			unitRows[#unitRows + 1] = presentationRow(sortedRows[i])
@@ -1774,13 +1925,13 @@ local function buildRows()
 		end
 	end
 
-	return unitRows, teamList, #rows > 0, pageInfo
+	return unitRows, teamList, #rows > 0, pageInfo, sortInfo
 end
 
 local availabilityLabels = {
 	match = 'Match Viable',
 	map = 'Map Viable',
-	owned = 'Owned Source',
+	owned = 'Buildable',
 	all = 'All Known',
 }
 
@@ -1833,7 +1984,7 @@ local function updateRmlData()
 		return
 	end
 
-	local unitRows, teamRows, hasCandidateRows, pageInfo = buildRows()
+	local unitRows, teamRows, hasCandidateRows, pageInfo, sortInfo = buildRows()
 	local statusText
 	if bossInfo.mode == 'unknown' then
 		statusText = 'Waiting for boss data'
@@ -1854,11 +2005,12 @@ local function updateRmlData()
 	dm_handle.is_teams = activeTab == 'teams'
 	dm_handle.status_text = statusText
 	dm_handle.availability_label = availabilityLabels[availabilityMode] or availabilityMode
-	dm_handle.sort_label = sortLabels[sortKey] or sortKey
-	dm_handle.sort_direction = sortAscending and 'Asc' or 'Desc'
+	dm_handle.sort_label = sortInfo.fallback and 'Pre-boss estimate' or (sortLabels[sortKey] or sortKey)
+	dm_handle.sort_direction = sortInfo.ascending and 'Asc' or 'Desc'
 	dm_handle.energy_per_metal = tostring(energyPerMetal)
 	dm_handle.cost_mode_label = costModeLabels[costMode] or costMode
 	dm_handle.cost_header = costMode == 'full' and 'Full' or 'Build'
+	dm_handle.table_font_label = tableFontScaleLabel(tableFontScale)
 	dm_handle.stagger_label = bossInfo.staggerActive and ('Stagger ' .. tostring(round(bossInfo.staggerPercent)) .. '%') or ''
 	dm_handle.page_label = pageInfo.label
 	dm_handle.has_prev_page = pageInfo.hasPrev
@@ -1882,6 +2034,7 @@ local function maybeUpdateRmlData(force)
 	end
 
 	updateRmlData()
+	applyTableFontScale()
 	dataDirty = false
 	forceRmlUpdate = false
 	lastRmlUpdateFrame = frame
@@ -1906,11 +2059,8 @@ function widget:Initialize()
 		sortAscending = false
 	end
 	loadKnowledge()
-	myTeamID = spGetMyTeamID()
 	gaiaTeamID = spGetGaiaTeamID()
-	local spec, full = spGetSpectatingState()
-	isSpectator = spec
-	fullView = full
+	refreshTeamState()
 
 	widget.rmlContext = RmlUi.GetContext('shared')
 	if not widget.rmlContext then
@@ -1929,6 +2079,7 @@ function widget:Initialize()
 		energy_per_metal = tostring(energyPerMetal),
 		cost_mode_label = costModeLabels[costMode],
 		cost_header = costMode == 'full' and 'Full' or 'Build',
+		table_font_label = tableFontScaleLabel(tableFontScale),
 		stagger_label = '',
 		page_label = '',
 		has_prev_page = false,
@@ -1955,6 +2106,7 @@ function widget:Initialize()
 
 	document:ReloadStyleSheet()
 	updateDocumentPosition()
+	applyTableFontScale()
 	if not spIsGUIHidden() then
 		document:Show()
 	end
@@ -2030,11 +2182,9 @@ function widget:UnitTaken(unitID)
 end
 
 function widget:PlayerChanged()
-	myTeamID = spGetMyTeamID()
-	local spec, full = spGetSpectatingState()
-	isSpectator = spec
-	fullView = full
+	refreshTeamState()
 	rebuildTrackedUnits()
+	catalogBuilt = false
 	markDataDirty(true)
 end
 
@@ -2152,6 +2302,21 @@ function widget:AdjustEnergy(event)
 	energyPerMetal = clamp(energyPerMetal + delta, 1, 500)
 	resetRowPage()
 	markDataDirty(true)
+	saveConfig()
+end
+
+function widget:AdjustTableFont(event)
+	local element = event and event.current_element
+	local delta = tonumber(element and element:GetAttribute('data-delta')) or 0
+	local nextScale = clampTableFontScale(tableFontScale + delta)
+	if nextScale == tableFontScale then
+		return
+	end
+	tableFontScale = nextScale
+	if dm_handle then
+		dm_handle.table_font_label = tableFontScaleLabel(tableFontScale)
+	end
+	applyTableFontScale()
 	saveConfig()
 end
 
