@@ -2,3 +2,7 @@
 	path = rmlwidgets/time_weighted_team_stats
 	url = git@github-tetrisface:tetrisface/time_weighted_team_stats.git
 	branch = main
+[submodule "rmlwidgets/gui_pve_stats"]
+	path = rmlwidgets/gui_pve_stats
+	url = git@github-tetrisface:tetrisface/gui_pve_stats.git
+	branch = main
