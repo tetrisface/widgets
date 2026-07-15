@@ -1,6 +1,6 @@
-[submodule "rmlwidgets/time_weighted_team_stats"]
-	path = rmlwidgets/time_weighted_team_stats
-	url = git@github-tetrisface:tetrisface/time_weighted_team_stats.git
+[submodule "rmlwidgets/community-widgets"]
+	path = rmlwidgets/community-widgets
+	url = git@github-tetrisface:tetrisface/community-widgets.git
 	branch = main
 [submodule "rmlwidgets/gui_pve_stats"]
 	path = rmlwidgets/gui_pve_stats
