@@ -17,19 +17,18 @@ PvE Stats adds an in-game RmlUi panel for supported PvE modes. It shows represen
 - Optional spectator rows and copyable support diagnostics
 - Persistent minimize and per-game close behavior
 
-## BAR-Widgets integration
+## Behavior
 
-- Globally scoped lower-snake-case ID: `gui_pve_stats`
-- Manifest ID matches the widget directory
-- Semantic version and RFC 3339 `last_updated` metadata
-- Detailed `README.md` and a prepared Discord announcement
-- Multi-file package compatible with `LuaUI/Widgets/gui_pve_stats`, with helper modules isolated under `include/`
-- Package size remains well below the 5 MiB limit
+The widget is enabled by default and display-only. It sends the current PvE context to the stats service but does not issue commands or automate gameplay.
+
+## Included
+
+- Lua, RML, RCSS, and helper modules
+- Community widget manifest and documentation
+- Automated tests
+- Cover image
 
 ## Verification
 
 - [x] Lua unit tests pass for the model, non-blocking HTTP client, and widget scheduler
-- [x] Runtime RML and helper-module paths match the Community Widgets install directory
-- [x] Manifest validates against the BAR-Widgets schema
-- [x] Package is below the 5 MiB limit
-- [ ] Publish the Discord announcement and place its URL in `manifest.json`
+- [x] Docker build passed
