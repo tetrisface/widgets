@@ -2,6 +2,8 @@
 
 It uses the current map, team size, encounter, and effective lobby settings to show a representative-team win chance and where the setup sits among eligible played games. It also provides setting-match evidence and accomplishment-focused player statistics.
 
+*Network note: PvE Stats currently uses unencrypted HTTP, so requests and responses are not encrypted in transit.*
+
 # 1. Install
 
 ### __Community Widgets (recommended)__

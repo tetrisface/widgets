@@ -6,6 +6,8 @@ Advance the existing `Widgets/tetrisface` submodule so the hub can publish `gui_
 
 PvE Stats adds an in-game RmlUi panel for supported PvE modes. It shows representative-team win chance, played difficulty placement, setting-match evidence, and sortable player accomplishments for the current game context.
 
+*Network note: PvE Stats currently uses unencrypted HTTP, so requests and responses are not encrypted in transit.*
+
 ## Widget highlights
 
 - Win chance for the current map, team size, encounter, and effective lobby settings
