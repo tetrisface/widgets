@@ -1,0 +1,630 @@
+body,
+div {
+	display: block;
+}
+
+#pve-stats-widget {
+	width: auto;
+	min-height: 25dp;
+	display: flex;
+	pointer-events: none;
+}
+
+.panel {
+	position: absolute;
+	width: 470dp;
+	min-width: 260dp;
+	min-height: 25dp;
+	background-color: #0D0D0DEB;
+	font-family: Exo 2;
+	font-size: 12dp;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	color: #CCCCCC;
+	pointer-events: auto;
+}
+
+.pve-stats-content {
+	display: flex;
+	flex-direction: column;
+}
+
+.pve-stats-root.has-error {
+	border-width: 1dp;
+	border-color: #994A3A;
+}
+
+.pve-stats-root.has-notice {
+	border-width: 1dp;
+	border-color: #8A6A2A;
+}
+
+.title-bar {
+	height: 25dp;
+	background-color: #1A1F26CC;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0 8dp;
+	flex-shrink: 0;
+}
+
+.title-bar handle {
+	display: flex;
+	flex: 1;
+	height: 100%;
+	align-items: center;
+	cursor: move;
+}
+
+.title-content {
+	display: flex;
+	align-items: center;
+	gap: 4dp;
+}
+
+.title-text {
+	color: #CCE6FF;
+	font-size: 1em;
+	font-weight: bold;
+}
+
+.title-controls {
+	display: flex;
+	gap: 4dp;
+	align-items: center;
+}
+
+.title-controls .ctrl-btn {
+	cursor: pointer;
+}
+
+.window-btn {
+	min-width: 12dp;
+	text-align: center;
+}
+
+.close-btn:hover {
+	color: #FF9A8A;
+	background-color: #3A1818;
+}
+
+.ctrl-btn {
+	color: #8099B3CC;
+	font-size: 0.75em;
+	padding: 2dp 4dp;
+	background-color: #0F1419;
+}
+
+.ctrl-btn.active {
+	color: #66CCFF;
+	background-color: #1A2A3A;
+	font-weight: bold;
+}
+
+.title-status {
+	flex-shrink: 0;
+}
+
+.title-status.update-available {
+	cursor: pointer;
+	color: #FFD166;
+	background-color: #3A2A12;
+}
+
+.pve-stats-loading {
+	height: 3dp;
+	padding: 0 2dp;
+	background-color: #0F1419;
+	flex-shrink: 0;
+}
+
+.pve-stats-loading-track {
+	height: 2dp;
+	background-color: #15212B;
+	overflow: hidden;
+}
+
+.pve-stats-loading-fill {
+	height: 2dp;
+	width: 0%;
+	background-color: #4CA6D9;
+}
+
+.pve-stats-summary {
+	display: flex;
+	gap: 1dp;
+	padding: 3dp 2dp;
+	background-color: #0F1419;
+	flex-shrink: 0;
+}
+
+.pve-stats-summary-compact {
+	padding-top: 1dp;
+	padding-bottom: 1dp;
+}
+
+.pve-stats-summary-compact .pve-stats-metric {
+	padding-top: 1dp;
+	padding-bottom: 1dp;
+}
+
+.pve-stats-metric {
+	flex: 1;
+	padding: 2dp 4dp;
+	background-color: #101820;
+}
+
+.pve-stats-label {
+	display: block;
+	color: #8099B3CC;
+	font-size: 0.7em;
+	overflow: hidden;
+}
+
+.pve-stats-value {
+	display: block;
+	color: #CCE6FF;
+	font-size: 0.917em;
+	font-weight: bold;
+	overflow: hidden;
+}
+
+.pve-stats-value.exact-match {
+	color: #66FF99;
+}
+
+.pve-stats-source {
+	display: flex;
+	align-items: center;
+	gap: 4dp;
+	padding: 2dp 6dp;
+	background-color: #0D0D0DEB;
+	border-top-width: 1dp;
+	border-top-color: #18232E;
+	flex-shrink: 0;
+}
+
+.pve-stats-source-label {
+	color: #8099B3CC;
+	font-size: 0.7em;
+	width: 26dp;
+	flex-shrink: 0;
+}
+
+.pve-stats-source-value {
+	color: #AABBCC;
+	font-size: 0.75em;
+	overflow: hidden;
+	flex: 1;
+}
+
+.pve-stats-evidence-summary {
+	padding: 4dp 6dp;
+	background-color: #101820;
+	border-top-width: 1dp;
+	border-top-color: #1A2A3A;
+	flex-shrink: 0;
+}
+
+.pve-stats-evidence-line {
+	color: #B8CADD;
+	font-size: 0.72em;
+	padding: 1dp 0;
+}
+
+.pve-stats-diagnostics {
+	max-height: 220dp;
+	overflow: auto;
+	padding: 3dp 6dp 5dp 6dp;
+	background-color: #0B1117;
+	border-top-width: 1dp;
+	border-top-color: #29445A;
+	flex-shrink: 0;
+}
+
+.pve-stats-diagnostics-header {
+	display: flex;
+	justify-content: space-between;
+	color: #66CCFF;
+	font-size: 0.75em;
+	font-weight: bold;
+	padding: 1dp 0 3dp 0;
+}
+
+.pve-stats-diagnostics-copy {
+	color: #8099B3;
+	cursor: pointer;
+	font-weight: normal;
+}
+
+.pve-stats-diagnostics-copy:hover {
+	color: #CCE6FF;
+}
+
+.pve-stats-diagnostic-row {
+	display: flex;
+	align-items: flex-start;
+	padding: 1dp 0;
+}
+
+.pve-stats-diagnostic-label {
+	width: 82dp;
+	flex-shrink: 0;
+	color: #8099B3;
+	font-size: 0.7em;
+}
+
+.pve-stats-diagnostic-value {
+	flex: 1;
+	color: #AABBCC;
+	font-size: 0.7em;
+}
+
+.pve-stats-diffs {
+	padding: 4dp 6dp;
+	background-color: #0D0D0DEB;
+	border-top-width: 1dp;
+	border-top-color: #1A2A3A;
+	flex-shrink: 0;
+}
+
+.pve-stats-diff-title {
+	color: #8099B3;
+	font-size: 0.75em;
+	padding-bottom: 2dp;
+}
+
+.pve-stats-hidden-diff-summary {
+	color: #AABBCC;
+	font-size: 0.75em;
+	padding-bottom: 3dp;
+}
+
+.pve-stats-diff-row {
+	display: flex;
+	align-items: center;
+	min-height: 14dp;
+	padding: 1dp 0;
+}
+
+.pve-stats-diff-field {
+	color: #66CCFF;
+	font-size: 0.75em;
+	width: 118dp;
+	flex-shrink: 0;
+	overflow: hidden;
+}
+
+.pve-stats-diff-current,
+.pve-stats-diff-closest {
+	color: #AABBCC;
+	font-size: 0.75em;
+	flex: 1;
+	overflow: hidden;
+	padding-left: 4dp;
+}
+
+.pve-stats-diff-header {
+	min-height: 12dp;
+	padding-bottom: 2dp;
+}
+
+.pve-stats-diff-header .pve-stats-diff-field,
+.pve-stats-diff-header .pve-stats-diff-current,
+.pve-stats-diff-header .pve-stats-diff-closest {
+	color: #8099B3;
+	font-size: 0.7em;
+	font-weight: bold;
+}
+
+.pve-stats-diff-closest {
+	color: #CCE6FF;
+}
+
+.pve-stats-diff-more {
+	color: #8099B3;
+	font-size: 0.75em;
+	padding-top: 1dp;
+	cursor: pointer;
+	width: 80dp;
+}
+
+.pve-stats-diff-more:hover {
+	color: #CCE6FF;
+}
+
+.table-area {
+	padding: 0 4dp 4dp 4dp;
+	flex-shrink: 0;
+	background-color: #0D0D0DEB;
+}
+
+.pve-stats-tabs {
+	display: flex;
+	align-items: center;
+	height: 18dp;
+	border-bottom-width: 1dp;
+	border-bottom-color: #262E38;
+}
+
+.pve-stats-histogram {
+	height: 120dp;
+	padding: 5dp 7dp 3dp 7dp;
+	background-color: #0B1117;
+	border-bottom-width: 1dp;
+	border-bottom-color: #29445A;
+}
+
+#pve-stats-histogram-content {
+	height: 94dp;
+}
+
+.pve-stats-histogram-chart {
+	height: 62dp;
+	display: flex;
+	align-items: flex-end;
+	gap: 0;
+}
+
+.pve-stats-histogram-bin {
+	position: relative;
+	flex: 1;
+	height: 60dp;
+	border-bottom-width: 1dp;
+	border-bottom-color: #365063;
+	cursor: help;
+}
+
+.pve-stats-histogram-bin:hover {
+	background-color: #66CCFF12;
+}
+
+.pve-stats-histogram-population {
+	position: absolute;
+	left: 0;
+	right: 1dp;
+	bottom: 0;
+	background-color: #36556DCC;
+	pointer-events: none;
+}
+
+.pve-stats-histogram-own {
+	position: absolute;
+	left: 30%;
+	right: 30%;
+	bottom: 0;
+	background-color: #66CCFFAA;
+	pointer-events: none;
+}
+
+.pve-stats-histogram-current {
+	position: absolute;
+	left: 50%;
+	top: 0;
+	bottom: 0;
+	width: 1dp;
+	background-color: #FFD166;
+	pointer-events: none;
+}
+
+.pve-stats-histogram-bin.current {
+	background-color: #FFD16618;
+}
+
+.pve-stats-histogram-scale {
+	position: relative;
+	height: 14dp;
+	color: #8099B3;
+	font-size: 0.65em;
+}
+
+.pve-stats-histogram-scale span {
+	position: absolute;
+	top: 0;
+}
+
+.pve-stats-histogram-scale-start {
+	left: 0;
+}
+
+.pve-stats-histogram-scale-threshold {
+	width: 28dp;
+	margin-left: -14dp;
+	text-align: center;
+}
+
+.pve-stats-histogram-scale-end {
+	right: 0;
+}
+
+.pve-stats-histogram-legend {
+	height: 14dp;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	color: #8FA7BC;
+	font-size: 0.61em;
+	cursor: help;
+}
+
+.pve-stats-histogram-swatch {
+	display: inline-block;
+	width: 7dp;
+	height: 7dp;
+	margin-right: 2dp;
+}
+
+.pve-stats-histogram-swatch.population {
+	background-color: #36556DCC;
+}
+
+.pve-stats-histogram-swatch.own {
+	background-color: #66CCFFAA;
+}
+
+.pve-stats-histogram-swatch.current {
+	width: 2dp;
+	background-color: #FFD166;
+}
+
+.pve-stats-histogram-caption {
+	height: 16dp;
+	color: #B8CADD;
+	font-size: 0.7em;
+	overflow: hidden;
+}
+
+.pve-stats-tab {
+	color: #8099B3;
+	font-size: 0.7em;
+	padding: 2dp 5dp;
+	cursor: pointer;
+}
+
+.pve-stats-tab:hover {
+	color: #CCE6FF;
+}
+
+.pve-stats-tab.active {
+	color: #66CCFF;
+	background-color: #152431;
+}
+
+.table-header {
+	display: flex;
+	align-items: center;
+	height: 14dp;
+	padding: 1dp 0;
+	border-bottom-width: 1dp;
+	border-bottom-color: #262E38;
+}
+
+.pve-stats-th-player {
+	color: #8099B3;
+	font-size: 0.75em;
+	min-width: 66dp;
+	flex: 1;
+	padding-left: 8dp;
+}
+
+.pve-stats-th-stat {
+	color: #8099B3;
+	font-size: 0.75em;
+	width: 90dp;
+	flex-shrink: 0;
+	text-align: right;
+	padding: 0 4dp;
+}
+
+.pve-stats-sortable {
+	cursor: pointer;
+}
+
+.pve-stats-sortable:hover {
+	color: #CCE6FF;
+	background-color: #15243180;
+}
+
+.pve-stats-sortable.active-sort {
+	color: #66CCFF;
+	background-color: #152431;
+}
+
+.pve-stats-player-row {
+	display: flex;
+	align-items: center;
+	height: 16dp;
+	padding: 1dp 0;
+}
+
+.pve-stats-player-row:hover {
+	background-color: #262E38E6;
+}
+
+.pve-stats-player-row.own-player {
+	background-color: #17304799;
+}
+
+.pve-stats-player-row.own-player:hover {
+	background-color: #21415CE6;
+}
+
+.pve-stats-player-row.own-player .pve-stats-player-name {
+	color: #E6F4FF;
+	font-weight: bold;
+}
+
+.pve-stats-group-label {
+	color: #66CCFF;
+	font-size: 0.75em;
+	padding: 4dp 4dp 2dp 8dp;
+	background-color: #0F1419;
+	border-bottom-width: 1dp;
+	border-bottom-color: #1A2A3A;
+}
+
+.pve-stats-player-accent {
+	width: 3dp;
+	height: 100%;
+	margin-right: 5dp;
+	flex-shrink: 0;
+	background-color: #0066FF;
+}
+
+.pve-stats-player-accent-empty {
+	background-color: #00000000;
+}
+
+.pve-stats-player-name {
+	color: #CCCCCC;
+	font-size: 0.833em;
+	min-width: 66dp;
+	flex: 1;
+	overflow: hidden;
+}
+
+.pve-stats-player-stat {
+	color: #AABBCC;
+	font-size: 0.75em;
+	width: 90dp;
+	flex-shrink: 0;
+	text-align: right;
+	padding: 0 4dp;
+}
+
+.pve-stats-help {
+	color: #B8CADD;
+	font-size: 0.72em;
+	padding: 4dp 7dp;
+	background-color: #152431;
+	border-bottom-width: 1dp;
+	border-bottom-color: #263D50;
+}
+
+.pve-stats-table-help {
+	margin: 0 -4dp;
+}
+
+.pve-stats-empty {
+	color: #666666;
+	font-size: 0.917em;
+	padding: 8dp 4dp 6dp 4dp;
+	text-align: center;
+}
+
+.pve-stats-error {
+	padding: 4dp 8dp 6dp 8dp;
+	color: #FF9999;
+	font-size: 0.833em;
+	background-color: #0F1419;
+}
+
+.pve-stats-error.notice {
+	color: #FFD166;
+}
+
+.hidden {
+	display: none;
+}
