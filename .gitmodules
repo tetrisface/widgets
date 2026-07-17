@@ -2,7 +2,3 @@
 	path = rmlwidgets/community-widgets
 	url = git@github-tetrisface:tetrisface/community-widgets.git
 	branch = main
-[submodule "rmlwidgets/gui_pve_stats"]
-	path = rmlwidgets/gui_pve_stats
-	url = git@github-tetrisface:tetrisface/gui_pve_stats.git
-	branch = main
