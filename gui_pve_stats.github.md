@@ -1,12 +1,10 @@
-# Add PvE Stats to the BAR Community Widgets hub
-
 ## Summary
-
-Advance the existing `Widgets/tetrisface` submodule so the hub can publish `gui_pve_stats` alongside Time Weighted Team Stats.
 
 PvE Stats adds an in-game RmlUi panel for supported PvE modes. It shows representative-team win chance, played difficulty placement, setting-match evidence, and sortable player accomplishments for the current game context.
 
 *Network note: PvE Stats currently uses unencrypted HTTP, so requests and responses are not encrypted in transit.*
+
+This work was almost entirely made by agents.
 
 ## Widget highlights
 
