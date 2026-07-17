@@ -1,0 +1,10 @@
+{
+  "id": "gui_pve_stats",
+  "version": "1.0.0",
+  "display_name": "PvE Stats",
+  "author": "tetrisface",
+	"discord_link": "https://discord.com/channels/549281623154229250/1527813859497476270",
+  "github_link": "https://github.com/tetrisface/community-widgets/tree/main/gui_pve_stats",
+  "description": "Shows representative-team win chance, played difficulty placement, setting comparisons, and player accomplishments for PvE games.",
+  "last_updated": "2026-07-17T22:43:36.591Z"
+}

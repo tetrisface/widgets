@@ -20,12 +20,14 @@ local DEV = 0
 local LOG_SECTION = 'pve_stats_rml'
 local LOG_PREFIX = 'pve_stats'
 local MODEL_NAME = 'pve_stats_model'
-local RML_PATH = 'LuaUI/RmlWidgets/gui_pve_stats/gui_pve_stats.rml'
+local WIDGET_PATH = 'LuaUI/Widgets/gui_pve_stats/'
+local INCLUDE_PATH = WIDGET_PATH .. 'include/'
+local RML_PATH = WIDGET_PATH .. 'gui_pve_stats.rml'
 local PANEL_ID = 'pve-stats-root'
 local DEFAULT_HOST = DEV == 1 and '127.0.0.1' or 'd29i3oohxql6zz.cloudfront.net'
 local DEFAULT_PORT = DEV == 1 and 8080 or 80
 local DEFAULT_PATH = '/stats'
-local UPDATE_URL = 'https://github.com/tetrisface/gui_pve_stats/blob/main/gui_pve_stats.install.md'
+local UPDATE_URL = 'https://github.com/tetrisface/community-widgets/tree/main/gui_pve_stats'
 local DEFAULT_URL = ''
 local DEFAULT_AUTO_FETCH = 1
 local DEFAULT_EVIDENCE_LOG = 1
@@ -48,8 +50,8 @@ local DEFAULT_PANEL_TOP = 138
 local DEFAULT_PANEL_RIGHT = 18
 local HASH_MODULO = 4294967296
 
-local Model = VFS.Include('LuaUI/RmlWidgets/gui_pve_stats/include/pve_stats_rml_model.lua')
-local HttpClient = VFS.Include('LuaUI/RmlWidgets/gui_pve_stats/include/pve_stats_http_client.lua')
+local Model = VFS.Include(INCLUDE_PATH .. 'pve_stats_rml_model.lua')
+local HttpClient = VFS.Include(INCLUDE_PATH .. 'pve_stats_http_client.lua')
 local Json = Json or VFS.Include('common/luaUtilities/json.lua')
 local CLIENT_VERSION = Model.CLIENT_VERSION or 1
 

@@ -36,10 +36,10 @@ local function installEnvironment(options)
 	}
 	_G.VFS = {
 		Include = function(path)
-			if path == "LuaUI/RmlWidgets/gui_pve_stats/include/pve_stats_rml_model.lua" then
+			if path == "LuaUI/Widgets/gui_pve_stats/include/pve_stats_rml_model.lua" then
 				return dofile(repoRoot .. "include/pve_stats_rml_model.lua")
 			end
-			if path == "LuaUI/RmlWidgets/gui_pve_stats/include/pve_stats_http_client.lua" then
+			if path == "LuaUI/Widgets/gui_pve_stats/include/pve_stats_http_client.lua" then
 				return dofile(repoRoot .. "include/pve_stats_http_client.lua")
 			end
 			error("unexpected include: " .. tostring(path))
