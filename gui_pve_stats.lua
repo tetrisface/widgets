@@ -27,7 +27,7 @@ local PANEL_ID = 'pve-stats-root'
 local DEFAULT_HOST = DEV == 1 and '127.0.0.1' or 'd29i3oohxql6zz.cloudfront.net'
 local DEFAULT_PORT = DEV == 1 and 8080 or 80
 local DEFAULT_PATH = '/stats'
-local UPDATE_URL = 'https://github.com/tetrisface/community-widgets/tree/main/gui_pve_stats'
+local UPDATE_URL = 'https://discord.com/channels/549281623154229250/1527813859497476270'
 local DEFAULT_URL = ''
 local DEFAULT_AUTO_FETCH = 1
 local DEFAULT_EVIDENCE_LOG = 1
