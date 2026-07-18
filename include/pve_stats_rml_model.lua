@@ -1516,6 +1516,29 @@ local function HistogramBoundText(value)
 	return FormatNumber(number, 1)
 end
 
+local HISTOGRAM_MILESTONES = {
+	{ score = 20, field = "challenge_20_clears" },
+	{ score = 25, field = "challenge_25_clears" },
+	{ score = 30, field = "challenge_30_clears" },
+}
+
+local function HistogramCrossedMilestoneText(data, lower, upper)
+	if not data.ownPlayer then
+		return nil
+	end
+	for _, milestone in ipairs(HISTOGRAM_MILESTONES) do
+		if lower < milestone.score and milestone.score < upper then
+			local exactClears = tonumber(data.challenges[milestone.field])
+			if exactClears ~= nil then
+				return "This bucket crosses " .. FormatNumber(milestone.score, 0)
+					.. "; your exact " .. FormatNumber(milestone.score, 0) .. "+ Clears total is "
+					.. FormatNumber(exactClears, 0) .. "."
+			end
+		end
+	end
+	return nil
+end
+
 function Model.HistogramHelpText(response, request)
 	local data = DifficultyHistogramData(response, request)
 	if not data then
@@ -1527,7 +1550,8 @@ function Model.HistogramHelpText(response, request)
 	return "Dark bars show " .. FormatNumber(data.totalGames, 0)
 		.. " eligible games by challenge score."
 		.. ownText
-		.. " Both use one percentage scale. Cyan above dark means this range contains a larger share of your clears than of all played games."
+		.. " Both use one percentage scale. Each bar covers a score range; the Milestones table uses exact 20+/25+/30+ cutoffs."
+		.. " Cyan above dark means this range contains a larger share of your clears than of all played games."
 end
 
 function Model.HistogramBinHelpText(response, request, binIndex)
@@ -1554,6 +1578,10 @@ function Model.HistogramBinHelpText(response, request, binIndex)
 		parts[#parts + 1] = "Your clears: " .. FormatNumber(ownClears, 0)
 			.. " of " .. FormatNumber(data.totalOwnClears, 0)
 			.. " (" .. FormatNumber(ownShare, 1) .. "%)."
+	end
+	local crossedMilestoneText = HistogramCrossedMilestoneText(data, lower, upper)
+	if crossedMilestoneText then
+		parts[#parts + 1] = crossedMilestoneText
 	end
 	if HistogramContainsDifficulty(bin, data.currentDifficulty) then
 		parts[#parts + 1] = "Your current setup is here at " .. FormatNumber(data.currentDifficulty, 1) .. "."
@@ -1612,9 +1640,9 @@ local function DifficultyHistogramRml(response, request)
 		"<div class=\"pve-stats-histogram-chart\">", table.concat(rows), "</div>",
 		"<div class=\"pve-stats-histogram-scale\">",
 		"<span class=\"pve-stats-histogram-scale-start\">0</span>",
-		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 58.824%\">20+</span>",
-		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 73.529%\">25+</span>",
-		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 88.235%\">30+</span>",
+		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 58.824%\">20</span>",
+		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 73.529%\">25</span>",
+		"<span class=\"pve-stats-histogram-scale-threshold\" style=\"left: 88.235%\">30</span>",
 		"<span class=\"pve-stats-histogram-scale-end\">34</span></div>",
 		"<div class=\"pve-stats-histogram-legend\" onmouseover=\"widget:ShowHistogramHelp(event)\" onmouseout=\"widget:HideHelp(event)\">",
 		"<span><span class=\"pve-stats-histogram-swatch population\"></span>Played games</span>",

@@ -1254,9 +1254,10 @@ local function testHistogramComparesPopulationAndPersonalSharesOnOneScale()
 	assertTrue(string.find(view.histogramRml, 'Played games', 1, true) ~= nil)
 	assertTrue(string.find(view.histogramRml, 'Your clears', 1, true) ~= nil)
 	assertTrue(string.find(view.histogramRml, 'common % scale', 1, true) ~= nil)
-	assertTrue(string.find(view.histogramRml, 'left: 58.824%\">20+', 1, true) ~= nil)
-	assertTrue(string.find(view.histogramRml, 'left: 73.529%\">25+', 1, true) ~= nil)
-	assertTrue(string.find(view.histogramRml, 'left: 88.235%\">30+', 1, true) ~= nil)
+	assertTrue(string.find(view.histogramRml, 'left: 58.824%\">20</span>', 1, true) ~= nil)
+	assertTrue(string.find(view.histogramRml, 'left: 73.529%\">25</span>', 1, true) ~= nil)
+	assertTrue(string.find(view.histogramRml, 'left: 88.235%\">30</span>', 1, true) ~= nil)
+	assertTrue(string.find(view.histogramRml, '>25+</span>', 1, true) == nil)
 	assertTrue(string.find(view.histogramRml, 'pve-stats-histogram-population" style="height: 31%', 1, true) ~= nil)
 	assertTrue(string.find(view.histogramRml, 'pve-stats-histogram-own" style="height: 100%', 1, true) ~= nil)
 
@@ -1271,7 +1272,39 @@ local function testHistogramComparesPopulationAndPersonalSharesOnOneScale()
 	assertTrue(string.find(generalHelp, '100 eligible games', 1, true) ~= nil)
 	assertTrue(string.find(generalHelp, '10 eligible clears', 1, true) ~= nil)
 	assertTrue(string.find(generalHelp, 'Both use one percentage scale', 1, true) ~= nil)
+	assertTrue(string.find(generalHelp, 'Each bar covers a score range', 1, true) ~= nil)
+	assertTrue(string.find(generalHelp, 'exact 20+/25+/30+ cutoffs', 1, true) ~= nil)
 	assertTrue(string.find(generalHelp, 'larger share of your clears', 1, true) ~= nil)
+end
+
+local function testHistogramExplainsBucketCrossingExactMilestone()
+	local response = {
+		difficulty_histogram = {
+			total_games = 1,
+			bins = {
+				{ bin_index = 12, lower_bound = 24, upper_bound = 26, games = 1, wins = 1 },
+			},
+		},
+		players = {
+			{
+				player_id = 42,
+				player_name = 'Explorer',
+				accomplishments = {
+					challenges = {
+						clear_histogram = { 1 },
+						challenge_25_clears = 0,
+						highest_challenge_cleared = 24.8,
+					},
+				},
+			},
+		},
+	}
+	local request = { ai_type = 'Raptors', _own_player_id = 42 }
+
+	local help = Model.HistogramBinHelpText(response, request, 1)
+
+	assertTrue(string.find(help, 'Challenge 24-26', 1, true) ~= nil)
+	assertTrue(string.find(help, 'This bucket crosses 25; your exact 25+ Clears total is 0.', 1, true) ~= nil)
 end
 
 testBoundedExponentialBackoffSeconds()
@@ -1310,5 +1343,6 @@ testOwnPlayerRowIsHighlightedByIdAndNameFallback()
 testOwnSpectatorAndUnresolvedPlaceholderAreHighlighted()
 testAccomplishmentTabsRenderPerpendicularProgress()
 testHistogramComparesPopulationAndPersonalSharesOnOneScale()
+testHistogramExplainsBucketCrossingExactMilestone()
 
 print("test_pve_stats_rml_model.lua: ok")
