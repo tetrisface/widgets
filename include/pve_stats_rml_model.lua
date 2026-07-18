@@ -1709,12 +1709,12 @@ function Model.EmptyViewModel()
 		modeText = "-",
 		difficultyText = "-",
 		winChanceHelpText = "Estimated chance that a representative current BAR human team wins this map and effective setup. Named player identities and skill ratings are not used.",
-		playedRankHelpText = "Where this setup's challenge score falls among eligible played games for this AI type.",
+		difficultyPercentileHelpText = "Where this setup's challenge score falls among eligible played games for this AI type.",
 		trainingGamesHelpText = "Eligible games for this AI type used to train the model. This is not the number of exact or nearby matches.",
 		exactWinsText = "-",
 		extendedWinsText = "-",
 		evidenceGamesText = "-",
-		evidenceGamesLabel = "Played Rank",
+		evidenceGamesLabel = "Difficulty Percentile",
 		winsLabelText = "Win Chance",
 		playerTab = "setup",
 		playerHeaderLabel = "Player",
@@ -1807,12 +1807,12 @@ function Model.ViewModelFromResponse(response, errorMessage, request, colorLooku
 	view.winsLabelText = "Win Chance"
 	view.exactWinsText = type(estimate) == "table" and (PercentText(estimate.player_win_probability) or "-") or "-"
 	view.extendedWinsText = trainingGames and FormatNumber(trainingGames, 0) or "-"
-	view.evidenceGamesLabel = "Played Rank"
+	view.evidenceGamesLabel = "Difficulty Percentile"
 	local histogram = response.difficulty_histogram
 	local playedPercentile = type(histogram) == "table" and tonumber(histogram.current_percentile) or nil
 	view.evidenceGamesText = playedPercentile and ("P" .. FormatNumber(playedPercentile, 0)) or "Unplaced"
 	view.winChanceHelpText = "Estimated chance that a representative current BAR human team wins this map and effective setup. It uses team size and relevant encounter context, but not the identities or skill ratings of the players currently in the lobby."
-	view.playedRankHelpText = playedPercentile
+	view.difficultyPercentileHelpText = playedPercentile
 		and ("This setup's challenge score is harder than approximately " .. FormatNumber(playedPercentile, 0) .. "% of eligible played " .. aiType .. " games.")
 		or ("This setup has not been placed in the eligible played " .. aiType .. " game distribution.")
 	view.trainingGamesHelpText = trainingGames

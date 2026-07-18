@@ -1423,8 +1423,8 @@ function widget:ShowWinChanceHelp()
 	ShowHelp(state.viewModel.winChanceHelpText)
 end
 
-function widget:ShowPlayedRankHelp()
-	ShowHelp(state.viewModel.playedRankHelpText)
+function widget:ShowDifficultyPercentileHelp()
+	ShowHelp(state.viewModel.difficultyPercentileHelpText)
 end
 
 function widget:ShowTrainingGamesHelp()

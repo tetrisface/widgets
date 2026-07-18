@@ -9,7 +9,7 @@ This work was almost entirely made by agents.
 ## Widget highlights
 
 - Win chance for the current map, team size, encounter, and effective lobby settings
-- Played Rank plus a histogram of eligible played-game difficulty
+- Difficulty Percentile plus a histogram of eligible played-game difficulty
 - Exact or similar setting comparison with useful lobby differences
 - Player views for Awards, Encounters, Games & Maps, Milestones, and Lobby Settings
 - Optional spectator rows and copyable support diagnostics

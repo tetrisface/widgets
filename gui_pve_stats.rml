@@ -32,8 +32,8 @@
                 <span id="pve-stats-exact-wins-label" class="pve-stats-label">Win Chance</span>
                 <span id="pve-stats-exact-wins" class="pve-stats-value">-</span>
             </div>
-            <div class="pve-stats-metric" onmouseover="widget:ShowPlayedRankHelp(event)" onmouseout="widget:HideHelp(event)">
-                <span id="pve-stats-evidence-games-label" class="pve-stats-label">Played Rank</span>
+            <div class="pve-stats-metric" onmouseover="widget:ShowDifficultyPercentileHelp(event)" onmouseout="widget:HideHelp(event)">
+                <span id="pve-stats-evidence-games-label" class="pve-stats-label">Difficulty Percentile</span>
                 <span id="pve-stats-evidence-games" class="pve-stats-value">-</span>
             </div>
             <div class="pve-stats-metric" onmouseover="widget:ShowTrainingGamesHelp(event)" onmouseout="widget:HideHelp(event)">
