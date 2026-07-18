@@ -156,6 +156,10 @@ div {
 	background-color: #101820;
 }
 
+.pve-stats-metric-wide {
+	flex: 1.5;
+}
+
 .pve-stats-label {
 	display: block;
 	color: #8099B3CC;

@@ -1625,7 +1625,7 @@ local function DifficultyHistogramRml(response, request)
 	local caption
 	if currentDifficulty then
 		local percentile = tonumber(histogram.current_percentile)
-		caption = "Current " .. FormatNumber(currentDifficulty, 1)
+		caption = "Challenge " .. FormatNumber(currentDifficulty, 1)
 		if percentile then
 			caption = caption .. " - harder than " .. FormatNumber(percentile, 0) .. "% of played " .. tostring(request and request.ai_type or "PvE") .. " games"
 		end
@@ -1709,6 +1709,7 @@ function Model.EmptyViewModel()
 		modeText = "-",
 		difficultyText = "-",
 		winChanceHelpText = "Estimated chance that a representative current BAR human team wins this map and effective setup. Named player identities and skill ratings are not used.",
+		challengeHelpText = "An absolute 0-34 difficulty score for this setup. Challenge 17 represents an estimated 50% win chance for a representative current BAR human team; higher is harder. Difficulty Percentile is the relative placement among played games.",
 		difficultyPercentileHelpText = "Where this setup's challenge score falls among eligible played games for this AI type.",
 		trainingGamesHelpText = "Eligible games for this AI type used to train the model. This is not the number of exact or nearby matches.",
 		exactWinsText = "-",
@@ -1800,20 +1801,24 @@ function Model.ViewModelFromResponse(response, errorMessage, request, colorLooku
 	if view.hasNotice then
 		view.statusText = "Update"
 	end
-	view.difficultyText = "-"
 	local estimate = response.difficulty_estimate
 	local aiType = tostring(request and request.ai_type or "PvE")
 	local trainingGames = type(estimate) == "table" and tonumber(estimate.evidence_games) or nil
+	local histogram = response.difficulty_histogram
+	local currentChallenge = type(histogram) == "table" and tonumber(histogram.current_difficulty) or nil
+	view.difficultyText = currentChallenge and FormatNumber(currentChallenge, 1) or "Unplaced"
 	view.winsLabelText = "Win Chance"
 	view.exactWinsText = type(estimate) == "table" and (PercentText(estimate.player_win_probability) or "-") or "-"
 	view.extendedWinsText = trainingGames and FormatNumber(trainingGames, 0) or "-"
 	view.evidenceGamesLabel = "Difficulty Percentile"
-	local histogram = response.difficulty_histogram
 	local playedPercentile = type(histogram) == "table" and tonumber(histogram.current_percentile) or nil
 	view.evidenceGamesText = playedPercentile and ("P" .. FormatNumber(playedPercentile, 0)) or "Unplaced"
 	view.winChanceHelpText = "Estimated chance that a representative current BAR human team wins this map and effective setup. It uses team size and relevant encounter context, but not the identities or skill ratings of the players currently in the lobby."
+	view.challengeHelpText = currentChallenge
+		and ("Challenge " .. FormatNumber(currentChallenge, 1) .. " is this setup's absolute difficulty on a 0-34 scale. Challenge 17 represents an estimated 50% win chance for a representative current BAR human team; higher is harder. Difficulty Percentile compares this score with eligible played games.")
+		or ("This setup does not have a Challenge score yet. Challenge is an absolute 0-34 difficulty score; Difficulty Percentile is the relative placement among eligible played games.")
 	view.difficultyPercentileHelpText = playedPercentile
-		and ("This setup's challenge score is harder than approximately " .. FormatNumber(playedPercentile, 0) .. "% of eligible played " .. aiType .. " games.")
+		and ("This setup's Challenge score is harder than approximately " .. FormatNumber(playedPercentile, 0) .. "% of eligible played " .. aiType .. " games. This is a relative placement, not the Challenge score itself.")
 		or ("This setup has not been placed in the eligible played " .. aiType .. " game distribution.")
 	view.trainingGamesHelpText = trainingGames
 		and (FormatNumber(trainingGames, 0) .. " eligible " .. aiType .. " games were used to train this model after validity and grace-period filtering. This is overall model data, not the number of exact or nearby matches and not a confidence score.")

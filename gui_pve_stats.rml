@@ -32,7 +32,11 @@
                 <span id="pve-stats-exact-wins-label" class="pve-stats-label">Win Chance</span>
                 <span id="pve-stats-exact-wins" class="pve-stats-value">-</span>
             </div>
-            <div class="pve-stats-metric" onmouseover="widget:ShowDifficultyPercentileHelp(event)" onmouseout="widget:HideHelp(event)">
+            <div class="pve-stats-metric" onmouseover="widget:ShowChallengeHelp(event)" onmouseout="widget:HideHelp(event)">
+                <span class="pve-stats-label">Challenge</span>
+                <span id="pve-stats-difficulty" class="pve-stats-value">-</span>
+            </div>
+            <div class="pve-stats-metric pve-stats-metric-wide" onmouseover="widget:ShowDifficultyPercentileHelp(event)" onmouseout="widget:HideHelp(event)">
                 <span id="pve-stats-evidence-games-label" class="pve-stats-label">Difficulty Percentile</span>
                 <span id="pve-stats-evidence-games" class="pve-stats-value">-</span>
             </div>
@@ -40,7 +44,7 @@
                 <span class="pve-stats-label">Training Games</span>
                 <span id="pve-stats-extended-wins" class="pve-stats-value">-</span>
             </div>
-            <div class="pve-stats-metric" onmouseover="widget:ShowMatchHelp(event)" onmouseout="widget:HideHelp(event)">
+            <div class="pve-stats-metric pve-stats-metric-wide" onmouseover="widget:ShowMatchHelp(event)" onmouseout="widget:HideHelp(event)">
                 <span class="pve-stats-label">Match</span>
                 <span id="pve-stats-match" class="pve-stats-value">-</span>
             </div>

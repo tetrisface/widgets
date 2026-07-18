@@ -1423,6 +1423,10 @@ function widget:ShowWinChanceHelp()
 	ShowHelp(state.viewModel.winChanceHelpText)
 end
 
+function widget:ShowChallengeHelp()
+	ShowHelp(state.viewModel.challengeHelpText)
+end
+
 function widget:ShowDifficultyPercentileHelp()
 	ShowHelp(state.viewModel.difficultyPercentileHelpText)
 end

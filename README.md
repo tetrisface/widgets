@@ -7,7 +7,7 @@ Network note: PvE Stats currently uses unencrypted HTTP, so requests and respons
 --- CORE FEATURES ---
 
 - Representative-team win chance for the current map, team size, encounter, and effective lobby settings
-- Difficulty Percentile and a difficulty histogram showing where the current setup sits among eligible played games
+- Challenge score, Difficulty Percentile, and a histogram showing where the current setup sits among eligible played games
 - Setting-match evidence with useful lobby differences when the current setup does not exactly match a recorded setup
 - Sortable player accomplishment views for Awards, Encounters, Games & Maps, Milestones, and Lobby Settings
 - Optional spectator rows and copyable support diagnostics
