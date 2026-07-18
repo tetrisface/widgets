@@ -234,7 +234,7 @@ local function ApplyViewModel(viewModel)
 	SetClass('pve-stats-error', 'notice', state.viewModel.hasNotice and not state.viewModel.hasError)
 	SetClass('pve-stats-error', 'hidden', not state.viewModel.hasError and not state.viewModel.hasNotice)
 	SetClass('pve-stats-source', 'hidden', not state.viewModel.hasSourceWindow)
-	SetClass('pve-stats-diffs', 'hidden', not state.viewModel.hasDiffs)
+	SetClass('pve-stats-diffs', 'hidden', not state.viewModel.hasDiffs or not state.viewModel.diagnosticsExpanded)
 	SetClass('pve-stats-evidence-summary', 'hidden', not state.viewModel.hasEvidenceSummary)
 	SetClass('pve-stats-diagnostics', 'hidden', not state.viewModel.diagnosticsExpanded)
 	SetClass('pve-stats-diagnostics-toggle', 'hidden', not state.viewModel.hasDiagnostics)
@@ -1446,7 +1446,7 @@ function widget:ShowHistogramBinHelp(event)
 end
 
 function widget:ShowDiagnosticsHelp()
-	ShowHelp('Show request timing, field coverage, match details, and troubleshooting IDs.')
+	ShowHelp('Show field differences, request timing, field coverage, match details, and troubleshooting IDs.')
 end
 
 function widget:ShowUpdateHelp()

@@ -64,15 +64,16 @@
 
         <div id="pve-stats-evidence-summary" class="pve-stats-evidence-summary hidden"></div>
 
-        <div id="pve-stats-diagnostics" class="pve-stats-diagnostics hidden">
-            <div class="pve-stats-diagnostics-header">
-                <span>Diagnostics</span>
-                <span class="pve-stats-diagnostics-copy" onclick="widget:CopyDiagnostics(event)">Copy</span>
+        <div id="pve-stats-diagnostics" class="pve-stats-diagnostic-details hidden">
+            <div class="pve-stats-diagnostics">
+                <div class="pve-stats-diagnostics-header">
+                    <span>Diagnostics</span>
+                    <span class="pve-stats-diagnostics-copy" onclick="widget:CopyDiagnostics(event)">Copy</span>
+                </div>
+                <div id="pve-stats-diagnostics-content"></div>
             </div>
-            <div id="pve-stats-diagnostics-content"></div>
+            <div id="pve-stats-diffs" class="pve-stats-diffs hidden"></div>
         </div>
-
-        <div id="pve-stats-diffs" class="pve-stats-diffs hidden"></div>
 
         <div class="table-area pve-stats-table">
             <div class="pve-stats-tabs">

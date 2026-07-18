@@ -10,7 +10,7 @@ This work was almost entirely made by agents.
 
 - Win chance for the current map, team size, encounter, and effective lobby settings
 - Challenge score, Difficulty Percentile, and a histogram of eligible played-game difficulty
-- Exact or similar setting comparison with useful lobby differences
+- Exact or similar setting comparison with detailed lobby differences available under Diag
 - Player views for Awards, Encounters, Games & Maps, Milestones, and Lobby Settings
 - Optional spectator rows and copyable support diagnostics
 - Persistent minimize and per-game close behavior

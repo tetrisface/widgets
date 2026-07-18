@@ -60,7 +60,7 @@ Restart BAR or run `/luaui reload`, then enable **PvE Stats** in the widget list
 
 - **Win Chance** for a representative current BAR human team playing the current setup
 - **Challenge** score, **Difficulty Percentile**, and a histogram showing the setup's difficulty among eligible played games
-- Exact or similar **setting comparison**, including useful lobby-setting differences
+- Exact or similar **setting comparison**, with detailed lobby-setting differences available under **Diag**
 - Sortable player views for **Awards**, **Encounters**, **Games & Maps**, **Milestones**, and **Lobby Settings**
 - Optional spectator rows
 - Copyable **Diag** information for support and troubleshooting

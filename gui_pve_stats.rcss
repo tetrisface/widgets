@@ -218,9 +218,11 @@ div {
 	padding: 1dp 0;
 }
 
+.pve-stats-diagnostic-details {
+	flex-shrink: 0;
+}
+
 .pve-stats-diagnostics {
-	max-height: 220dp;
-	overflow: auto;
 	padding: 3dp 6dp 5dp 6dp;
 	background-color: #0B1117;
 	border-top-width: 1dp;
