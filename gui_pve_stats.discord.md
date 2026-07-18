@@ -6,9 +6,9 @@ It uses the current map, team size, encounter, and effective lobby settings to s
 
 # 1. Install
 
-### __Community Widgets (recommended)__
+### __Community Widgets (maybe soon)__
 
-Open the plugins browser in the BAR lobby, find **PvE Stats**, and select **Install**.
+~~Open the plugins browser in the BAR lobby, find **PvE Stats**, and select **Install**.~~
 
 ### __PowerShell__
 
