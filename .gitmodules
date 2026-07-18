@@ -1,4 +1,4 @@
-[submodule "rmlwidgets/community-widgets"]
-	path = rmlwidgets/community-widgets
-	url = git@github-tetrisface:tetrisface/community-widgets.git
+[submodule "BAR-Widgets"]
+	path = BAR-Widgets
+	url = https://github.com/tetrisface/BAR-Widgets.git
 	branch = main

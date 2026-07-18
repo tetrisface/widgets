@@ -1,4 +1,5 @@
 {
+  "git.scanRepositories": ["BAR-Widgets"],
   "Lua.diagnostics.globals": ["Spring"],
   "Lua.diagnostics.disable": [
     "undefined-global",
