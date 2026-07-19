@@ -21,3 +21,11 @@ The win-chance estimate represents a current BAR human team. The identities and 
 - A supported BAR PvE game, such as Raptors, Scavengers, or BARbarians
 
 If the service is still starting or temporarily busy, the widget retries expected transient failures without blocking LuaUI. The Diag panel exposes copyable, support-oriented request status without displaying sensitive implementation details.
+
+--- REMOTE CONNECTION ---
+
+The complete outbound contract is split between [`pve_stats_request.lua`](include/pve_stats_request.lua) and [`pve_stats_remote.lua`](include/pve_stats_remote.lua). The widget sends one of seven explicitly allowlisted JSON fields with `POST http://d29i3oohxql6zz.cloudfront.net:80/stats`. It fetches once during initial startup and on explicit manual or scheduled requests; it does not poll periodically.
+
+Each fetch controller owns the lifecycle of its request and prevents duplicate work for that resource. The remote transport keeps operations independent and does not serialize unrelated operations, so future features can use separate controllers without sharing a global request lock.
+
+Each attempt has a 30-second deadline, a 256 KiB request body limit, a 64 KiB response headers limit, and a 1 MiB response body limit. The client does not follow redirects, authenticate, retain cookies, download files, or execute response content. The fixed endpoint currently uses unencrypted HTTP.

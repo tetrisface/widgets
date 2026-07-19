@@ -19,6 +19,8 @@ This work was almost entirely made by agents.
 
 The widget is enabled by default and display-only. It sends the current PvE context to the stats service but does not issue commands or automate gameplay.
 
+The remote connection is purpose-specific and fixed to `POST http://d29i3oohxql6zz.cloudfront.net:80/stats`. It is non-blocking, bounded, has no runtime endpoint override, and runs only for the initial automatic fetch or an explicit manual/scheduled fetch. See the README and the request/remote modules for the complete outbound allowlist and connection policy.
+
 ## Included
 
 - Lua, RML, RCSS, and helper modules
@@ -28,5 +30,6 @@ The widget is enabled by default and display-only. It sends the current PvE cont
 
 ## Verification
 
-- [x] Lua unit tests pass for the model, non-blocking HTTP client, and widget scheduler
-- [x] Docker build passed
+- [x] The unified Lua suite passes request, remote-boundary, fetch-policy, presenter, and widget-integration tests
+- [x] Lua 5.1 and Lua 5.4 compatibility checks pass
+- [x] Lua syntax, RML/XML, and manifest/JSON validation pass
