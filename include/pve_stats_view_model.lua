@@ -95,7 +95,7 @@ function ViewModelFactory.New(Display, PlayerStats, Histogram, Diagnostics)
 			hasUpdate = false,
 			updateHelpText = "",
 			clientVersion = CLIENT_VERSION,
-			apiClientVersion = nil,
+			apiClientVersion = 0,
 			playerGroups = {},
 			diagnosticRows = {},
 			diffRows = {},
@@ -128,7 +128,7 @@ function ViewModelFactory.New(Display, PlayerStats, Histogram, Diagnostics)
 		end
 		if not response then return view end
 
-		view.apiClientVersion = tonumber(response.client_version)
+		view.apiClientVersion = tonumber(response.client_version) or 0
 		view.noticeText = ClientUpdateNotice(response)
 		view.hasNotice = view.noticeText ~= ""
 		view.hasUpdate = view.hasNotice

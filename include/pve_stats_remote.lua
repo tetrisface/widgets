@@ -1,7 +1,7 @@
 -- This is the widget's complete remote-connection policy and its only
 -- production remote-I/O module:
 --   POST JSON to http://d29i3oohxql6zz.cloudfront.net:80/stats
---   accept JSON; allow one non-blocking request at a time
+--   accept JSON; represent every request as an independent non-blocking operation
 --   enforce a 30-second attempt deadline, 256 KiB request-body limit,
 --   64 KiB response-header limit, and 1 MiB response-body limit
 --   do not redirect, authenticate, retain cookies, download or write files,
@@ -22,7 +22,6 @@ local ATTEMPT_TIMEOUT_SECONDS = 30
 local MAX_REQUEST_BYTES = 256 * 1024
 local MAX_RESPONSE_HEADER_BYTES = 64 * 1024
 local MAX_RESPONSE_BODY_BYTES = 1024 * 1024
-local activeOperation = nil
 
 local CONNECT_PENDING_ERRORS = {
 	["timeout"] = true,
@@ -43,7 +42,6 @@ local function Close(operation)
 		if operation.client.close then pcall(operation.client.close, operation.client) end
 		operation.client = nil
 	end
-	if activeOperation == operation then activeOperation = nil end
 end
 
 local function FinishError(operation, err)
@@ -189,10 +187,6 @@ function Remote.Start(socketApi, jsonBody, startedSeconds)
 	if not socketApi or type(socketApi.tcp) ~= "function" or type(socketApi.select) ~= "function" then
 		return nil, Error("lua_socket_disabled", false)
 	end
-	if activeOperation then
-		return nil, Error("request_in_progress", false)
-	end
-
 	local createOk, client = pcall(socketApi.tcp)
 	if not createOk or not client then
 		return nil, Error("socket_create_failed", false)
@@ -232,7 +226,6 @@ function Remote.Start(socketApi, jsonBody, startedSeconds)
 		deadlineSeconds = started + ATTEMPT_TIMEOUT_SECONDS,
 		meta = {},
 	}
-	activeOperation = operation
 	return operation
 end
 

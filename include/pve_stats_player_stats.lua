@@ -158,14 +158,16 @@ end
 local function SortPlayers(players, definition, sortColumn, descending)
 	table.sort(players, function(left, right)
 		if sortColumn == 0 then
-			return descending and PlayerComesBefore(right, left) or PlayerComesBefore(left, right)
+			if descending then return PlayerComesBefore(right, left) end
+			return PlayerComesBefore(left, right)
 		end
 		local leftValue = StatValue(left, definition, sortColumn)
 		local rightValue = StatValue(right, definition, sortColumn)
 		if leftValue == nil and rightValue ~= nil then return false end
 		if leftValue ~= nil and rightValue == nil then return true end
 		if leftValue ~= nil and rightValue ~= nil and leftValue ~= rightValue then
-			return descending and leftValue > rightValue or leftValue < rightValue
+			if descending then return leftValue > rightValue end
+			return leftValue < rightValue
 		end
 		return PlayerComesBefore(left, right)
 	end)

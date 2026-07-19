@@ -73,6 +73,16 @@ local function InstallEnvironment(options)
 			environment.model = model
 			environment.controller = controller
 			if options.openModelFails then return nil end
+			local declaredKeys = {}
+			for key in pairs(model) do declaredKeys[key] = true end
+			setmetatable(model, {
+				__newindex = function(target, key, value)
+					if not declaredKeys[key] then
+						error("new DataModel root key: " .. tostring(key))
+					end
+					rawset(target, key, value)
+				end,
+			})
 			return model
 		end,
 		LoadDocument = function(_, path)

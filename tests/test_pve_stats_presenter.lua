@@ -141,6 +141,22 @@ local function AssertNoRmlFragments(value, seen)
 	end
 end
 
+local function AssertSameRootKeys(expected, actual)
+	for key in pairs(expected) do
+		T.truthy(actual[key] ~= nil, "view model removed root key " .. tostring(key))
+	end
+	for key in pairs(actual) do
+		T.truthy(expected[key] ~= nil, "view model added undeclared root key " .. tostring(key))
+	end
+end
+
+local function testDataModelRootSchemaIsStable()
+	local empty = ViewModel.Empty()
+	AssertSameRootKeys(empty, ViewModel.Build(response, nil, request, nil, options))
+	AssertSameRootKeys(empty, ViewModel.Build(nil, "invalid_json", request, nil, {}))
+	T.equals(empty.apiClientVersion, 0)
+end
+
 local function testStructuredViewModel()
 	local view = ViewModel.Build(response, nil, request, {Alice = "#112233", Bob = "#445566"}, options)
 	T.equals(view.difficultyText, "21.0")
@@ -193,7 +209,7 @@ local function testErrorsAndFreshnessArePresentationState()
 	T.truthy(late >= 0.9 and late <= 0.92)
 end
 
-local function testFeatureTabsSortingAndHelpAreSemantic()
+local function testFeatureTabsSortingAndHelpMatchPresentation()
 	T.equals(PlayerStats.DefaultTab({match_status = "exact"}), "setup")
 	T.equals(PlayerStats.DefaultTab(response), "awards")
 	for _, tab in ipairs({"setup", "adventures", "encounters", "milestones", "awards"}) do
@@ -217,6 +233,43 @@ local function testFeatureTabsSortingAndHelpAreSemantic()
 	T.contains(Histogram.BinHelpText(response, request, 2), "current setup is here")
 end
 
+local function testPlayerSortingIsStrictAndDirectional()
+	local players = {}
+	for index = 1, 40 do
+		players[index] = {
+			player_id = index,
+			player_name = string.format("Player %02d", index),
+			setup_clears = index,
+			setup_plays = index,
+			accomplishments = {participation = {games_played = index}},
+		}
+	end
+	local sortResponse = {players = players}
+	local descending = PlayerStats.Build(sortResponse, request, nil, {
+		playerTab = "setup",
+		sortColumn = 1,
+		sortDescending = true,
+	})
+	T.equals(descending.playerGroups[1].players[1].name, "Player 40")
+	T.equals(descending.playerGroups[1].players[40].name, "Player 01")
+
+	local ascending = PlayerStats.Build(sortResponse, request, nil, {
+		playerTab = "setup",
+		sortColumn = 1,
+		sortDescending = false,
+	})
+	T.equals(ascending.playerGroups[1].players[1].name, "Player 01")
+	T.equals(ascending.playerGroups[1].players[40].name, "Player 40")
+
+	local namesDescending = PlayerStats.Build(sortResponse, request, nil, {
+		playerTab = "setup",
+		sortColumn = 0,
+		sortDescending = true,
+	})
+	T.equals(namesDescending.playerGroups[1].players[1].name, "Player 40")
+	T.equals(namesDescending.playerGroups[1].players[40].name, "Player 01")
+end
+
 local function testRmlOwnsDynamicMarkup()
 	local rml = T.read(root .. "gui_pve_stats.rml")
 	local entrypoint = T.read(root .. "gui_pve_stats.lua")
@@ -231,9 +284,11 @@ local function testRmlOwnsDynamicMarkup()
 end
 
 testStructuredViewModel()
+testDataModelRootSchemaIsStable()
 testDiagnosticsUseOneNarrowEvidenceContract()
 testErrorsAndFreshnessArePresentationState()
-testFeatureTabsSortingAndHelpAreSemantic()
+testFeatureTabsSortingAndHelpMatchPresentation()
+testPlayerSortingIsStrictAndDirectional()
 testRmlOwnsDynamicMarkup()
 
 print("test_pve_stats_presenter.lua: ok")
