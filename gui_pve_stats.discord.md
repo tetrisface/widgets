@@ -8,14 +8,17 @@ It uses the current map, team size, encounter, and effective lobby settings to s
 
 ### __PowerShell__
 
-With BAR in its default location, this installs the five required files:
+With BAR in its default location, this installs the required widget and responsibility-focused modules:
 
 ```pwsh
 $widget = "gui_pve_stats"
 $folder = "$env:LOCALAPPDATA\Programs\Beyond-All-Reason\data\LuaUI\Widgets\$widget"
 $source = "https://raw.githubusercontent.com/tetrisface/community-widgets/main/$widget"
 $files = @("$widget.lua", "$widget.rml", "$widget.rcss",
-    "include/pve_stats_http_client.lua", "include/pve_stats_rml_model.lua")
+    "include/pve_stats_request.lua", "include/pve_stats_remote.lua",
+    "include/pve_stats_fetch.lua", "include/pve_stats_display.lua",
+    "include/pve_stats_player_stats.lua", "include/pve_stats_histogram.lua",
+    "include/pve_stats_diagnostics.lua", "include/pve_stats_view_model.lua")
 
 New-Item -ItemType Directory -Force -Path "$folder\include" | Out-Null
 
@@ -40,8 +43,14 @@ LuaUI/
       ├─ gui_pve_stats.rml
       ├─ gui_pve_stats.rcss
       └─ include/
-         ├─ pve_stats_http_client.lua
-         └─ pve_stats_rml_model.lua
+         ├─ pve_stats_request.lua
+         ├─ pve_stats_remote.lua
+         ├─ pve_stats_fetch.lua
+         ├─ pve_stats_display.lua
+         ├─ pve_stats_player_stats.lua
+         ├─ pve_stats_histogram.lua
+         ├─ pve_stats_diagnostics.lua
+         └─ pve_stats_view_model.lua
 ```
 
 # 2. Enable

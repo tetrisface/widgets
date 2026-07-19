@@ -12,7 +12,6 @@ div {
 
 .panel {
 	position: absolute;
-	width: 470dp;
 	min-width: 260dp;
 	min-height: 25dp;
 	background-color: #0D0D0DEB;
