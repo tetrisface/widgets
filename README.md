@@ -24,7 +24,7 @@ If the service is still starting or temporarily busy, the widget retries expecte
 
 --- REMOTE CONNECTION ---
 
-The complete outbound contract is split between [`pve_stats_request.lua`](include/pve_stats_request.lua) and [`pve_stats_remote.lua`](include/pve_stats_remote.lua). The widget sends a JSON object containing exactly seven allowlisted top-level fields with `POST http://d29i3oohxql6zz.cloudfront.net:80/stats`. Nested fields contain the complete game settings and encounter context required by the service. It fetches once during initial startup and on explicit manual or scheduled requests; it does not poll periodically.
+The complete outbound contract is split between [`request.lua`](include/request.lua) and [`remote.lua`](include/remote.lua). The widget sends a JSON object containing exactly seven allowlisted top-level fields with `POST http://d29i3oohxql6zz.cloudfront.net:80/stats`. Nested fields contain the complete game settings and encounter context required by the service. It fetches once during initial startup and on explicit manual or scheduled requests; it does not poll periodically.
 
 Each fetch controller owns the lifecycle of its request and prevents duplicate work for that resource. The remote transport keeps operations independent and does not serialize unrelated operations, so future features can use separate controllers without sharing a global request lock.
 

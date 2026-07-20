@@ -1,6 +1,6 @@
 local root = PVE_STATS_TEST_ROOT or (arg and arg[1]) or "./"
 local T = dofile(root .. "tests/support.lua")
-local Request = dofile(root .. "include/pve_stats_request.lua")
+local Request = dofile(root .. "include/request.lua")
 
 local function RaptorsSpring()
 	return {

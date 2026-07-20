@@ -1,6 +1,6 @@
 local root = PVE_STATS_TEST_ROOT or (arg and arg[1]) or "./"
 local T = dofile(root .. "tests/support.lua")
-local Fetch = dofile(root .. "include/pve_stats_fetch.lua")
+local Fetch = dofile(root .. "include/fetch.lua")
 
 local function FakeRemote(outcomes)
 	local remote = {starts = 0, cancellations = 0, outcomes = outcomes or {}, bodies = {}}

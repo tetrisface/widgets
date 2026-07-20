@@ -209,13 +209,13 @@ end
 
 local function testEngineGlobalsStayAtTheCompositionBoundary()
 	for _, path in ipairs({
-		"include/pve_stats_remote.lua",
-		"include/pve_stats_fetch.lua",
-		"include/pve_stats_display.lua",
-		"include/pve_stats_player_stats.lua",
-		"include/pve_stats_histogram.lua",
-		"include/pve_stats_diagnostics.lua",
-		"include/pve_stats_view_model.lua",
+		"include/remote.lua",
+		"include/fetch.lua",
+		"include/display.lua",
+		"include/player_stats.lua",
+		"include/histogram.lua",
+		"include/diagnostics.lua",
+		"include/view_model.lua",
 	}) do
 		local source = T.read(root .. path)
 		for _, globalName in ipairs({"Spring.", "Game.", "RmlUi", "VFS.", "WG."}) do

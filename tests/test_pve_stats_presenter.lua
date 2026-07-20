@@ -1,10 +1,10 @@
 local root = PVE_STATS_TEST_ROOT or (arg and arg[1]) or "./"
 local T = dofile(root .. "tests/support.lua")
-local Display = dofile(root .. "include/pve_stats_display.lua")
-local PlayerStats = dofile(root .. "include/pve_stats_player_stats.lua").New(Display)
-local Histogram = dofile(root .. "include/pve_stats_histogram.lua").New(Display, PlayerStats)
-local Diagnostics = dofile(root .. "include/pve_stats_diagnostics.lua").New(Display)
-local ViewModel = dofile(root .. "include/pve_stats_view_model.lua").New(
+local Display = dofile(root .. "include/display.lua")
+local PlayerStats = dofile(root .. "include/player_stats.lua").New(Display)
+local Histogram = dofile(root .. "include/histogram.lua").New(Display, PlayerStats)
+local Diagnostics = dofile(root .. "include/diagnostics.lua").New(Display)
+local ViewModel = dofile(root .. "include/view_model.lua").New(
 	Display,
 	PlayerStats,
 	Histogram,

@@ -39,18 +39,18 @@ local PANEL_WIDTH = 420
 local PANEL_TOP = 138
 local PANEL_RIGHT = 18
 
-local Request = VFS.Include(INCLUDE_PATH .. "pve_stats_request.lua")
-local Display = VFS.Include(INCLUDE_PATH .. "pve_stats_display.lua")
-local PlayerStats = VFS.Include(INCLUDE_PATH .. "pve_stats_player_stats.lua").New(Display)
-local Histogram = VFS.Include(INCLUDE_PATH .. "pve_stats_histogram.lua").New(Display, PlayerStats)
-local Diagnostics = VFS.Include(INCLUDE_PATH .. "pve_stats_diagnostics.lua").New(Display)
-local ViewModel = VFS.Include(INCLUDE_PATH .. "pve_stats_view_model.lua").New(Display, PlayerStats, Histogram, Diagnostics)
-local Remote = VFS.Include(INCLUDE_PATH .. "pve_stats_remote.lua")
-local Fetch = VFS.Include(INCLUDE_PATH .. "pve_stats_fetch.lua")
+local Request = VFS.Include(INCLUDE_PATH .. "request.lua")
+local Display = VFS.Include(INCLUDE_PATH .. "display.lua")
+local PlayerStats = VFS.Include(INCLUDE_PATH .. "player_stats.lua").New(Display)
+local Histogram = VFS.Include(INCLUDE_PATH .. "histogram.lua").New(Display, PlayerStats)
+local Diagnostics = VFS.Include(INCLUDE_PATH .. "diagnostics.lua").New(Display)
+local ViewModel = VFS.Include(INCLUDE_PATH .. "view_model.lua").New(Display, PlayerStats, Histogram, Diagnostics)
+local Remote = VFS.Include(INCLUDE_PATH .. "remote.lua")
+local Fetch = VFS.Include(INCLUDE_PATH .. "fetch.lua")
 local Json = Json or VFS.Include("common/luaUtilities/json.lua")
 
 -- This is the only production injection of the LuaSocket global. All remote
--- operations are implemented and bounded inside pve_stats_remote.lua.
+-- operations are implemented and bounded inside remote.lua.
 local remoteSocket = socket
 
 local state = {

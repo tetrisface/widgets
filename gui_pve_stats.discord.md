@@ -15,10 +15,9 @@ $widget = "gui_pve_stats"
 $folder = "$env:LOCALAPPDATA\Programs\Beyond-All-Reason\data\LuaUI\Widgets\$widget"
 $source = "https://raw.githubusercontent.com/tetrisface/community-widgets/main/$widget"
 $files = @("$widget.lua", "$widget.rml", "$widget.rcss",
-    "include/pve_stats_request.lua", "include/pve_stats_remote.lua",
-    "include/pve_stats_fetch.lua", "include/pve_stats_display.lua",
-    "include/pve_stats_player_stats.lua", "include/pve_stats_histogram.lua",
-    "include/pve_stats_diagnostics.lua", "include/pve_stats_view_model.lua")
+    "include/request.lua", "include/remote.lua", "include/fetch.lua",
+    "include/display.lua", "include/player_stats.lua", "include/histogram.lua",
+    "include/diagnostics.lua", "include/view_model.lua")
 
 New-Item -ItemType Directory -Force -Path "$folder\include" | Out-Null
 
@@ -43,14 +42,9 @@ LuaUI/
       ├─ gui_pve_stats.rml
       ├─ gui_pve_stats.rcss
       └─ include/
-         ├─ pve_stats_request.lua
-         ├─ pve_stats_remote.lua
-         ├─ pve_stats_fetch.lua
-         ├─ pve_stats_display.lua
-         ├─ pve_stats_player_stats.lua
-         ├─ pve_stats_histogram.lua
-         ├─ pve_stats_diagnostics.lua
-         └─ pve_stats_view_model.lua
+         ├─ request.lua
+         ├─ remote.lua
+         ├─ ...
 ```
 
 # 2. Enable

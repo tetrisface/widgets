@@ -1,6 +1,6 @@
 local root = PVE_STATS_TEST_ROOT or (arg and arg[1]) or "./"
 local T = dofile(root .. "tests/support.lua")
-local Remote = dofile(root .. "include/pve_stats_remote.lua")
+local Remote = dofile(root .. "include/remote.lua")
 
 local function SocketForResponse(raw, options)
 	options = options or {}
@@ -199,13 +199,13 @@ end
 local function testSocketPrimitivesStayInsideRemoteModule()
 	local production = {
 		"gui_pve_stats.lua",
-		"include/pve_stats_request.lua",
-		"include/pve_stats_display.lua",
-		"include/pve_stats_player_stats.lua",
-		"include/pve_stats_histogram.lua",
-		"include/pve_stats_diagnostics.lua",
-		"include/pve_stats_view_model.lua",
-		"include/pve_stats_fetch.lua",
+		"include/request.lua",
+		"include/display.lua",
+		"include/player_stats.lua",
+		"include/histogram.lua",
+		"include/diagnostics.lua",
+		"include/view_model.lua",
+		"include/fetch.lua",
 	}
 	for _, path in ipairs(production) do
 		local source = T.read(root .. path)
@@ -217,8 +217,8 @@ end
 
 local function testReviewerAuditSurfaceIsLinkedAndComplete()
 	local readme = T.read(root .. "README.md")
-	T.contains(readme, "[`pve_stats_request.lua`](include/pve_stats_request.lua)")
-	T.contains(readme, "[`pve_stats_remote.lua`](include/pve_stats_remote.lua)")
+	T.contains(readme, "[`request.lua`](include/request.lua)")
+	T.contains(readme, "[`remote.lua`](include/remote.lua)")
 	T.contains(readme, "POST http://d29i3oohxql6zz.cloudfront.net:80/stats")
 	T.contains(readme, "seven")
 	T.contains(readme, "does not poll periodically")
