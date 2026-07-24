@@ -11,6 +11,7 @@ function widget:GetInfo()
 end
 
 VFS.Include('luaui/Headers/keysym.h.lua')
+local pipelinePolicy = VFS.Include('LuaUI/Widgets/phoenix_engine/include/pipeline_policy.lua')
 
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
@@ -329,6 +330,7 @@ local SMALL_PIPELINE_SIZE = 20
 local NANO_CACHE_UPDATE_INTERVAL = 90
 local RECLAIM_RETRY_DELAY = 150
 local MAX_RECLAIM_RETRIES = 200
+local MAX_CONCURRENT_RECLAIMS = 2
 local COMPLETION_CHECK_ANY_UNIT = true -- false = match exact unitDefID, true = any completed friendly unit (needed for units that morph/split on completion like legmohocon)
 
 -- States
@@ -341,7 +343,7 @@ local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
 local F14_MODIFIER_ACTIVE = false
 
 -- Sequential execution tracking
-local RECLAIM_SEQUENTIAL_MODE = true -- Enable sequential reclaim (only reclaim for first 2 positions in queue)
+local RECLAIM_SEQUENTIAL_MODE = true -- Limit reclaim to the first blocked builds in the Phoenix queue
 
 -- Helper functions
 local function getReclaimPriority(unitDefID)
@@ -387,9 +389,6 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	end
 
 	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
-	local placingName = UnitDefs[placingUnitDefID] and UnitDefs[placingUnitDefID].name or '?'
-	local existingName = UnitDefs[existingUnitDefID] and UnitDefs[existingUnitDefID].name or '?'
-	Spring.Echo('[PHX_DBG] canReplace check: placing=' .. placingName .. '(' .. placingUnitDefID .. ') existing=' .. existingName .. '(' .. existingUnitDefID .. ') hasPair=' .. tostring(blockedReplacementPairs[placingUnitDefID] ~= nil) .. ' blocked=' .. tostring(blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] or false))
 	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
@@ -665,37 +664,37 @@ local function shouldRetryReclaim(pipeline, order, currentFrame)
 	return (currentFrame - lastAttempt) >= RECLAIM_RETRY_DELAY and retries < MAX_RECLAIM_RETRIES
 end
 
--- Count how many build commands a builder has in their actual queue
-local function countBuilderQueuedBuilds(builderID)
-	local commands = Spring.GetUnitCommands(builderID, -1)
-	if not commands then
-		return 0
+local function buildStillHasBlockers(pipeline, build)
+	if pipeline.buildingsUnderConstruction[build.order] then
+		return false
 	end
 
-	local count = 0
-	for _, cmd in ipairs(commands) do
-		-- Negative command IDs are build commands
-		if cmd.id < 0 then
-			count = count + 1
-		end
-	end
-	return count
+	local bx, bz = build.params[1], build.params[3]
+	local buildingDefIDBeingPlaced = -build.cmdID
+	local blockers = findBlockersAtPosition(
+		bx,
+		bz,
+		build.xsize,
+		build.zsize,
+		build.facing,
+		pipeline.builderID,
+		buildingDefIDBeingPlaced
+	)
+	return #blockers > 0
 end
 
--- Check if we should reclaim for this build based on position in processing queue
-local function shouldReclaimForBuild(pipeline, buildOrder, positionInQueue)
-	if not RECLAIM_SEQUENTIAL_MODE then
-		return true -- Reclaim for all builds in non-sequential mode
-	end
-
-	-- Get builder's actual queue length (non-blocked builds that went through)
-	local queuedBuilds = countBuilderQueuedBuilds(pipeline.builderID)
-
-	-- Total position = queued non-blocked builds + position in our blocked pipeline
-	local effectivePosition = queuedBuilds + positionInQueue
-
-	-- Only reclaim for first 2 positions overall
-	return effectivePosition <= 2
+-- Determine the reclaim window once per pipeline pass. The live builder queue
+-- is deliberately excluded: other widgets may rewrite it, and clear build
+-- orders ahead do not consume reclaim capacity.
+local function getReclaimEligibility(pipeline)
+	return pipelinePolicy.getReclaimEligibility(
+		pipeline.currentlyProcessing,
+		function(build)
+			return buildStillHasBlockers(pipeline, build)
+		end,
+		RECLAIM_SEQUENTIAL_MODE,
+		MAX_CONCURRENT_RECLAIMS
+	)
 end
 
 local function isBuildComplete(constructionInfo)
@@ -801,6 +800,7 @@ function widget:GameFrame(n)
 				pipeline.currentlyProcessing[#pipeline.currentlyProcessing + 1] = table.remove(pipeline.pendingBuilds, 1)
 			end
 
+			local reclaimEligibility = getReclaimEligibility(pipeline)
 			local i = 1
 			while i <= #pipeline.currentlyProcessing do
 				local p = pipeline.currentlyProcessing[i]
@@ -810,7 +810,7 @@ function widget:GameFrame(n)
 				local shouldRetry = pipeline.reclaimStarted[p.order] and shouldRetryReclaim(pipeline, p.order, currentFrame)
 
 				-- Check if we should reclaim for this build based on position in queue
-				local shouldReclaimForThisBuild = shouldReclaimForBuild(pipeline, p.order, i)
+				local shouldReclaimForThisBuild = reclaimEligibility[p] == true
 
 				-- Check construction state BEFORE reclaim to avoid reclaiming our own completed buildings
 				local constructionInfo = pipeline.buildingsUnderConstruction[p.order]

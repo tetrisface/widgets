@@ -28,11 +28,7 @@ end
 
 print('Running Phoenix Engine Tests...')
 
--- Mock data
-local mockUnitDefs = {
-  [1] = {xsize = 4, zsize = 4}, -- small building
-  [2] = {xsize = 4, zsize = 4} -- small building
-}
+local pipelinePolicy = dofile('Widgets/phoenix_engine/include/pipeline_policy.lua')
 
 local mockBuilderID = 100
 
@@ -43,31 +39,31 @@ local function mockFindBlockersAtPosition(x, z, xsize, zsize, facing, builderID,
   return mockBlockers[key] or {}
 end
 
--- Copy the function we're testing (simplified version)
 local RECLAIM_SEQUENTIAL_MODE = true
+local MAX_CONCURRENT_RECLAIMS = 2
 
-local function shouldReclaimForBuild(pipeline, buildOrder, positionInQueue)
-  if not RECLAIM_SEQUENTIAL_MODE then
-    return true
-  end
-
-  -- Count how many builds ahead of this one are blocked (need reclaim)
-  local blockedAheadCount = 0
-  for i = 1, positionInQueue - 1 do
-    local p = pipeline.currentlyProcessing[i]
-    if p then
-      local bx, bz = p.params[1], p.params[3]
-      local buildingDefIDBeingPlaced = -p.cmdID
+local function shouldReclaimForBuild(pipeline, positionInQueue)
+  local eligibility = pipelinePolicy.getReclaimEligibility(
+    pipeline.currentlyProcessing,
+    function(build)
+      local bx, bz = build.params[1], build.params[3]
+      local buildingDefIDBeingPlaced = -build.cmdID
       local blockers =
-        mockFindBlockersAtPosition(bx, bz, p.xsize, p.zsize, p.facing, pipeline.builderID, buildingDefIDBeingPlaced)
-      if #blockers > 0 then
-        blockedAheadCount = blockedAheadCount + 1
-      end
-    end
-  end
-
-  -- Only reclaim if we're within the first 2 blocked buildings
-  return blockedAheadCount < 2
+        mockFindBlockersAtPosition(
+          bx,
+          bz,
+          build.xsize,
+          build.zsize,
+          build.facing,
+          pipeline.builderID,
+          buildingDefIDBeingPlaced
+        )
+      return #blockers > 0
+    end,
+    RECLAIM_SEQUENTIAL_MODE,
+    MAX_CONCURRENT_RECLAIMS
+  )
+  return eligibility[pipeline.currentlyProcessing[positionInQueue]] == true
 end
 
 -- Test 1: Non-blocked buildings should allow next blocked buildings to pre-reclaim
@@ -95,16 +91,16 @@ do
   }
 
   -- Position 1 (not blocked): should pre-reclaim (0 blocked ahead)
-  assertTrue(shouldReclaimForBuild(pipeline, 1, 1), 'Position 1 should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 1), 'Position 1 should pre-reclaim')
 
   -- Position 2 (blocked): should pre-reclaim (0 blocked ahead)
-  assertTrue(shouldReclaimForBuild(pipeline, 2, 2), 'Position 2 should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 2), 'Position 2 should pre-reclaim')
 
   -- Position 3 (blocked): should pre-reclaim (1 blocked ahead)
-  assertTrue(shouldReclaimForBuild(pipeline, 3, 3), 'Position 3 should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 3), 'Position 3 should pre-reclaim')
 
   -- Position 4 (blocked): should NOT pre-reclaim (2 blocked ahead)
-  assertFalse(shouldReclaimForBuild(pipeline, 4, 4), 'Position 4 should NOT pre-reclaim')
+  assertFalse(shouldReclaimForBuild(pipeline, 4), 'Position 4 should NOT pre-reclaim')
 
   print("  [PASS] Non-blocked buildings don't count toward pre-reclaim limit")
 end
@@ -130,12 +126,12 @@ do
   }
 
   -- First 2 should pre-reclaim
-  assertTrue(shouldReclaimForBuild(pipeline, 1, 1), 'Position 1 should pre-reclaim')
-  assertTrue(shouldReclaimForBuild(pipeline, 2, 2), 'Position 2 should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 1), 'Position 1 should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 2), 'Position 2 should pre-reclaim')
 
   -- Rest should NOT pre-reclaim
-  assertFalse(shouldReclaimForBuild(pipeline, 3, 3), 'Position 3 should NOT pre-reclaim')
-  assertFalse(shouldReclaimForBuild(pipeline, 4, 4), 'Position 4 should NOT pre-reclaim')
+  assertFalse(shouldReclaimForBuild(pipeline, 3), 'Position 3 should NOT pre-reclaim')
+  assertFalse(shouldReclaimForBuild(pipeline, 4), 'Position 4 should NOT pre-reclaim')
 
   print('  [PASS] Only first 2 blocked buildings pre-reclaim')
 end
@@ -159,9 +155,9 @@ do
   }
 
   -- All should return true (but won't actually reclaim anything since no blockers)
-  assertTrue(shouldReclaimForBuild(pipeline, 1, 1), 'Position 1 should return true')
-  assertTrue(shouldReclaimForBuild(pipeline, 2, 2), 'Position 2 should return true')
-  assertTrue(shouldReclaimForBuild(pipeline, 3, 3), 'Position 3 should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 1), 'Position 1 should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 2), 'Position 2 should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 3), 'Position 3 should return true')
 
   print('  [PASS] Non-blocked buildings all allowed')
 end
@@ -190,12 +186,12 @@ do
     }
   }
 
-  assertTrue(shouldReclaimForBuild(pipeline, 1, 1), 'Position 1 (not blocked) should return true')
-  assertTrue(shouldReclaimForBuild(pipeline, 2, 2), 'Position 2 (not blocked) should return true')
-  assertTrue(shouldReclaimForBuild(pipeline, 3, 3), 'Position 3 (blocked, 0 ahead) should pre-reclaim')
-  assertTrue(shouldReclaimForBuild(pipeline, 4, 4), 'Position 4 (not blocked) should return true')
-  assertTrue(shouldReclaimForBuild(pipeline, 5, 5), 'Position 5 (blocked, 1 ahead) should pre-reclaim')
-  assertFalse(shouldReclaimForBuild(pipeline, 6, 6), 'Position 6 (blocked, 2 ahead) should NOT pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 1), 'Position 1 (not blocked) should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 2), 'Position 2 (not blocked) should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 3), 'Position 3 (blocked, 0 ahead) should pre-reclaim')
+  assertTrue(shouldReclaimForBuild(pipeline, 4), 'Position 4 (not blocked) should return true')
+  assertTrue(shouldReclaimForBuild(pipeline, 5), 'Position 5 (blocked, 1 ahead) should pre-reclaim')
+  assertFalse(shouldReclaimForBuild(pipeline, 6), 'Position 6 (blocked, 2 ahead) should NOT pre-reclaim')
 
   print('  [PASS] Mixed pattern correctly counts only blocked buildings')
 end
@@ -215,9 +211,9 @@ do
   }
 
   -- All should pre-reclaim when sequential mode is off
-  assertTrue(shouldReclaimForBuild(pipeline, 1, 1), 'Should pre-reclaim with mode off')
-  assertTrue(shouldReclaimForBuild(pipeline, 2, 2), 'Should pre-reclaim with mode off')
-  assertTrue(shouldReclaimForBuild(pipeline, 3, 3), 'Should pre-reclaim with mode off')
+  assertTrue(shouldReclaimForBuild(pipeline, 1), 'Should pre-reclaim with mode off')
+  assertTrue(shouldReclaimForBuild(pipeline, 2), 'Should pre-reclaim with mode off')
+  assertTrue(shouldReclaimForBuild(pipeline, 3), 'Should pre-reclaim with mode off')
 
   RECLAIM_SEQUENTIAL_MODE = true -- restore
   print('  [PASS] Sequential mode disabled allows all pre-reclaim')
