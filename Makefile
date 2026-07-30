@@ -7,7 +7,7 @@ WIDGET_LINK_SCRIPT := ./scripts/Sync-CommunityWidgetLinks.ps1
 
 help:
 	@echo "Widget workspace commands:"
-	@echo "  make sync-widget-links     Create/update BAR community-widget junctions"
+	@echo "  make sync-widget-links     Create/update community-widget junctions"
 	@echo "  make preview-widget-links  Show the junction changes without applying them"
 	@echo "  make links                 Short alias for sync-widget-links"
 

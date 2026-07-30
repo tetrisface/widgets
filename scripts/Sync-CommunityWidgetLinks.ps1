@@ -2,7 +2,7 @@
 param()
 
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
-$communityWidgetsRoot = Join-Path $repositoryRoot 'BAR-Widgets\Widgets\tetrisface'
+$communityWidgetsRoot = Join-Path $repositoryRoot 'community-widgets'
 
 if (-not (Test-Path -LiteralPath $communityWidgetsRoot -PathType Container)) {
     throw "Community widgets checkout not found: $communityWidgetsRoot"
