@@ -2,10 +2,16 @@
 param()
 
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
-$communityWidgetsRoot = Join-Path $repositoryRoot 'community-widgets'
+$communityCandidates = @(
+    Join-Path $repositoryRoot 'BAR-Widgets/Widgets/tetrisface',
+    Join-Path $repositoryRoot 'community-widgets'
+)
+$communityWidgetsRoot = $communityCandidates |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+    Select-Object -First 1
 
-if (-not (Test-Path -LiteralPath $communityWidgetsRoot -PathType Container)) {
-    throw "Community widgets checkout not found: $communityWidgetsRoot"
+if (-not $communityWidgetsRoot) {
+    throw "Community widgets checkout not found. Checked: $($communityCandidates -join ', ')"
 }
 
 $widgetDirectories = Get-ChildItem -LiteralPath $communityWidgetsRoot -Directory |

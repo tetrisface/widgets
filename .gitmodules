@@ -1,8 +1,8 @@
-[submodule "community-widgets"]
-	path = community-widgets
-	url = git@github.com:tetrisface/community-widgets.git
-	branch = main
 [submodule "widgets-extra"]
 	path = widgets-extra
 	url = git@github-tetrisface:tetrisface/widgets-extra.git
+	branch = main
+[submodule "BAR-Widgets"]
+	path = BAR-Widgets
+	url = https://github.com/tetrisface/BAR-Widgets.git
 	branch = main
