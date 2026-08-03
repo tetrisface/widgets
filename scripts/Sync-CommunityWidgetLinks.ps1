@@ -21,6 +21,11 @@ $linkExclusionPatterns = [System.Collections.Generic.List[string]]::new()
 
 foreach ($widgetDirectory in $widgetDirectories) {
     $widgetName = $widgetDirectory.Name
+    # This widget is managed locally in Widgets/ and must not be linked from community-widgets.
+    if ($widgetName -eq 'gui_pve_stats') {
+        Write-Output "Skipping managed widget from sync: $widgetName"
+        continue
+    }
     $sourcePath = $widgetDirectory.FullName
     $linkPath = Join-Path (Join-Path $repositoryRoot 'Widgets') $widgetName
 	$linkExclusionPatterns.Add("/Widgets/$widgetName/")
