@@ -2,8 +2,11 @@
 param()
 
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
+# Only the direct 'community-widgets' submodule is a valid source. The nested copy at
+# BAR-Widgets/Widgets/tetrisface is pinned to whatever upstream recorded, so any
+# `git submodule update` in BAR-Widgets silently reverts it and the linked widgets
+# disappear from the game mid-session.
 $communityCandidates = @(
-    Join-Path $repositoryRoot 'BAR-Widgets/Widgets/tetrisface',
     Join-Path $repositoryRoot 'community-widgets'
 )
 $communityWidgetsRoot = $communityCandidates |

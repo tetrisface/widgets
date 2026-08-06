@@ -6,3 +6,7 @@
 	path = BAR-Widgets
 	url = https://github.com/tetrisface/BAR-Widgets.git
 	branch = main
+[submodule "community-widgets"]
+	path = community-widgets
+	url = git@github-tetrisface:tetrisface/community-widgets.git
+	branch = main
