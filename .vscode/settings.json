@@ -1,25 +1,11 @@
 {
   "git.scanRepositories": ["BAR-Widgets"],
-  "Lua.diagnostics.globals": ["Spring"],
-  "Lua.diagnostics.disable": [
-    "undefined-global",
-    "lowercase-global",
-    "duplicate-set-field",
-    "undefined-field",
-    "inject-field"
-  ],
-  "Lua.runtime.version": "LuaJIT",
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "yinfei.luahelper",
   "editor.tabSize": 2,
-  "Lua.type.checkTableShape": true,
-  "luahelper.format.extra_sep_at_table_end": true,
-  "luahelper.format.tab_width": 2,
   "[lua]": {
     "editor.defaultFormatter": "JohnnyMorganz.stylua"
   },
-  "Lua.completion.autoRequire": false,
   "stylua.targetReleaseVersion": "latest",
   "editor.formatOnSaveMode": "modificationsIfAvailable",
   "[json]": {

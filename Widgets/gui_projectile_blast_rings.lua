@@ -63,17 +63,20 @@ local weaponNameTypes = {
   ['raptor_turret_acid_t2_v1_acidspit'] = ARTILLERY_TYPE,
   ['raptor_turret_acid_t3_v1_acidspit'] = ARTILLERY_TYPE,
   ['raptor_turret_acid_t4_v1_acidspit'] = ARTILLERY_TYPE,
+  ['raptor_turret_acid_t4_v2_acidspit'] = ARTILLERY_TYPE,
   ['raptor_turret_basic_t2_v1_weapon'] = ARTILLERY_TYPE,
   ['raptor_turret_basic_t3_v1_weapon'] = ARTILLERY_TYPE,
   ['raptor_turret_basic_t4_v1_weapon'] = ARTILLERY_TYPE,
+  ['raptor_turret_basic_t4_v2_weapon'] = ARTILLERY_TYPE,
+  ['raptor_turret_brood_t4_v2_bloodyeggs'] = ARTILLERY_TYPE,
   ['raptor_turret_burrow_t2_v1_weapon'] = ARTILLERY_TYPE,
   ['raptor_turret_emp_t2_v1_raptorparalyzersmall'] = ARTILLERY_TYPE,
   ['raptor_turret_emp_t3_v1_raptorparalyzerbig'] = ARTILLERY_TYPE,
   ['raptor_turret_emp_t4_v1_raptorparalyzerbig'] = ARTILLERY_TYPE,
+  ['raptor_turret_emp_t4_v2_raptorparalyzerbig'] = ARTILLERY_TYPE,
   ['raptor_worm_green_acidspit'] = ARTILLERY_TYPE,
 
-  ['raptor_turret_meteor_t4_v1_METEORLAUNCHER'] = ARTILLERY_TYPE,
-  ['raptor_turret_meteor_t4_v1_meteorlauncher'] = ARTILLERY_TYPE,
+  ['raptor_turret_meteor_t4_v1_weapon'] = ARTILLERY_TYPE,
 
 
 }

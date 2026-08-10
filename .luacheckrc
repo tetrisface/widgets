@@ -35,3 +35,4 @@ std = {
   read_globals = {} -- these globals can only be accessed.
 }
 max_line_length = 333
+exclude_files = { "recoil-lua-library/**" } -- type stubs, not real code

@@ -64,7 +64,6 @@ local reclaimableTargets = {
 	'nanotct2',
 	'nanotc2plat',
 	'nanotct3',
-	'wint2',
 	'afus'
 }
 
@@ -131,18 +130,22 @@ for _, faction in ipairs(factions) do
 		table.insert(TARGET_UNITDEF_NAMES, faction .. reclaimableTarget)
 	end
 end
-for _, faction in ipairs({'arm', 'cor', 'leg'}) do
+for _, faction in ipairs(factions) do
 	for _, buildableType in ipairs(buildableTypes) do
 		table.insert(BUILDABLE_UNITDEF_NAMES, faction .. buildableType)
 	end
-	for _, placingPrio in ipairs(reclaimPriorityOrderNames) do
-		if UnitDefNames[faction .. placingPrio] then
-			table.insert(reclaimPriorityOrder, UnitDefNames[faction .. placingPrio].id)
+end
+-- Rank by position in reclaimPriorityOrderNames so faction equivalents share
+-- the same priority; grouping by faction instead would skew every
+-- cross-faction comparison in canReplaceUnit
+for rank, placingPrio in ipairs(reclaimPriorityOrderNames) do
+	for _, faction in ipairs(factions) do
+		local def = UnitDefNames[faction .. placingPrio]
+		if def then
+			reclaimPriorityOrder[def.id] = rank
 		end
 	end
 end
-
-reclaimPriorityOrder = table.invert(reclaimPriorityOrder)
 
 -- Build equality groups: maps unitDefID -> set of equivalent unitDefIDs (same building, different factions)
 local FACTION_UNIT_EQUALITY_GROUPS = {}
@@ -152,7 +155,7 @@ local
 	NANO_DEFS,
 	NEVER_RECLAIMABLE_UNITDEF_IDS,
 	NEVER_REPLACES_UNITDEF_IDS,
-	blockedReplacementPairs,
+	BLOCKED_REPLACEMENT_PAIR_IDS,
 	ECONOMICAL_UNITDEF_IDS = {}, {}, {}, {}, {}, {}
 
 for _, target in ipairs({'gate', 'gatet3', 'respawn'}) do
@@ -188,10 +191,10 @@ for _, faction in pairs(factions) do
 			-- Spring.Echo(
 			-- 	'[PHX_DBG] blocked pair: ' .. from .. '(' .. UnitDefNames[from].id .. ') -> ' .. to .. '(' .. UnitDefNames[to].id .. ')'
 			-- )
-			if not blockedReplacementPairs[UnitDefNames[from].id] then
-				blockedReplacementPairs[UnitDefNames[from].id] = {}
+			if not BLOCKED_REPLACEMENT_PAIR_IDS[UnitDefNames[from].id] then
+				BLOCKED_REPLACEMENT_PAIR_IDS[UnitDefNames[from].id] = {}
 			end
-			blockedReplacementPairs[UnitDefNames[from].id][UnitDefNames[to].id] = true
+			BLOCKED_REPLACEMENT_PAIR_IDS[UnitDefNames[from].id][UnitDefNames[to].id] = true
 		end
 	end
 end
@@ -203,10 +206,10 @@ for _, fromTo in pairs(regexBlockedReplacementPairs) do
 		if fromUnitDef.name and fromUnitDef.name:match(fromPattern) then
 			for toUnitDefID, toUnitDef in pairs(UnitDefs) do
 				if toUnitDef.name and toUnitDef.name:match(toPattern) then
-					if not blockedReplacementPairs[fromUnitDefID] then
-						blockedReplacementPairs[fromUnitDefID] = {}
+					if not BLOCKED_REPLACEMENT_PAIR_IDS[fromUnitDefID] then
+						BLOCKED_REPLACEMENT_PAIR_IDS[fromUnitDefID] = {}
 					end
-					blockedReplacementPairs[fromUnitDefID][toUnitDefID] = true
+					BLOCKED_REPLACEMENT_PAIR_IDS[fromUnitDefID][toUnitDefID] = true
 				end
 			end
 		end
@@ -389,7 +392,7 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 	end
 
 	-- Never replaces: upgradeable buildings (e.g. T1 to T2)
-	if blockedReplacementPairs[placingUnitDefID] and blockedReplacementPairs[placingUnitDefID][existingUnitDefID] then
+	if BLOCKED_REPLACEMENT_PAIR_IDS[placingUnitDefID] and BLOCKED_REPLACEMENT_PAIR_IDS[placingUnitDefID][existingUnitDefID] then
 		return false
 	end
 
@@ -664,34 +667,14 @@ local function shouldRetryReclaim(pipeline, order, currentFrame)
 	return (currentFrame - lastAttempt) >= RECLAIM_RETRY_DELAY and retries < MAX_RECLAIM_RETRIES
 end
 
-local function buildStillHasBlockers(pipeline, build)
-	if pipeline.buildingsUnderConstruction[build.order] then
-		return false
-	end
-
-	local bx, bz = build.params[1], build.params[3]
-	local buildingDefIDBeingPlaced = -build.cmdID
-	local blockers = findBlockersAtPosition(
-		bx,
-		bz,
-		build.xsize,
-		build.zsize,
-		build.facing,
-		pipeline.builderID,
-		buildingDefIDBeingPlaced
-	)
-	return #blockers > 0
-end
-
--- Determine the reclaim window once per pipeline pass. The live builder queue
--- is deliberately excluded: other widgets may rewrite it, and clear build
--- orders ahead do not consume reclaim capacity.
+-- Determine the reclaim window once per pipeline pass. currentlyProcessing
+-- only holds incomplete builds, so the window is simply its first
+-- MAX_CONCURRENT_RECLAIMS entries: a build keeps occupying its slot until it
+-- completes (not merely until its build order is issued), which is what stops
+-- the reclaim front from running ahead of the construction front.
 local function getReclaimEligibility(pipeline)
 	return pipelinePolicy.getReclaimEligibility(
 		pipeline.currentlyProcessing,
-		function(build)
-			return buildStillHasBlockers(pipeline, build)
-		end,
 		RECLAIM_SEQUENTIAL_MODE,
 		MAX_CONCURRENT_RECLAIMS
 	)
@@ -702,7 +685,16 @@ local function isBuildComplete(constructionInfo)
 	local hx, hz = constructionInfo.footprint[1], constructionInfo.footprint[2]
 	for _, uid in ipairs(GetUnitsInRectangle(wx - hx, wz - hz, wx + hx, wz + hz)) do
 		if GetUnitTeam(uid) == GetMyTeamID() and not GetUnitIsBeingBuilt(uid) then
-			if COMPLETION_CHECK_ANY_UNIT or GetUnitDefID(uid) == constructionInfo.unitDefID then
+			local unitDefID = GetUnitDefID(uid)
+			if unitDefID == constructionInfo.unitDefID then
+				return true
+			end
+			-- The any-unit fallback exists for units that morph/split on
+			-- completion (e.g. legmohocon); it must skip mobile units so a
+			-- constructor or passer-by inside the footprint doesn't count as
+			-- the finished building
+			local uDef = COMPLETION_CHECK_ANY_UNIT and unitDefID and UnitDefs[unitDefID]
+			if uDef and not uDef.canMove then
 				return true
 			end
 		end

@@ -1,6 +1,6 @@
 function widget:GetInfo()
   return {
-    desc = 'Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate.',
+    desc = 'Draws extra ground rings around both queued and finished shields. Unfinished shields and queued shields has a different color and pulsate. Also shows a pulsating ring at the cursor while placing a shield.',
     author  = 'tetrisface',
     version = '',
     date    = 'Apr, 2024',
@@ -13,6 +13,7 @@ function widget:GetInfo()
 end
 
 local DiffTimers         = Spring.DiffTimers
+local GetMouseState      = Spring.GetMouseState
 local GetTeamUnitsByDefs = Spring.GetTeamUnitsByDefs
 local GetTimer           = Spring.GetTimer
 local GetUnitCommands    = Spring.GetUnitCommands
@@ -20,6 +21,8 @@ local GetUnitDefID       = Spring.GetUnitDefID
 local GetUnitHealth      = Spring.GetUnitHealth
 local GetUnitShieldState = Spring.GetUnitShieldState
 local GetUnitPosition    = Spring.GetUnitPosition
+local Pos2BuildPos       = Spring.Pos2BuildPos
+local TraceScreenRay     = Spring.TraceScreenRay
 local UnitDefs           = UnitDefs
 
 local GL_KEEP            = 0x1E00
@@ -45,6 +48,9 @@ local nDefIds            = 0
 local shields            = {}
 local nShields           = 0
 local isActive           = false
+local activeShieldDefId
+local activeShieldRadius
+local cursorInstanceData = {}
 local shieldBuilders     = {}
 local nOnline            = 0
 local nOffline           = 0
@@ -289,8 +295,12 @@ local function UpdateShieldData()
       local x, y, z = GetUnitPosition(unitID, true)
       local _, shieldState = GetUnitShieldState(unitID)
       local health = select(5, GetUnitHealth(unitID))
-      local isOnline = (shieldState > 400 and health == 1)
-      nOnline = isOnline and nOnline + 1 or nOnline
+      local isOnline = (shieldState or 0) > 400 and health == 1
+      if isOnline then
+        nOnline = nOnline + 1
+      else
+        nOffline = nOffline + 1
+      end
       nShields = nShields + 1
       shields[nShields] = {
         pos    = {x, y, z},
@@ -338,13 +348,44 @@ local function UpdateIsActive()
   drawCheckTimer = GetTimer()
   local _, command = Spring.GetActiveCommand()
 
-  isActive = command and defIdRadius[-command] ~= nil
+  activeShieldDefId = (command and defIdRadius[-command]) and -command or nil
+  activeShieldRadius = activeShieldDefId and defIdRadius[activeShieldDefId] or nil
+  isActive = activeShieldDefId ~= nil
 end
 
 function widget:DrawWorld()
   UpdateIsActive()
   UpdateShieldData()
-  if not isActive or nShields == 0 or not shieldShader or not shieldVAO then
+  if not isActive or not shieldShader or not shieldVAO then
+    return
+  end
+
+  -- Cursor ring for the shield about to be placed. Updated every frame,
+  -- uploaded as one extra instance right after the offline range.
+  local nCursor = 0
+  if activeShieldRadius and nShields < 1000 then
+    local mx, my = GetMouseState()
+    local _, pos = TraceScreenRay(mx, my, true)
+    if pos then
+      local bx, by, bz = Pos2BuildPos(activeShieldDefId, pos[1], pos[2], pos[3])
+      cursorInstanceData[1] = bx
+      cursorInstanceData[2] = by
+      cursorInstanceData[3] = bz
+      cursorInstanceData[4] = activeShieldRadius
+      cursorInstanceData[5] = orange[1]
+      cursorInstanceData[6] = orange[2]
+      cursorInstanceData[7] = orange[3]
+      cursorInstanceData[8] = orange[4]
+      cursorInstanceData[9] = 0.0
+      cursorInstanceData[10] = 0.0
+      cursorInstanceData[11] = 0.0
+      cursorInstanceData[12] = 0.0
+      shieldInstanceVBO:Upload(cursorInstanceData, -1, nShields)
+      nCursor = 1
+    end
+  end
+
+  if nShields + nCursor == 0 then
     return
   end
 
@@ -372,18 +413,18 @@ function widget:DrawWorld()
     shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
   end
 
-  -- Draw offline shields
-  if nOffline > 0 then
+  -- Draw offline shields and the cursor ring (contiguous after the offline range)
+  if nOffline + nCursor > 0 then
     gl.ColorMask(false, false, false, false)
     gl.UniformInt(maskModeUniform, 1)
     gl.StencilFunc(GL_ALWAYS, 1, 1)
     gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline, nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline + nCursor, nOnline)
 
     gl.ColorMask(true, true, true, true)
     gl.UniformInt(maskModeUniform, 0)
     gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline, nOnline)
+    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline + nCursor, nOnline)
   end
 
   shieldShader:Deactivate()

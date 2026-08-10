@@ -1,12 +1,12 @@
 function widget:GetInfo()
-    return {
-        name      = "Raptor Grid Draw 12 players (Full Metal Plate 1.7)",
-        desc      = "Draws fairly distributed build border for 12 players raptor mode on Full Metal Plate 1.7 map",
-        author    = "Lu5ck",
-        date      = "31 May 2025",
-        layer     = 1,
-        enabled   = true
-    }
+	return {
+		name = 'Raptor Grid Draw 12 players (Full Metal Plate)',
+		desc = 'Draws fairly distributed build border for 12 players raptor mode on Full Metal Plate map',
+		author = 'Lu5ck',
+		date = '31 May 2025',
+		layer = 1,
+		enabled = true,
+	}
 end
 
 --[[
@@ -21,8 +21,10 @@ Diagonal / = 32
 
 For multiple borders in same cell, add the value together
 TOP and RIGHT border = 1 + 2 = 3
-]]--
+]]
+--
 
+-- stylua: ignore
 local mapping = {
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 8, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -91,9 +93,42 @@ local mapping = {
 }
 
 local gridsize = 12 -- 3 is nano, wind etc size. 12 is efus size. This define the cell size for the mapping
-local gridsquare = 16  -- The smallest build grid to map size is 16x16
+local gridsquare = 16 -- The smallest build grid to map size is 16x16
+
+-- BAR ships "Auto mapmark eraser" enabled by default, which wipes every marker
+-- eraseTime (default 60) seconds after it was drawn, on every client. So the grid has to
+-- be re-sent forever. The margin makes sure a re-sent segment lands *after* the pending
+-- erase: the eraser matches a line by its first point within a 100 elmo radius, so an
+-- early redraw would only hand it a fresh copy to delete.
+local ERASE_SECONDS = 60
+local MARGIN_SECONDS = 1
+local REDRAW_FRAMES = (ERASE_SECONDS + MARGIN_SECONDS) * 30
+
+-- The grid is a placement aid, so stop maintaining it once the game is past that stage.
+-- Whatever is on the map then survives until each client's eraser gets to it.
+local STOP_FRAME = 13 * 60 * 30
+
+local NOTICE = "To keep map lines for the whole match disable 'Auto erase map marks' in settings"
+
 local timer = 0
-local drawLineQueue = {} -- Workaround for spring draw spam protection
+local noticeSent = false
+
+local lines = {} -- every segment of the grid, built once and then re-sent forever
+local sendQueue = {} -- indices into lines awaiting transmission (workaround for spring draw spam protection)
+local sendHead, sendTail = 1, 0
+local pendingIndex, pendingDue = {}, {} -- sent segments awaiting their redraw, ordered by due frame
+local pendingHead, pendingTail = 1, 0
+
+local function pushSend(index)
+	sendTail = sendTail + 1
+	sendQueue[sendTail] = index
+end
+
+local function pushPending(index, dueFrame)
+	pendingTail = pendingTail + 1
+	pendingIndex[pendingTail] = index
+	pendingDue[pendingTail] = dueFrame
+end
 
 local function drawLine(y, startX, startZ, endX, endZ)
 	local maxLength = 24 * gridsquare
@@ -113,7 +148,7 @@ local function drawLine(y, startX, startZ, endX, endZ)
 		local ex = startX + dx * t2
 		local ez = startZ + dz * t2
 
-		table.insert(drawLineQueue, {startX = sx, startZ = sz, endX = ex, endZ = ez, y = y})
+		lines[#lines + 1] = { startX = sx, startZ = sz, endX = ex, endZ = ez, y = y }
 	end
 end
 
@@ -132,7 +167,9 @@ function widget:Initialize()
 		return
 	end
 
-	if not Game.mapName == "Full Metal Plate 1.7" then
+	-- Substring so future Full Metal Plate revisions keep working. The row/column check
+	-- below still rejects any revision whose size no longer matches the mapping.
+	if not string.find(string.lower(Game.mapName or ''), 'full metal plate', 1, true) then
 		widgetHandler:RemoveWidget() -- Don't draw when not supported map
 		return
 	end
@@ -141,14 +178,14 @@ function widget:Initialize()
 	local expectedRows = Game.mapSizeZ / cellsize
 	local expectedCols = Game.mapSizeX / cellsize
 	if #mapping ~= expectedRows then
-		Spring.Echo("Error: Mapping has " .. #mapping .. " rows, expected " .. expectedRows)
+		Spring.Echo('Error: Mapping has ' .. #mapping .. ' rows, expected ' .. expectedRows)
 		widgetHandler:RemoveWidget()
 		return
 	end
 
 	for row = 1, #mapping do
 		if #mapping[row] ~= expectedCols then
-			Spring.Echo("Error: Row " .. row .. " has " .. #mapping[row] .. " columns, expected " .. expectedCols)
+			Spring.Echo('Error: Row ' .. row .. ' has ' .. #mapping[row] .. ' columns, expected ' .. expectedCols)
 			widgetHandler:RemoveWidget()
 			return
 		end
@@ -180,22 +217,59 @@ function widget:Initialize()
 			end
 		end
 	end
+
+	for i = 1, #lines do
+		pushSend(i)
+	end
 end
 
 function widget:Update(dt)
-	if #drawLineQueue == 0 then
-		widgetHandler:RemoveWidget() -- All is done, stop the widget
+	-- Game frames, not dt, so we stall together with the eraser when the game is paused
+	local frame = Spring.GetGameFrame()
+
+	if frame >= STOP_FRAME then
+		widgetHandler:RemoveWidget() -- Done redrawing, stop the widget
 		return
 	end
+
+	-- Due frames are monotonic, so the head is always the next segment to come back
+	while pendingHead <= pendingTail and pendingDue[pendingHead] <= frame do
+		pushSend(pendingIndex[pendingHead])
+		pendingIndex[pendingHead] = nil
+		pendingDue[pendingHead] = nil
+		pendingHead = pendingHead + 1
+	end
+	if pendingHead > pendingTail then -- fully drained, rewind so the tables stay flat
+		pendingHead, pendingTail = 1, 0
+	end
+
+	if sendHead > sendTail then
+		return -- nothing due, keep timer where it is so the next redraw goes out at once
+	end
+
 	timer = timer + dt
-	if timer > 0.1 then
-		for i = 1, 10 do -- Draw 10 lines at a time, I think max is 12?
-			if #drawLineQueue == 0 then
-				break
-			end
-			local drawHorizontalData = table.remove(drawLineQueue, 1) -- Get and remove
-			Spring.MarkerAddLine(drawHorizontalData.startX, drawHorizontalData.y, drawHorizontalData.startZ, drawHorizontalData.endX, drawHorizontalData.y, drawHorizontalData.endZ)
+	if timer <= 0.1 then
+		return
+	end
+	timer = 0
+
+	local dueFrame = frame + REDRAW_FRAMES
+	for _ = 1, 10 do -- Draw 10 lines at a time, I think max is 12?
+		if sendHead > sendTail then
+			break
 		end
-		timer = 0
+		local line = lines[sendQueue[sendHead]]
+		Spring.MarkerAddLine(line.startX, line.y, line.startZ, line.endX, line.y, line.endZ)
+		pushPending(sendQueue[sendHead], dueFrame)
+		sendQueue[sendHead] = nil
+		sendHead = sendHead + 1
+	end
+
+	if sendHead > sendTail then
+		sendHead, sendTail = 1, 0
+		if not noticeSent then -- once per match, the redraws must not repeat it
+			noticeSent = true
+			Spring.SendCommands('say ' .. NOTICE) -- no prefix, so players and spectators both see it
+		end
 	end
 end
