@@ -6,7 +6,10 @@
 do
 	local unitDefs = UnitDefs or {}
 	local maxLevel = 30
-	local growthFactor = 1.20
+	local growthPivotLevel = 15
+	local earlyGrowthFactor = 1.25
+	local lateGrowthFactor = 1.12
+	local efficiencyGainPerLevel = 0.03
 
 	local factions = {
 		{
@@ -47,24 +50,24 @@ do
 			unitSuffix = 'evfus',
 			displayName = 'Evolving Fusion Reactor',
 			footprint = 12,
-			scaledFields = { 'metalcost', 'energycost', 'buildtime', 'energymake', 'energystorage' },
+			costFields = { 'metalcost', 'energycost', 'buildtime' },
+			productionFields = { 'energymake', 'energystorage' },
 		},
 		converter = {
 			sourceKey = 'converterBase',
 			unitSuffix = 'evconv',
 			displayName = 'Evolving Energy Converter',
 			footprint = 6,
-			scaledFields = { 'metalcost', 'energycost', 'buildtime' },
-			scaledCustomFields = { 'energyconv_capacity' },
+			costFields = { 'metalcost', 'energycost', 'buildtime' },
+			productionCustomFields = { 'energyconv_capacity' },
 		},
 		nano = {
 			sourceKey = 'nanoT3Base',
 			unitSuffix = 'evnano',
-			displayName = 'Evolving T3 Construction Turret',
-			baseHumanName = 'T3 Construction Turret',
-			baseTooltip = 'More BUILDPOWER! For the connoisseur',
+			displayName = 'Evolving Construction Turret',
 			footprint = 6,
-			scaledFields = { 'metalcost', 'energycost', 'buildtime', 'workertime' },
+			costFields = { 'metalcost', 'energycost', 'buildtime' },
+			productionFields = { 'workertime' },
 		},
 	}
 
@@ -87,6 +90,17 @@ do
 			return nil
 		end
 		return math.ceil(value * multiplier)
+	end
+
+	local function productionMultiplier(level)
+		local earlySteps = math.min(level - 1, growthPivotLevel - 1)
+		local lateSteps = math.max(level - growthPivotLevel, 0)
+		return (earlyGrowthFactor ^ earlySteps) * (lateGrowthFactor ^ lateSteps)
+	end
+
+	local function costMultiplier(level, productionScale)
+		local efficiency = 1 + efficiencyGainPerLevel * (level - 1)
+		return productionScale / efficiency
 	end
 
 	local function formatNumber(value)
@@ -226,10 +240,6 @@ do
 			icontype = 'armnanotct2',
 			canrepeat = true,
 			objectname = faction.nanoObject,
-			customparams = {
-				i18n_en_humanname = config.baseHumanName,
-				i18n_en_tooltip = config.baseTooltip,
-			},
 		}
 	end
 
@@ -242,7 +252,8 @@ do
 		end
 
 		for level = 1, maxLevel do
-			local multiplier = growthFactor ^ (level - 1)
+			local productionScale = productionMultiplier(level)
+			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
 			local overrides = {
 				name = faction.displayName .. ' ' .. config.displayName .. ' ' .. level,
@@ -254,7 +265,8 @@ do
 					i18n_en_humanname = config.displayName .. ' ' .. level,
 				},
 			}
-			applyScaledFields(overrides, base, config.scaledFields, multiplier)
+			applyScaledFields(overrides, base, config.costFields, costScale)
+			applyScaledFields(overrides, base, config.productionFields, productionScale)
 			overrides.customparams.i18n_en_tooltip = 'Produces ' .. formatNumber(overrides.energymake) .. ' energy/sec'
 			cloneIfMissing(baseName, unitName, overrides)
 		end
@@ -270,7 +282,8 @@ do
 
 		local baseCustomParams = base.customparams or {}
 		for level = 1, maxLevel do
-			local multiplier = growthFactor ^ (level - 1)
+			local productionScale = productionMultiplier(level)
+			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
 			local overrides = {
 				name = faction.displayName .. ' ' .. config.displayName .. ' ' .. level,
@@ -282,8 +295,8 @@ do
 					i18n_en_humanname = config.displayName .. ' ' .. level,
 				},
 			}
-			applyScaledFields(overrides, base, config.scaledFields, multiplier)
-			applyScaledFields(overrides.customparams, baseCustomParams, config.scaledCustomFields, multiplier)
+			applyScaledFields(overrides, base, config.costFields, costScale)
+			applyScaledFields(overrides.customparams, baseCustomParams, config.productionCustomFields, productionScale)
 			local capacity = overrides.customparams.energyconv_capacity
 			local efficiency = baseCustomParams.energyconv_efficiency or 0
 			local metalMake = capacity and capacity * efficiency or nil
@@ -302,7 +315,8 @@ do
 		end
 
 		for level = 1, maxLevel do
-			local multiplier = growthFactor ^ (level - 1)
+			local productionScale = productionMultiplier(level)
+			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
 			local overrides = {
 				name = faction.displayName .. ' ' .. config.displayName .. ' ' .. level,
@@ -314,7 +328,8 @@ do
 					i18n_en_humanname = config.displayName .. ' ' .. level,
 				},
 			}
-			applyScaledFields(overrides, base, config.scaledFields, multiplier)
+			applyScaledFields(overrides, base, config.costFields, costScale)
+			applyScaledFields(overrides, base, config.productionFields, productionScale)
 			overrides.customparams.i18n_en_tooltip = 'Provides ' .. formatNumber(overrides.workertime) .. ' buildpower'
 			cloneIfMissing(baseName, unitName, overrides)
 		end

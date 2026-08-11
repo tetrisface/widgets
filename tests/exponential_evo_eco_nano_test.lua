@@ -3,7 +3,10 @@
 
 local tweakPath = 'tweaks/--ExponentialEvoEcoConTurre.lua'
 local maxLevel = 30
-local growthFactor = 1.20
+local growthPivotLevel = 15
+local earlyGrowthFactor = 1.25
+local lateGrowthFactor = 1.12
+local efficiencyGainPerLevel = 0.03
 
 local function fail(message)
 	error(message, 2)
@@ -205,8 +208,19 @@ for _, faction in ipairs(factions) do
 	end
 end
 
-local function expectedScaled(value, level)
-	return math.ceil(value * (growthFactor ^ (level - 1)))
+local function expectedProductionMultiplier(level)
+	local earlySteps = math.min(level - 1, growthPivotLevel - 1)
+	local lateSteps = math.max(level - growthPivotLevel, 0)
+	return (earlyGrowthFactor ^ earlySteps) * (lateGrowthFactor ^ lateSteps)
+end
+
+local function expectedProduction(value, level)
+	return math.ceil(value * expectedProductionMultiplier(level))
+end
+
+local function expectedCost(value, level)
+	local efficiency = 1 + efficiencyGainPerLevel * (level - 1)
+	return math.ceil(value * expectedProductionMultiplier(level) / efficiency)
 end
 
 local function parseYardmap(yardmap)
@@ -348,11 +362,11 @@ for _, faction in ipairs(factions) do
 
 		assertEqual(fusion.footprintx, 12, fusionName .. ' footprint X')
 		assertEqual(fusion.footprintz, 12, fusionName .. ' footprint Z')
-		assertEqual(fusion.metalcost, expectedScaled(90000, level), fusionName .. ' metal cost')
-		assertEqual(fusion.energycost, expectedScaled(550000, level), fusionName .. ' energy cost')
-		assertEqual(fusion.buildtime, expectedScaled(2500000, level), fusionName .. ' build time')
-		assertEqual(fusion.energymake, expectedScaled(30000, level), fusionName .. ' energy production')
-		assertEqual(fusion.energystorage, expectedScaled(90000, level), fusionName .. ' energy storage')
+		assertEqual(fusion.metalcost, expectedCost(90000, level), fusionName .. ' metal cost')
+		assertEqual(fusion.energycost, expectedCost(550000, level), fusionName .. ' energy cost')
+		assertEqual(fusion.buildtime, expectedCost(2500000, level), fusionName .. ' build time')
+		assertEqual(fusion.energymake, expectedProduction(30000, level), fusionName .. ' energy production')
+		assertEqual(fusion.energystorage, expectedProduction(90000, level), fusionName .. ' energy storage')
 		assertEqual(fusion.health, 7900, fusionName .. ' fixed health')
 		assertEqual(fusion.mass, 91000, fusionName .. ' fixed mass')
 		assertEqual(fusion.sightdistance, 273, fusionName .. ' fixed sight range')
@@ -365,10 +379,10 @@ for _, faction in ipairs(factions) do
 
 		assertEqual(converter.footprintx, 6, converterName .. ' footprint X')
 		assertEqual(converter.footprintz, 6, converterName .. ' footprint Z')
-		assertEqual(converter.metalcost, expectedScaled(9000, level), converterName .. ' metal cost')
-		assertEqual(converter.energycost, expectedScaled(550000, level), converterName .. ' energy cost')
-		assertEqual(converter.buildtime, expectedScaled(350000, level), converterName .. ' build time')
-		assertEqual(converter.customparams.energyconv_capacity, expectedScaled(6000, level), converterName .. ' capacity')
+		assertEqual(converter.metalcost, expectedCost(9000, level), converterName .. ' metal cost')
+		assertEqual(converter.energycost, expectedCost(550000, level), converterName .. ' energy cost')
+		assertEqual(converter.buildtime, expectedCost(350000, level), converterName .. ' build time')
+		assertEqual(converter.customparams.energyconv_capacity, expectedProduction(6000, level), converterName .. ' capacity')
 		assertEqual(converter.customparams.energyconv_efficiency, 0.02, converterName .. ' fixed efficiency')
 		assertEqual(converter.health, 1500, converterName .. ' fixed health')
 		assertEqual(converter.mass, 9000, converterName .. ' fixed mass')
@@ -383,10 +397,10 @@ for _, faction in ipairs(factions) do
 
 		assertEqual(nano.footprintx, 6, nanoName .. ' footprint X')
 		assertEqual(nano.footprintz, 6, nanoName .. ' footprint Z')
-		assertEqual(nano.metalcost, expectedScaled(3700, level), nanoName .. ' metal cost')
-		assertEqual(nano.energycost, expectedScaled(62000, level), nanoName .. ' energy cost')
-		assertEqual(nano.buildtime, expectedScaled(108000, level), nanoName .. ' build time')
-		assertEqual(nano.workertime, expectedScaled(1900, level), nanoName .. ' build power')
+		assertEqual(nano.metalcost, expectedCost(3700, level), nanoName .. ' metal cost')
+		assertEqual(nano.energycost, expectedCost(62000, level), nanoName .. ' energy cost')
+		assertEqual(nano.buildtime, expectedCost(108000, level), nanoName .. ' build time')
+		assertEqual(nano.workertime, expectedProduction(1900, level), nanoName .. ' build power')
 		assertEqual(nano.health, 8800, nanoName .. ' fixed health')
 		assertEqual(nano.mass, 37200, nanoName .. ' fixed mass')
 		assertEqual(nano.sightdistance, 575, nanoName .. ' fixed sight range')
@@ -443,6 +457,13 @@ end
 
 assertEqual(evolvedCount, 270, 'total evolved definitions')
 assertSourceDefinitionsUnchanged()
+
+assertEqual(UnitDefs.armevfus15.energymake, 682122, 'level 15 uses the final 25% growth step')
+assertEqual(UnitDefs.armevfus16.energymake, 763976, 'level 16 starts the 12% growth phase')
+assertEqual(UnitDefs.armevfus30.energymake, 3733635, 'level 30 capped production curve')
+assertEqual(UnitDefs.armevfus30.metalcost, 5989788, 'level 30 applies the 87% linear efficiency gain')
+assertEqual(UnitDefs.armevconv30.customparams.energyconv_capacity, 746727, 'converter output follows the production curve')
+assertEqual(UnitDefs.armevnano30.workertime, 236464, 'nano buildpower follows the production curve')
 
 for level = 1, maxLevel do
 	assertEqual(UnitDefs['armevfus' .. level].yardmap, UnitDefs['corevfus' .. level].yardmap, 'fusion factions share yardmaps at level ' .. level)
@@ -525,6 +546,6 @@ assertEqual(countEntries(UnitDefs), 1, 'missing source run adds no partial defin
 UnitDefs = completeUnitDefs
 
 print('  [PASS] generated 30 exponential levels for all three factions and families')
-print('  [PASS] validated scaling, cloning, build options, and idempotency')
+print('  [PASS] validated two-phase growth, linear efficiency, cloning, build options, and idempotency')
 print('  [PASS] validated high-resolution yardmap geometry and placement compatibility')
 print('Passed exponential evolving economy and nano tests.')
