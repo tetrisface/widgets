@@ -12,6 +12,7 @@ end
 
 VFS.Include('luaui/Headers/keysym.h.lua')
 local pipelinePolicy = VFS.Include('LuaUI/Widgets/phoenix_engine/include/pipeline_policy.lua')
+local replacementPolicy = VFS.Include('LuaUI/Widgets/phoenix_engine/include/replacement_policy.lua')
 
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
@@ -168,9 +169,11 @@ for _, target in ipairs({'gate', 'gatet3', 'respawn'}) do
 	end
 end
 
--- Units containing "evfus" should never be replaced
+-- Preserve yardmap-enforced evolution rules. If Phoenix reclaimed one of these
+-- units, it could turn a rejected duplicate, downgrade, or cross-family build
+-- into a successful replacement.
 for uDefID, uDef in pairs(UnitDefs) do
-	if uDef.name and uDef.name:find('evfus') then
+	if replacementPolicy.isProtectedEvolvingUnitName(uDef.name) then
 		NEVER_RECLAIMABLE_UNITDEF_IDS[uDefID] = true
 	end
 end

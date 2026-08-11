@@ -16,6 +16,7 @@ end
 print('Running Phoenix Engine Tests...')
 
 local pipelinePolicy = dofile('Widgets/phoenix_engine/include/pipeline_policy.lua')
+local replacementPolicy = dofile('Widgets/phoenix_engine/include/replacement_policy.lua')
 
 local mockBuilderID = 100
 
@@ -125,6 +126,28 @@ do
 
   RECLAIM_SEQUENTIAL_MODE = true -- restore
   print('  [PASS] Sequential mode disabled allows all pre-reclaim')
+end
+
+-- Test 5: Evolving economy units keep their yardmap-defined placement rules.
+print('Test 5: Evolving families are protected from automatic reclaim')
+do
+  for _, faction in ipairs({'arm', 'cor', 'leg'}) do
+    for _, family in ipairs({'evfus', 'evconv', 'evnano'}) do
+      for level = 1, 30 do
+        assertTrue(
+          replacementPolicy.isProtectedEvolvingUnitName(faction .. family .. level),
+          faction .. family .. level .. ' should be protected'
+        )
+      end
+    end
+  end
+
+  for _, unitName in ipairs({'armnanotct3', 'armevnano', 'armevnano0', 'scavevnano1', 'armevnano1_scav'}) do
+    assertFalse(replacementPolicy.isProtectedEvolvingUnitName(unitName), unitName .. ' should not match the whitelist')
+  end
+  assertFalse(replacementPolicy.isProtectedEvolvingUnitName(nil), 'nil unit names should not match the whitelist')
+
+  print('  [PASS] All 30 levels of evfus, evconv, and evnano are protected by name')
 end
 
 print('\n=== All tests passed! ===')
