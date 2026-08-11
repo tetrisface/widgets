@@ -1,6 +1,7 @@
 --ExponentialEvoEcoConTurre
 -- Exponential evolving economy and construction turrets
 -- Author: tetrisface
+-- https://github.com/tetrisface/Widgets/blob/main/tweaks/--ExponentialEvoEcoConTurre.lua
 
 do
 	local unitDefs = UnitDefs or {}
