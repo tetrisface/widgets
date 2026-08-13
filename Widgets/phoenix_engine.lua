@@ -169,9 +169,9 @@ for _, target in ipairs({'gate', 'gatet3', 'respawn'}) do
 	end
 end
 
--- Preserve yardmap-enforced evolution rules. If Phoenix reclaimed one of these
--- units, it could turn a rejected duplicate, downgrade, or cross-family build
--- into a successful replacement.
+-- Preserve evolving-family placement rules. Fusion and converter yardmaps
+-- enforce their upgrade ladders. Yardmap-free evnano variants use the
+-- directional replacement policy in canReplaceUnit instead.
 for uDefID, uDef in pairs(UnitDefs) do
 	if replacementPolicy.isProtectedEvolvingUnitName(uDef.name) then
 		NEVER_RECLAIMABLE_UNITDEF_IDS[uDefID] = true
@@ -369,6 +369,16 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 		return false
 	end
 
+	local existingUnitDef = UnitDefs[existingUnitDefID]
+	local placingUnitDef = UnitDefs[placingUnitDefID]
+	local evolvingNanoReplacement = replacementPolicy.getEvolvingNanoReplacementDecision(
+		existingUnitDef and existingUnitDef.name,
+		placingUnitDef and placingUnitDef.name
+	)
+	if evolvingNanoReplacement == false then
+		return false
+	end
+
 	-- Never replace: placing unit is in the "never replaces" list (e.g. T2 wind)
 	if NEVER_REPLACES_UNITDEF_IDS[placingUnitDefID] then
 		return false
@@ -411,6 +421,9 @@ local function canReplaceUnit(existingUnitDefID, placingUnitDefID, mode, modifie
 		end
 	elseif mode == MODE_AUTO_REPLACE_ON then
 		if not modifierActive then
+			if evolvingNanoReplacement == true then
+				return true
+			end
 			-- Mode 2, no modifier: Replace economical buildings including nanos
 			return (ECONOMICAL_UNITDEF_IDS[existingUnitDefID] == true or
 				(getReclaimPriority(placingUnitDefID) or 0) < (getReclaimPriority(existingUnitDefID) or 0))

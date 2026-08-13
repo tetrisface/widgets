@@ -4,7 +4,6 @@
 
 do
 	local unitDefs = UnitDefs or {}
-	local maxLevel = 30
 	local growthPivotLevel = 15
 	local earlyGrowthFactor = 1.25
 	local lateGrowthFactor = 1.12
@@ -45,44 +44,64 @@ do
 	local familyOrder = { 'fusion', 'converter', 'nano' }
 	local families = {
 		fusion = {
+			levelCount = 30,
 			sourceKey = 'fusionBase',
 			unitSuffix = 'evfus',
 			displayName = 'Evolving Fusion Reactor',
 			footprint = 12,
+			usesGeothermalUpgrade = true,
 			costFields = { 'metalcost', 'energycost', 'buildtime' },
 			productionFields = { 'energymake', 'energystorage' },
 		},
 		converter = {
+			levelCount = 24,
 			sourceKey = 'converterBase',
 			unitSuffix = 'evconv',
 			displayName = 'Evolving Energy Converter',
 			footprint = 6,
+			usesGeothermalUpgrade = true,
 			costFields = { 'metalcost', 'energycost', 'buildtime' },
 			productionCustomFields = { 'energyconv_capacity' },
 		},
 		nano = {
+			levelCount = 30,
 			sourceKey = 'nanoT3Base',
 			unitSuffix = 'evnano',
 			displayName = 'Evolving Construction Turret',
 			footprint = 6,
 			costFields = { 'metalcost', 'energycost', 'buildtime' },
 			productionFields = { 'workertime' },
+			linearFields = { 'builddistance' },
+			linearGainPerLevel = 0.03,
 		},
 	}
-
-	local smallGuardCoordinates = {
-		{ 1, 1 },
-		{ 1, 5 },
-		{ 5, 1 },
-		{ 5, 5 },
-	}
-	local fusionGuardCoordinates = {}
-	local fusionGuardAxes = { 1, 5, 9, 12 }
-	for _, row in ipairs(fusionGuardAxes) do
-		for _, column in ipairs(fusionGuardAxes) do
-			fusionGuardCoordinates[#fusionGuardCoordinates + 1] = { row, column }
-		end
+	local maxFamilyLevel = 0
+	for _, familyName in ipairs(familyOrder) do
+		maxFamilyLevel = math.max(maxFamilyLevel, families[familyName].levelCount)
 	end
+
+	-- These two disjoint covers prevent ordinary buildings from being placed
+	-- over an evolved unit and prevent evolved units from being placed over
+	-- ordinary buildings. Marker 1 reuses the first stackable guard; the final
+	-- marker reuses the final build-only guard.
+	local smallStackableGuards = {
+		{ 1, 1 },
+		{ 1, 3 },
+		{ 1, 5 },
+		{ 4, 3 },
+		{ 5, 6 },
+		{ 6, 1 },
+		{ 6, 3 },
+	}
+	local smallBuildOnlyGuards = {
+		{ 1, 2 },
+		{ 1, 6 },
+		{ 2, 2 },
+		{ 2, 5 },
+		{ 2, 6 },
+		{ 4, 2 },
+		{ 6, 5 },
+	}
 
 	local function scaled(value, multiplier)
 		if type(value) ~= 'number' then
@@ -100,6 +119,10 @@ do
 	local function costMultiplier(level, productionScale)
 		local efficiency = 1 + efficiencyGainPerLevel * (level - 1)
 		return productionScale / efficiency
+	end
+
+	local function linearMultiplier(level, gainPerLevel)
+		return 1 + gainPerLevel * (level - 1)
 	end
 
 	local function formatNumber(value)
@@ -144,42 +167,56 @@ do
 		return row .. ':' .. column
 	end
 
-	local function createYardmapLadder(quadrantSize, guardCoordinates, reverseMarkers)
+	local function tiledCoordinates(source, tileSize, tilesPerAxis, reflectFinalTile)
+		local result = {}
+		for tileRow = 0, tilesPerAxis - 1 do
+			for tileColumn = 0, tilesPerAxis - 1 do
+				for _, coordinate in ipairs(source) do
+					local row = coordinate[1]
+					local column = coordinate[2]
+					if reflectFinalTile and tileRow == tilesPerAxis - 1 and tileColumn == tilesPerAxis - 1 then
+						-- Reflect the final tile across its anti-diagonal. This retains
+						-- both guard covers while preventing the 24x24 fusion map from
+						-- aligning with the 12x12 converter family at partial offsets.
+						row, column = tileSize - column + 1, tileSize - row + 1
+					end
+					result[#result + 1] = {
+						row + tileRow * tileSize,
+						column + tileColumn * tileSize,
+					}
+				end
+			end
+		end
+		return result
+	end
+
+	local function createYardmapLadder(quadrantSize, levelCount, stackableGuards, buildOnlyGuards, completionGate)
 		local fullSize = quadrantSize * 2
-		local guardSet = {}
-		for _, coordinate in ipairs(guardCoordinates) do
-			guardSet[coordinateKey(coordinate[1], coordinate[2])] = true
+		local reservedSet = {}
+		for _, coordinates in ipairs({ stackableGuards, buildOnlyGuards }) do
+			for _, coordinate in ipairs(coordinates) do
+				reservedSet[coordinateKey(coordinate[1], coordinate[2])] = true
+			end
 		end
 
-		local markerCoordinates = {}
+		local markerCoordinates = { stackableGuards[1] }
 		-- One quadrant cell expands into a four-cell rotational orbit. A 6x6
 		-- quadrant therefore gives 36 independent states in a 12x12 h yardmap.
 		for row = 1, quadrantSize do
 			for column = 1, quadrantSize do
-				if not guardSet[coordinateKey(row, column)] then
+				if #markerCoordinates < levelCount - 1 and not reservedSet[coordinateKey(row, column)] then
 					markerCoordinates[#markerCoordinates + 1] = { row, column }
 				end
 			end
 		end
+		markerCoordinates[#markerCoordinates + 1] = buildOnlyGuards[#buildOnlyGuards]
 
-		if #markerCoordinates < maxLevel then
+		if #markerCoordinates ~= levelCount then
 			return nil
 		end
 
-		local selectedMarkers = {}
-		for index = 1, maxLevel do
-			selectedMarkers[index] = markerCoordinates[index]
-		end
-		if reverseMarkers then
-			local reversedMarkers = {}
-			for index = 1, maxLevel do
-				reversedMarkers[index] = selectedMarkers[maxLevel - index + 1]
-			end
-			selectedMarkers = reversedMarkers
-		end
-
 		local yardmaps = {}
-		for level = 1, maxLevel do
+		for level = 1, levelCount do
 			local grid = {}
 			for row = 1, fullSize do
 				grid[row] = {}
@@ -188,13 +225,13 @@ do
 				end
 			end
 
-			for _, coordinate in ipairs(guardCoordinates) do
+			for _, coordinate in ipairs(stackableGuards) do
 				for _, rotated in ipairs(orbitCoordinates(quadrantSize, coordinate[1], coordinate[2])) do
 					grid[rotated[1]][rotated[2]] = 's'
 				end
 			end
 
-			for markerLevel, coordinate in ipairs(selectedMarkers) do
+			for markerLevel, coordinate in ipairs(markerCoordinates) do
 				-- Recoil permits overlap when the existing cell is b or the incoming
 				-- cell is s. This progression allows only a strictly higher level.
 				local marker = 'b'
@@ -208,6 +245,13 @@ do
 				end
 			end
 
+			-- BAR's geothermal upgrade gadget opens c cells only when this unit is
+			-- finished. Reuse a permanent b guard orbit so unfinished foundations
+			-- reject every next level without reducing the marker capacity.
+			for _, rotated in ipairs(orbitCoordinates(quadrantSize, completionGate[1], completionGate[2])) do
+				grid[rotated[1]][rotated[2]] = 'c'
+			end
+
 			local rows = {}
 			for row = 1, fullSize do
 				rows[row] = table.concat(grid[row])
@@ -218,12 +262,24 @@ do
 		return yardmaps
 	end
 
-	families.fusion.yardmaps = createYardmapLadder(12, fusionGuardCoordinates, false)
-	families.converter.yardmaps = createYardmapLadder(6, smallGuardCoordinates, false)
-	families.nano.yardmaps = createYardmapLadder(6, smallGuardCoordinates, true)
+	local fusionStackableGuards = tiledCoordinates(smallStackableGuards, 6, 2, true)
+	local fusionBuildOnlyGuards = tiledCoordinates(smallBuildOnlyGuards, 6, 2, true)
+	families.fusion.yardmaps = createYardmapLadder(
+		12,
+		families.fusion.levelCount,
+		fusionStackableGuards,
+		fusionBuildOnlyGuards,
+		fusionBuildOnlyGuards[1]
+	)
+	families.converter.yardmaps = createYardmapLadder(
+		6,
+		families.converter.levelCount,
+		smallStackableGuards,
+		smallBuildOnlyGuards,
+		smallBuildOnlyGuards[1]
+	)
 
 	local function nanoT3Overrides(faction)
-		local config = families.nano
 		return {
 			metalcost = 3700,
 			energycost = 62000,
@@ -250,7 +306,7 @@ do
 			return
 		end
 
-		for level = 1, maxLevel do
+		for level = 1, config.levelCount do
 			local productionScale = productionMultiplier(level)
 			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
@@ -262,6 +318,7 @@ do
 				yardmap = config.yardmaps[level],
 				customparams = {
 					i18n_en_humanname = config.displayName .. ' ' .. level,
+					geothermal = config.usesGeothermalUpgrade and 1 or nil,
 				},
 			}
 			applyScaledFields(overrides, base, config.costFields, costScale)
@@ -280,7 +337,7 @@ do
 		end
 
 		local baseCustomParams = base.customparams or {}
-		for level = 1, maxLevel do
+		for level = 1, config.levelCount do
 			local productionScale = productionMultiplier(level)
 			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
@@ -292,6 +349,7 @@ do
 				yardmap = config.yardmaps[level],
 				customparams = {
 					i18n_en_humanname = config.displayName .. ' ' .. level,
+					geothermal = config.usesGeothermalUpgrade and 1 or nil,
 				},
 			}
 			applyScaledFields(overrides, base, config.costFields, costScale)
@@ -305,15 +363,21 @@ do
 	end
 
 	local function createNanoLevels(faction)
-		cloneIfMissing(faction.nanoT2Base, faction.nanoT3Base, nanoT3Overrides(faction))
+		local nanoT3WasMissing = unitDefs[faction.nanoT3Base] == nil
+		local nanoT3 = cloneIfMissing(faction.nanoT2Base, faction.nanoT3Base, nanoT3Overrides(faction))
+		if nanoT3WasMissing and nanoT3 then
+			-- An immobile builder with a yardmap is classified as a factory by
+			-- Recoil. Explicitly clear any yardmap inherited from the T2 source.
+			nanoT3.yardmap = nil
+		end
 		local config = families.nano
 		local baseName = faction[config.sourceKey]
 		local base = unitDefs[baseName]
-		if not base or not config.yardmaps then
+		if not base then
 			return
 		end
 
-		for level = 1, maxLevel do
+		for level = 1, config.levelCount do
 			local productionScale = productionMultiplier(level)
 			local costScale = costMultiplier(level, productionScale)
 			local unitName = faction.prefix .. config.unitSuffix .. level
@@ -322,15 +386,20 @@ do
 				description = config.displayName .. ' Level ' .. level,
 				footprintx = config.footprint,
 				footprintz = config.footprint,
-				yardmap = config.yardmaps[level],
 				customparams = {
 					i18n_en_humanname = config.displayName .. ' ' .. level,
 				},
 			}
 			applyScaledFields(overrides, base, config.costFields, costScale)
 			applyScaledFields(overrides, base, config.productionFields, productionScale)
-			overrides.customparams.i18n_en_tooltip = 'Provides ' .. formatNumber(overrides.workertime) .. ' buildpower'
-			cloneIfMissing(baseName, unitName, overrides)
+			applyScaledFields(overrides, base, config.linearFields, linearMultiplier(level, config.linearGainPerLevel))
+			overrides.customparams.i18n_en_tooltip =
+				'Provides ' .. formatNumber(overrides.workertime) .. ' buildpower at ' .. formatNumber(overrides.builddistance) .. ' range'
+			local generated = cloneIfMissing(baseName, unitName, overrides)
+			if generated then
+				-- table.merge cannot remove an inherited key with a nil override.
+				generated.yardmap = nil
+			end
 		end
 	end
 
@@ -357,9 +426,12 @@ do
 		builderNames[#builderNames + 1] = faction.prefix .. 't3airaide'
 
 		for _, builderName in ipairs(builderNames) do
-			for level = 1, maxLevel do
+			for level = 1, maxFamilyLevel do
 				for _, familyName in ipairs(familyOrder) do
-					ensureBuildOption(builderName, faction.prefix .. families[familyName].unitSuffix .. level)
+					local family = families[familyName]
+					if level <= family.levelCount then
+						ensureBuildOption(builderName, faction.prefix .. family.unitSuffix .. level)
+					end
 				end
 			end
 		end

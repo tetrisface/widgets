@@ -8,16 +8,17 @@
 -- 1.4c - optimization, added a command limit to prevent the engine from ignoring commands
 -- 1.4d - optimization, replaced loop with GiveOrderToUnitArray, renaiming and adding comments
 -- 1.4e - changed distance calculation from 3D to 2D
+-- 1.4f - handle units disappearing while their queued commands are being checked
 
 function widget:GetInfo()
     return {
         name = 'Construction Turrets Range Check (nano_check)',
         desc = 'Stops construction turrets from being assigned to constructions out of reach.',
         author = 'Nehroz',
-        date = '2024.9.15', -- update date.
+        date = '2026.8.12', -- update date.
         license = 'GPL v3',
         layer = 0,
-        version = '1.4e'
+        version = '1.4f'
     }
 end
 
@@ -131,32 +132,53 @@ local function get_unit_def_by_name(name)
     return UnitDefs[name]
 end
 
+local function get_unit_radius(unitID)
+    local cached_radius = radius_cache:get(unitID)
+    if cached_radius ~= nil then
+        return cached_radius
+    end
+
+    local unit_def_id = Spring.GetUnitDefID(unitID)
+    if unit_def_id == nil then
+        return nil
+    end
+
+    local dimensions = Spring.GetUnitDefDimensions(unit_def_id)
+    if dimensions == nil or dimensions.radius == nil then
+        return nil
+    end
+
+    radius_cache:put(unitID, dimensions.radius)
+    return dimensions.radius
+end
+
 local function check_turret_range(uID)
-    local x, y, z = Spring.GetUnitPosition(uID)
+    local x, _, z = Spring.GetUnitPosition(uID)
     local build_distance = Spring.GetUnitEffectiveBuildRange(uID, nil) -- Same as UnitDef.buildDistance; Not ambigous
+    local cmds = Spring.GetUnitCommands(uID, -1)
+    if x == nil or z == nil or build_distance == nil or cmds == nil then
+        return
+    end
+
     local is_changed = false
     local is_first_cmd = true
-    local cmds = Spring.GetUnitCommands(uID, -1)
     local new_cmds = {}
     for i = #cmds, 1, -1 do
         local cmd = cmds[i]
         if (cmd.id == CMD.REPAIR or cmd.id == CMD.GUARD or cmd.id == CMD.RECLAIM or cmd.id == CMD.ATTACK) then
             local tuID = cmd.params[1]
-            local tx, ty, tz = Spring.GetUnitPosition(tuID)
-            if tx == nil then
-                break
+            local tx, _, tz = Spring.GetUnitPosition(tuID)
+            if tx == nil or tz == nil then
+                return
             end
             -- NOTE equal to Spring.GetUnitSeparation(u1, u2, false, false) Uses 3D distance not 2D
             -- This is faster then synch reading from the engine; jumping between threats.
             -- 1.4e changed to use 2D distance x and z instead of 3D, as that seems to be how nanos work
             local distance = math.sqrt((x - tx) ^ 2 + (z - tz) ^ 2) --math.sqrt((x-tx)^2+(y-ty)^2+(z-tz)^2)
-            -- LRU caching of model radius, so we don't have to get it every time
-            local radius = radius_cache:get(tuID)
-            if not radius then
-                -- Spring.GetUnitDefID(tuID) nil
-                -- GetUnitDefDimensions can be sent nil
-                radius = Spring.GetUnitDefDimensions(Spring.GetUnitDefID(tuID)).radius
-                radius_cache:put(tuID, radius)
+            -- Cache model radii, but preserve the queue if the target disappears between engine reads.
+            local radius = get_unit_radius(tuID)
+            if radius == nil then
+                return
             end
             -- Spring.Echo(radius, build_distance, distance)
             if distance < build_distance + radius then -- BP uses build_distance + radius (sphereical shape of model)

@@ -13,6 +13,12 @@ local function assertFalse(condition, message)
   end
 end
 
+local function assertNil(value, message)
+  if value ~= nil then
+    error(string.format('Assertion failed: %s', message or 'Expected nil'))
+  end
+end
+
 print('Running Phoenix Engine Tests...')
 
 local pipelinePolicy = dofile('Widgets/phoenix_engine/include/pipeline_policy.lua')
@@ -128,17 +134,25 @@ do
   print('  [PASS] Sequential mode disabled allows all pre-reclaim')
 end
 
--- Test 5: Evolving economy units keep their yardmap-defined placement rules.
-print('Test 5: Evolving families are protected from automatic reclaim')
+-- Test 5: Yardmapped families remain protected from Phoenix reclaim. Nanos are
+-- intentionally handled by the directional policy below because they have no yardmap.
+print('Test 5: Yardmapped evolving economy families are protected')
 do
   for _, faction in ipairs({'arm', 'cor', 'leg'}) do
-    for _, family in ipairs({'evfus', 'evconv', 'evnano'}) do
+    for _, family in ipairs({'evfus', 'evconv'}) do
       for level = 1, 30 do
         assertTrue(
           replacementPolicy.isProtectedEvolvingUnitName(faction .. family .. level),
           faction .. family .. level .. ' should be protected'
         )
       end
+    end
+
+    for level = 1, 30 do
+      assertFalse(
+        replacementPolicy.isProtectedEvolvingUnitName(faction .. 'evnano' .. level),
+        faction .. 'evnano' .. level .. ' should use directional replacement'
+      )
     end
   end
 
@@ -147,7 +161,41 @@ do
   end
   assertFalse(replacementPolicy.isProtectedEvolvingUnitName(nil), 'nil unit names should not match the whitelist')
 
-  print('  [PASS] All 30 levels of evfus, evconv, and evnano are protected by name')
+  print('  [PASS] Yardmapped families are protected and evnano uses directional replacement')
+end
+
+-- Test 6: Every faction pairing follows the same strict evnano level ladder.
+print('Test 6: Evolving nanos replace only lower evolving nano levels')
+do
+  local factions = {'arm', 'cor', 'leg'}
+  for _, existingFaction in ipairs(factions) do
+    for _, placingFaction in ipairs(factions) do
+      for existingLevel = 1, 30 do
+        for placingLevel = 1, 30 do
+          local existingName = existingFaction .. 'evnano' .. existingLevel
+          local placingName = placingFaction .. 'evnano' .. placingLevel
+          local actual = replacementPolicy.getEvolvingNanoReplacementDecision(existingName, placingName)
+          local expected = placingLevel > existingLevel
+          if expected then
+            assertTrue(actual, placingName .. ' should replace ' .. existingName)
+          else
+            assertFalse(actual, placingName .. ' should not replace ' .. existingName)
+          end
+        end
+      end
+    end
+  end
+
+  assertNil(
+    replacementPolicy.getEvolvingNanoReplacementDecision('armevconv1', 'armevnano2'),
+    'mixed evolving families should defer to normal Phoenix rules'
+  )
+  assertNil(
+    replacementPolicy.getEvolvingNanoReplacementDecision('armnanotct3', 'armevnano2'),
+    'non-evolving nanos should defer to normal Phoenix rules'
+  )
+
+  print('  [PASS] Same and descending levels are rejected; ascending levels are allowed cross-faction')
 end
 
 print('\n=== All tests passed! ===')
