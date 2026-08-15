@@ -52,8 +52,6 @@ local activeShieldDefId
 local activeShieldRadius
 local cursorInstanceData = {}
 local shieldBuilders     = {}
-local nOnline            = 0
-local nOffline           = 0
 local updateShieldsMs    = 0
 local updateActiveMs     = 0
 
@@ -255,8 +253,6 @@ local function UpdateShieldData()
 
   shields = {}
   nShields = 0
-  nOnline = 0
-  nOffline = 0
 
   local shieldBuilderCheckUnitIds = Spring.GetSelectedUnits() or {}
   local nShieldBuilderCheckUnitIds = #shieldBuilderCheckUnitIds
@@ -276,7 +272,6 @@ local function UpdateShieldData()
         if defIdRadius[-cmd.id] then
           isShieldBuilder = true
           nShields = nShields + 1
-          nOffline = nOffline + 1
           shields[nShields] = {
             pos    = {cmd.params[1], cmd.params[2], cmd.params[3]},
             online = false,
@@ -296,11 +291,6 @@ local function UpdateShieldData()
       local _, shieldState = GetUnitShieldState(unitID)
       local health = select(5, GetUnitHealth(unitID))
       local isOnline = (shieldState or 0) > 400 and health == 1
-      if isOnline then
-        nOnline = nOnline + 1
-      else
-        nOffline = nOffline + 1
-      end
       nShields = nShields + 1
       shields[nShields] = {
         pos    = {x, y, z},
@@ -390,7 +380,13 @@ function widget:DrawWorld()
   end
 
   gl.Texture(0, "$heightmap")
+  gl.DepthTest(false)
+  gl.Culling(false)
   gl.StencilTest(true)
+  -- Must be set before Clear: glClear respects the stencil write mask, so a
+  -- write mask left at 0 by another widget silently disables both the clear
+  -- and the mask pass.
+  gl.StencilMask(1)
   gl.Clear(GL.STENCIL_BUFFER_BIT)
 
   shieldShader:Activate()
@@ -399,36 +395,28 @@ function widget:DrawWorld()
     and (0.1 + (0.35 - 0.1) * (pulseMs / 499))
     or (0.35 + (0.1 - 0.35) * ((pulseMs - 500) / 499)))
 
-  -- Draw online shields
-  if nOnline > 0 then
-    gl.ColorMask(false, false, false, false)
-    gl.UniformInt(maskModeUniform, 1)
-    gl.StencilFunc(GL_ALWAYS, 1, 1)
-    gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
+  local nInstances = nShields + nCursor
 
-    gl.ColorMask(true, true, true, true)
-    gl.UniformInt(maskModeUniform, 0)
-    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOnline)
-  end
+  -- Mask pass: write every shield's interior (cursor ring included) into the stencil,
+  -- so ring bands are hidden inside the union of all shield areas.
+  gl.ColorMask(false, false, false, false)
+  gl.UniformInt(maskModeUniform, 1)
+  gl.StencilFunc(GL_ALWAYS, 1, 1)
+  gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
+  shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nInstances)
 
-  -- Draw offline shields and the cursor ring (contiguous after the offline range)
-  if nOffline + nCursor > 0 then
-    gl.ColorMask(false, false, false, false)
-    gl.UniformInt(maskModeUniform, 1)
-    gl.StencilFunc(GL_ALWAYS, 1, 1)
-    gl.StencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline + nCursor, nOnline)
-
-    gl.ColorMask(true, true, true, true)
-    gl.UniformInt(maskModeUniform, 0)
-    gl.StencilFunc(GL_NOTEQUAL, 1, 1)
-    shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nOffline + nCursor, nOnline)
-  end
+  -- Color pass: draw all ring bands where the stencil is not set (online sorted
+  -- first, so their bands win where bands overlap).
+  gl.ColorMask(true, true, true, true)
+  gl.UniformInt(maskModeUniform, 0)
+  gl.StencilFunc(GL_NOTEQUAL, 1, 1)
+  shieldVAO:DrawArrays(GL_TRIANGLE_FAN, nCircleVertices, 0, nInstances)
 
   shieldShader:Deactivate()
+  gl.StencilMask(255)
+  gl.StencilFunc(GL_ALWAYS, 1, 1)
   gl.StencilTest(false)
+  gl.DepthTest(true)
   gl.Texture(0, false)
 end
 

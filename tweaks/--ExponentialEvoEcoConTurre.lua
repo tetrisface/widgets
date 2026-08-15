@@ -1,4 +1,4 @@
---ExponentialEvoEcoConTurre
+--ExponentialEvoEcoConTurV2
 -- Exponential evolving economy and construction turrets
 -- Author: tetrisface
 
