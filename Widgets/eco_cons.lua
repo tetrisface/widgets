@@ -3,7 +3,7 @@
 
 function widget:GetInfo()
   return {
-    desc = ' Some snippets copied from gui_build_costs.lua by Milan Satala',
+    desc = 'Some snippets copied from gui_build_costs.lua by Milan Satala',
     author = 'tetrisface',
     version = '',
     date = 'feb, 2016',
