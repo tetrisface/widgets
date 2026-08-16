@@ -7,6 +7,7 @@ BOSS_KILLER_PLANNER_TEST = nil
 local BossInfoAdapter = modules.BossInfoAdapter
 local UnitCatalog = modules.UnitCatalog
 local EngagementTracker = modules.EngagementTracker
+local ResistanceSampler = modules.ResistanceSampler
 local ScoringEngine = modules.ScoringEngine
 local KnowledgeStore = modules.KnowledgeStore
 local helpers = modules._helpers
@@ -171,7 +172,7 @@ end
 
 do
 	local empty = helpers.presentTeamCell({})
-	assertEq(empty.label, '-', 'empty team cell label')
+	assertEq(empty.label, '', 'empty team cell label')
 	assertEq(empty.color, '#708698', 'empty team cell color')
 	assertTrue(empty.tooltip:find('ready 0', 1, true) ~= nil, 'empty team tooltip includes ready count')
 
@@ -297,7 +298,7 @@ do
 			metalCost = 1800,
 			energyCost = 33500,
 			buildTime = 19000,
-			weapons = {{damage = {default = 700}, reloadtime = 2, range = 1200}},
+			weapons = {{weaponDef = 101}},
 		},
 		[5] = {
 			id = 5,
@@ -306,7 +307,7 @@ do
 			minWaterDepth = 20,
 			metalCost = 500,
 			energyCost = 5000,
-			weapons = {{damage = {default = 100}, reloadtime = 1, range = 500}},
+			weapons = {{weaponDef = 102}},
 		},
 		[6] = {
 			id = 6,
@@ -314,7 +315,7 @@ do
 			translatedHumanName = 'Unbuilt Gun',
 			metalCost = 500,
 			energyCost = 1000,
-			weapons = {{damage = {default = 100}, reloadtime = 1}},
+			weapons = {{weaponDef = 103}},
 		},
 		[7] = {
 			id = 7,
@@ -331,12 +332,18 @@ do
 			translatedHumanName = 'Acid Tentacle',
 			metalCost = 500,
 			energyCost = 1000,
-			weapons = {{damage = {default = 100}, reloadtime = 1}},
+			weapons = {{weaponDef = 103}},
 		},
+	}
+	local weaponDefs = {
+		[101] = {reload = 2, range = 1200, damages = {[0] = 700}},
+		[102] = {reload = 1, range = 500, damages = {[0] = 100}},
+		[103] = {reload = 1, damages = {[0] = 100}},
 	}
 	local catalog = UnitCatalog.Build({
 		unitDefs = unitDefs,
 		unitDefNames = {grenadier = {id = 4}},
+		weaponDefs = weaponDefs,
 		resistanceMap = {[4] = {percent = 0.1}},
 		hasMeaningfulWater = false,
 		ownedSourceDefIDs = {[4] = true},
@@ -377,6 +384,7 @@ do
 	local selectedCatalog = UnitCatalog.Build({
 		unitDefs = unitDefs,
 		unitDefNames = {grenadier = {id = 4}},
+		weaponDefs = weaponDefs,
 		resistanceMap = {[4] = {percent = 0.1}, [8] = {percent = 0.1}},
 		hasMeaningfulWater = true,
 		ownedSourceDefIDs = ownedSourceDefIDs,
@@ -388,49 +396,105 @@ do
 end
 
 do
-	local runtimeWeaponUnit = {
-		weapons = {{weaponDef = 12}},
-	}
+	local sampler = ResistanceSampler.New(30)
+	ResistanceSampler.Update(sampler, {[4] = {damage = 0}}, 0)
+	ResistanceSampler.Update(sampler, {[4] = {damage = 300}}, 3)
+	local damages = ResistanceSampler.WindowDamages(sampler)
+	assertNear(damages[4], 1500, 0.0001, 'short history extrapolates with 5x clamp')
+
+	ResistanceSampler.Update(sampler, {[4] = {damage = 900}}, 15)
+	ResistanceSampler.Update(sampler, {[4] = {damage = 1200}}, 33)
+	damages = ResistanceSampler.WindowDamages(sampler)
+	assertNear(damages[4], 900, 0.0001, 'full window measures damage from the window edge')
+
+	ResistanceSampler.Update(sampler, {[4] = {damage = 1200}}, 46)
+	damages = ResistanceSampler.WindowDamages(sampler)
+	assertNear(damages[4], 300 * 30 / 31, 0.0001, 'window prunes stale samples')
+
+	ResistanceSampler.Update(sampler, {[4] = {damage = 1200}}, 80)
+	damages = ResistanceSampler.WindowDamages(sampler)
+	assertEq(damages[4], nil, 'idle unit drops out of the window')
+	print('  [PASS] resistance sampler window')
+end
+
+do
+	local tracker = EngagementTracker.New()
+	EngagementTracker.UpdateUnit(tracker, 200, 4, 1, true, 1)
+	local candidateMap = {[4] = {maxWeaponRange = 100}}
+	local getPos = function()
+		return 0, 0, 0
+	end
+	local noBossCounts = EngagementTracker.BuildCounts(tracker, {
+		unitDefs = {},
+		candidateMap = candidateMap,
+		bossPositions = {},
+		getUnitPosition = getPos,
+		teamInfo = {},
+	})
+	assertEq(noBossCounts[4].ready, 1, 'no live boss counts unit as ready')
+	assertEq(noBossCounts[4].far, 0, 'no live boss counts nothing as far')
+
+	local farCounts = EngagementTracker.BuildCounts(tracker, {
+		unitDefs = {},
+		candidateMap = candidateMap,
+		bossPositions = {{x = 100000, z = 100000}},
+		getUnitPosition = getPos,
+		teamInfo = {},
+	})
+	assertEq(farCounts[4].ready, 0, 'distant boss counts unit as not ready')
+	assertEq(farCounts[4].far, 1, 'distant boss counts unit as far')
+	print('  [PASS] readiness counts')
+end
+
+do
 	local runtimeWeaponDefs = {
 		[12] = {
-			reloadtime = 2,
-			damages = {default = 600},
-			energypershot = 1200,
+			reload = 2,
+			damages = {[0] = 600, [7] = 1800},
+			energyCost = 1200,
+		},
+		[13] = {
+			reload = 2,
+			salvoSize = 2,
+			projectiles = 3,
+			damages = {[0] = 100},
+		},
+		[21] = {
+			reload = 1.5,
+			energyCost = 150000,
+			damages = {[0] = 12000},
+		},
+		[22] = {
+			stockpile = true,
+			stockpileTime = 240,
+			metalCost = 13000,
+			energyCost = 180000,
+			damages = {[0] = 30000},
 		},
 	}
-	assertNear(UnitCatalog.EstimateDps(runtimeWeaponUnit, runtimeWeaponDefs), 300, 0.0001, 'runtime WeaponDefs.damages DPS estimate')
-	assertNear(UnitCatalog.EstimateOperatingCost(runtimeWeaponUnit, runtimeWeaponDefs).fireEnergyPerSecond, 600, 0.0001, 'runtime WeaponDefs.damages operating cost')
+	local runtimeWeaponUnit = {weapons = {{weaponDef = 12}}}
+	assertNear(UnitCatalog.EstimateDps(runtimeWeaponUnit, runtimeWeaponDefs), 300, 0.0001, 'default armor DPS estimate')
+	assertNear(UnitCatalog.EstimateDps(runtimeWeaponUnit, runtimeWeaponDefs, 7), 900, 0.0001, 'boss armor class DPS estimate')
+	assertNear(UnitCatalog.EstimateDps(runtimeWeaponUnit, runtimeWeaponDefs, 3), 300, 0.0001, 'unlisted armor class falls back to default damage')
+	assertNear(UnitCatalog.EstimateOperatingCost(runtimeWeaponUnit, runtimeWeaponDefs).fireEnergyPerSecond, 600, 0.0001, 'energy per shot operating cost')
 
-	local disintegrator = {
-		weapondefs = {
-			disintegratorxl = {
-				reloadtime = 1.5,
-				energypershot = 150000,
-				damage = {default = 12000},
-			},
-		},
-		weapons = {{def = 'disintegratorxl'}},
-	}
-	local operating = UnitCatalog.EstimateOperatingCost(disintegrator, {})
-	assertNear(operating.fireEnergyPerSecond, 100000, 0.0001, 'energy per shot operating cost')
+	local salvoUnit = {weapons = {{weaponDef = 13}}}
+	assertNear(UnitCatalog.EstimateDps(salvoUnit, runtimeWeaponDefs), 300, 0.0001, 'salvo size and projectiles multiply damage')
+
+	runtimeWeaponDefs[14] = {reload = 1, paralyzer = true, damages = {[0] = 1000}}
+	local empUnit = {weapons = {{weaponDef = 14}}}
+	assertNear(UnitCatalog.EstimateDps(empUnit, runtimeWeaponDefs), 0, 0.0001, 'paralyzer weapons contribute no boss damage')
+
+	local disintegrator = {weapons = {{weaponDef = 21}}}
+	local operating = UnitCatalog.EstimateOperatingCost(disintegrator, runtimeWeaponDefs)
+	assertNear(operating.fireEnergyPerSecond, 100000, 0.0001, 'heavy energy per shot operating cost')
 	assertNear(operating.energyPerSecond, 100000, 0.0001, 'total energy operating cost')
 
-	local launcher = {
-		weapondefs = {
-			launcher = {
-				stockpiletime = 8,
-				stockpilelimit = 50,
-				burst = 2,
-				metalpershot = 13000,
-				energypershot = 180000,
-				damage = {default = 30000},
-			},
-		},
-	}
-	local stockpileOperating = UnitCatalog.EstimateOperatingCost(launcher, {})
-	assertNear(stockpileOperating.fireMetalPerSecond, 3250, 0.0001, 'stockpile metal per second')
-	assertNear(stockpileOperating.fireEnergyPerSecond, 45000, 0.0001, 'stockpile energy per second')
-	print('  [PASS] weapon operating cost estimation')
+	local launcher = {weapons = {{weaponDef = 22}}}
+	local stockpileOperating = UnitCatalog.EstimateOperatingCost(launcher, runtimeWeaponDefs)
+	assertNear(stockpileOperating.fireMetalPerSecond, 1625, 0.0001, 'stockpile metal per second')
+	assertNear(stockpileOperating.fireEnergyPerSecond, 22500, 0.0001, 'stockpile energy per second')
+	print('  [PASS] weapon dps and operating cost estimation')
 end
 
 do
@@ -504,6 +568,49 @@ do
 	assertTrue(rows[1].marginalDamagePerMetalEq > 0, 'positive marginal score')
 	assertEq(rows[1].confidence, 'high', 'live sample confidence')
 	print('  [PASS] metal-equivalent scoring')
+end
+
+do
+	local candidate = {
+		defID = 9,
+		displayName = 'Projector',
+		sourceLabel = 'Lab',
+		metalCost = 1000,
+		energyCost = 0,
+		estimatedDps = 100,
+		mapViable = true,
+		reachable = true,
+	}
+	local bossInfo = {
+		resistances = {[9] = {percent = 0.2, damage = 200}},
+		aliveMaxHealth = 100000,
+		healthPercent = 100,
+		resistanceCap = 0.95,
+		staggerActive = false,
+		mode = 'raptor',
+	}
+	local rows = ScoringEngine.BuildRows({
+		candidates = {[9] = candidate},
+		bossInfo = bossInfo,
+		countsByDef = {},
+		samplesByDef = {},
+		energyPerMetal = 70,
+		costMode = 'build',
+		resistanceGainMult = 5,
+	})
+	-- landed window damage: 100 dps * 30s * phase x2 * (1 - 0.2) = 4800; accumulator delta = 4800 * 5
+	assertNear(rows[1].projectedResistancePercent, (200 + 24000) / 100000, 0.0001, 'projection applies gadget accumulator gain')
+	local fasterRows = ScoringEngine.BuildRows({
+		candidates = {[9] = candidate},
+		bossInfo = bossInfo,
+		countsByDef = {},
+		samplesByDef = {},
+		energyPerMetal = 70,
+		costMode = 'build',
+		resistanceGainMult = 10,
+	})
+	assertNear(fasterRows[1].projectedResistancePercent, (200 + 48000) / 100000, 0.0001, 'higher difficulty mult projects faster resistance growth')
+	print('  [PASS] resistance projection gain')
 end
 
 do

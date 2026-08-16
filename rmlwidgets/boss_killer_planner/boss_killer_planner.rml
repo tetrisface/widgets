@@ -8,7 +8,7 @@
 <body id="boss-killer-planner-widget">
 	<div id="bkp-panel" class="panel" data-model="boss_killer_planner" onmouseup="widget:OnDragEnd(event)">
 		<div id="bkp-title-bar" class="title-bar">
-			<handle move_target="bkp-panel">
+			<handle move_target="bkp-panel" edge_margin="none">
 				<div class="title-content">
 					<span class="title-text">Boss Killer</span>
 					<span class="status-text">{{status_text}}</span>
@@ -16,6 +16,7 @@
 				</div>
 			</handle>
 			<div class="title-controls">
+				<div class="ctrl-btn" onclick="widget:ToggleHistoryFilter(event)">{{history_filter_label}}</div>
 				<div class="ctrl-btn" onclick="widget:CycleAvailability(event)">{{availability_label}}</div>
 				<div class="ctrl-btn" onclick="widget:ToggleCostMode(event)">{{cost_mode_label}}</div>
 				<div class="energy-control">
@@ -49,17 +50,42 @@
 
 		<div id="bkp-units-table-area" class="table-area" data-if="is_units &amp;&amp; has_rows">
 			<div class="header-row unit-grid">
-				<span class="h-name sortable" data-sort="name" onclick="widget:SetSort(event)">Unit</span>
-				<span class="h-source sortable" data-sort="sourceLabel" onclick="widget:SetSort(event)">Source</span>
-				<span class="h-avail sortable" data-sort="availabilityRank" onclick="widget:SetSort(event)">Avail</span>
-				<span class="h-num sortable" data-sort="resistancePercent" onclick="widget:SetSort(event)">Res</span>
-				<span class="h-num sortable" data-sort="resistanceDamage" onclick="widget:SetSort(event)">Dmg</span>
-				<span class="h-num sortable" data-sort="marginalDamagePerMetalEq" onclick="widget:SetSort(event)">Marg</span>
-				<span class="h-num sortable" data-sort="liveContributionPerMetalEq" onclick="widget:SetSort(event)">Live</span>
-				<span class="h-num sortable" data-sort="scoreCostMetalEq" onclick="widget:SetSort(event)">{{cost_header}}</span>
-				<span class="h-num sortable" data-sort="operatingMetalEqPerSecond" onclick="widget:SetSort(event)">Use/s</span>
-				<span class="h-team sortable" data-sort="teamSort" onclick="widget:SetSort(event)">Teams</span>
-				<span class="h-hist sortable" data-sort="historyAverage" onclick="widget:SetSort(event)">Hist</span>
+				<span class="h-name sortable" data-sort="name" onclick="widget:SetSort(event)">Unit
+					<span class="header-tooltip">Unit name. Click any header to sort by it, click again to flip the direction.</span>
+				</span>
+				<span class="h-source sortable" data-sort="sourceLabel" onclick="widget:SetSort(event)">Source
+					<span class="header-tooltip">How to get this unit: builder &gt; factory chain that leads to it.</span>
+				</span>
+				<span class="h-num sortable" data-sort="resistancePercent" onclick="widget:SetSort(event)">Res
+					<span class="header-tooltip">Boss resistance against this unit type right now. Bosses build resistance against whatever damages them, up to 95% of the damage absorbed.</span>
+				</span>
+				<span class="h-num sortable" data-sort="projectedResistancePercent" onclick="widget:SetSort(event)">Proj
+					<span class="header-tooltip">Projected resistance after ~30s of continued fire, from estimated or live-measured damage. A big jump above Res means this unit type burns out fast.</span>
+				</span>
+				<span class="h-num sortable" data-sort="resistanceDamage" onclick="widget:SetSort(event)">Dmg
+					<span class="header-tooltip">Total damage this unit type has dealt to the boss so far. This accumulator is what drives resistance up.</span>
+				</span>
+				<span class="h-num sortable" data-sort="marginalDamagePerMetalEq" onclick="widget:SetSort(event)">Marg
+					<span class="header-tooltip anchor-right">Marginal value: estimated boss damage over the next 30s, adjusted for the resistance it will build up, per metal-equivalent cost. Higher is better. Default ranking.</span>
+				</span>
+				<span class="h-num sortable" data-sort="liveContributionPerMetalEq" onclick="widget:SetSort(event)">Live
+					<span class="header-tooltip anchor-right">Measured value: actual boss damage by this unit type over the last 30s, per metal-equivalent cost. Empty means no recent boss damage.</span>
+				</span>
+				<span class="h-conf">Conf
+					<span class="header-tooltip anchor-right">Confidence of the numbers. H: measured live right now. M: from saved history of earlier games. L: static estimate only.</span>
+				</span>
+				<span class="h-num sortable" data-sort="scoreCostMetalEq" onclick="widget:SetSort(event)">{{cost_header}}
+					<span class="header-tooltip anchor-right">Cost in metal equivalent: metal + energy converted at the E/M rate in the title bar. Full mode also adds 30s of firing and upkeep costs; toggle with the Cost button.</span>
+				</span>
+				<span class="h-num sortable" data-sort="operatingMetalEqPerSecond" onclick="widget:SetSort(event)">Use/s
+					<span class="header-tooltip anchor-right">Operating cost while firing: weapon shot costs plus upkeep, in metal equivalent per second.</span>
+				</span>
+				<span class="h-team sortable" data-sort="teamSort" onclick="widget:SetSort(event)">Teams
+					<span class="header-tooltip anchor-right">Ally count as ready/alive, +N building, qN queued by you. Ready means within weapon range plus a margin of a boss; with no boss alive everything counts as ready. Hover a cell for the per-player breakdown.</span>
+				</span>
+				<span class="h-hist sortable" data-sort="historyAverage" onclick="widget:SetSort(event)">Hist
+					<span class="header-tooltip anchor-right">History from your earlier games at this mode and difficulty: average Live score / number of samples. Hover a cell for details.</span>
+				</span>
 			</div>
 			<div data-for="row : unit_rows" class="unit-row unit-grid">
 				<texture class="unit-icon" data-attr-src="row.icon"/>
@@ -68,11 +94,12 @@
 					<span class="source-label">{{row.source}}</span>
 					<span class="source-tooltip">{{row.source_tooltip}}</span>
 				</div>
-				<span class="avail-cell">{{row.availability}}</span>
 				<span class="num-cell">{{row.resistance}}</span>
+				<span class="num-cell">{{row.projected}}</span>
 				<span class="num-cell">{{row.resistance_damage}}</span>
 				<span class="num-cell strong">{{row.score}}</span>
 				<span class="num-cell">{{row.live_score}}</span>
+				<span class="conf-cell">{{row.conf}}</span>
 				<span class="num-cell">{{row.cost}}</span>
 				<span class="num-cell">{{row.operating_cost}}</span>
 				<div class="team-cells">
@@ -106,7 +133,7 @@
 			</div>
 		</div>
 
-		<handle size_target="bkp-panel" class="resize-handle">
+		<handle size_target="bkp-panel" edge_margin="none" class="resize-handle">
 			<div class="resize-grip"></div>
 		</handle>
 	</div>

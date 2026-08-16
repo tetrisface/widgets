@@ -200,7 +200,7 @@ local function presentTeamCell(counts)
 
 	if alive + building + queuedOwn <= 0 then
 		return {
-			label = '-',
+			label = '',
 			color = TEAM_CELL_EMPTY_COLOR,
 			tooltip = tooltip[1],
 		}
@@ -401,11 +401,7 @@ local function unitHasWeapon(unitDef)
 		return false
 	end
 	local weapons = unitDef.weapons
-	if type(weapons) == 'table' and #weapons > 0 then
-		return true
-	end
-	local weaponDefs = unitDef.weaponDefs or unitDef.weapondefs
-	return type(weaponDefs) == 'table' and next(weaponDefs) ~= nil
+	return type(weapons) == 'table' and #weapons > 0
 end
 
 local function getWeaponRange(unitDef, weaponDefs)
@@ -420,43 +416,36 @@ local function getWeaponRange(unitDef, weaponDefs)
 		end
 	end
 
-	local inlineDefs = unitDef.weaponDefs or unitDef.weapondefs
-	if type(inlineDefs) == 'table' then
-		for _, weapon in pairs(inlineDefs) do
-			local range = safeNumber(weapon.range, 0)
-			if range > maxRange then
-				maxRange = range
-			end
-		end
-	end
-
 	return maxRange
 end
 
-local function damageTableDefault(damageTable)
-	if type(damageTable) ~= 'table' then
-		return safeNumber(damageTable, 0)
-	end
-	return safeNumber(damageTable.default or damageTable.scavboss or damageTable.raptor or damageTable.commanders, 0)
-end
-
-local function weaponDamageDefault(weaponDef)
-	if not weaponDef then
+-- Runtime WeaponDefs[id].damages is indexed by armor type ID (0 = default);
+-- armorTypeIndex selects the boss armor class when known. Paralyzer damages
+-- are stun values, not HP damage, so EMP weapons contribute nothing
+local function weaponDamageVsArmor(weaponDef, armorTypeIndex)
+	if not weaponDef or weaponDef.paralyzer then
 		return 0
 	end
-	return damageTableDefault(weaponDef.damage or weaponDef.damages)
+	local damages = weaponDef.damages
+	if type(damages) ~= 'table' then
+		return safeNumber(damages, 0)
+	end
+	local damage
+	if armorTypeIndex ~= nil then
+		damage = damages[armorTypeIndex]
+	end
+	if damage == nil then
+		damage = damages[0]
+	end
+	return safeNumber(damage, 0)
 end
 
-local function resolveWeaponDef(weapon, weaponDefs, inlineDefs)
+local function resolveWeaponDef(weapon, weaponDefs)
 	if not weapon then
 		return nil
 	end
 	if weapon.weaponDef and weaponDefs and weaponDefs[weapon.weaponDef] then
 		return weaponDefs[weapon.weaponDef]
-	end
-	if weapon.def and inlineDefs then
-		local defName = tostring(weapon.def)
-		return inlineDefs[defName] or inlineDefs[defName:lower()] or inlineDefs[defName:upper()] or weapon
 	end
 	return weapon
 end
@@ -524,46 +513,40 @@ local function weaponShotCost(weaponDef)
 	return metal, energy
 end
 
-function UnitCatalog.EstimateDps(unitDef, weaponDefs)
+local function weaponShotsPerCycle(weaponDef)
+	return math.max(1, safeNumber(weaponDef.salvoSize, 1)) * math.max(1, safeNumber(weaponDef.projectiles, 1))
+end
+
+function UnitCatalog.EstimateDps(unitDef, weaponDefs, armorTypeIndex)
 	if not unitDef then
 		return 0
 	end
 
 	local total = 0
-	local inlineDefs = unitDef.weaponDefs or unitDef.weapondefs
 	for _, weapon in ipairs(unitDef.weapons or {}) do
-		local weaponDef = resolveWeaponDef(weapon, weaponDefs, inlineDefs)
+		local weaponDef = resolveWeaponDef(weapon, weaponDefs)
 		local reload = weaponCycleSeconds(weaponDef)
-		local burst = math.max(1, safeNumber(weaponDef.burst, 1))
-		total = total + (weaponDamageDefault(weaponDef) * burst / math.max(0.1, reload))
-	end
-
-	if type(inlineDefs) == 'table' and total <= 0 then
-		for _, weaponDef in pairs(inlineDefs) do
-			local reload = weaponCycleSeconds(weaponDef)
-			local burst = math.max(1, safeNumber(weaponDef.burst, 1))
-			total = total + (weaponDamageDefault(weaponDef) * burst / math.max(0.1, reload))
-		end
+		total = total + (weaponDamageVsArmor(weaponDef, armorTypeIndex) * weaponShotsPerCycle(weaponDef) / math.max(0.1, reload))
 	end
 
 	return total
 end
 
-local function addWeaponOperatingCost(totals, weaponDef)
-	if not weaponDef or weaponDamageDefault(weaponDef) <= 0 then
+local function addWeaponOperatingCost(totals, weaponDef, armorTypeIndex)
+	if not weaponDef or weaponDamageVsArmor(weaponDef, armorTypeIndex) <= 0 then
 		return
 	end
 	local metal, energy = weaponShotCost(weaponDef)
 	if metal <= 0 and energy <= 0 then
 		return
 	end
+	-- Firing cost is charged once per salvo/stockpile cycle, not per projectile
 	local cycleSeconds = weaponCycleSeconds(weaponDef)
-	local burst = math.max(1, safeNumber(weaponDef.burst, 1))
-	totals.fireMetalPerSecond = totals.fireMetalPerSecond + metal * burst / cycleSeconds
-	totals.fireEnergyPerSecond = totals.fireEnergyPerSecond + energy * burst / cycleSeconds
+	totals.fireMetalPerSecond = totals.fireMetalPerSecond + metal / cycleSeconds
+	totals.fireEnergyPerSecond = totals.fireEnergyPerSecond + energy / cycleSeconds
 end
 
-function UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs)
+function UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs, armorTypeIndex)
 	if not unitDef then
 		return {
 			fireMetalPerSecond = 0,
@@ -584,15 +567,8 @@ function UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs)
 	totals.upkeepMetalPerSecond = totals.upkeepMetalPerSecond + safeNumber(getUnitDefField(unitDef, 'metalUse', 'metaluse', 0), 0)
 	totals.upkeepEnergyPerSecond = totals.upkeepEnergyPerSecond + safeNumber(getUnitDefField(unitDef, 'energyUse', 'energyuse', 0), 0)
 
-	local inlineDefs = unitDef.weaponDefs or unitDef.weapondefs
 	for _, weapon in ipairs(unitDef.weapons or {}) do
-		addWeaponOperatingCost(totals, resolveWeaponDef(weapon, weaponDefs, inlineDefs))
-	end
-
-	if type(inlineDefs) == 'table' and totals.fireMetalPerSecond <= 0 and totals.fireEnergyPerSecond <= 0 then
-		for _, weaponDef in pairs(inlineDefs) do
-			addWeaponOperatingCost(totals, weaponDef)
-		end
+		addWeaponOperatingCost(totals, resolveWeaponDef(weapon, weaponDefs), armorTypeIndex)
 	end
 
 	totals.metalPerSecond = totals.fireMetalPerSecond + totals.upkeepMetalPerSecond
@@ -685,6 +661,7 @@ function UnitCatalog.Build(env)
 	local weaponDefs = env.weaponDefs or {}
 	local resistanceMap = env.resistanceMap or {}
 	local hasMeaningfulWater = env.hasMeaningfulWater ~= false
+	local bossArmorTypeIndex = env.bossArmorTypeIndex
 
 	local sourceByBuilt = {}
 	for builderDefID, builderDef in pairs(unitDefs) do
@@ -711,7 +688,7 @@ function UnitCatalog.Build(env)
 			local buildTime = safeNumber(getUnitDefField(unitDef, 'buildTime', 'buildtime', 0), 0)
 			local reachable = sourceByBuilt[numericDefID] ~= nil
 			local seaOnly = isSeaOnly(unitDef)
-			local operatingCost = UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs)
+			local operatingCost = UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs, bossArmorTypeIndex)
 			candidates[numericDefID] = {
 				defID = numericDefID,
 				name = unitDef.name or unitDef.unitname or tostring(numericDefID),
@@ -721,7 +698,7 @@ function UnitCatalog.Build(env)
 				energyCost = energyCost,
 				buildTime = buildTime,
 				maxWeaponRange = getWeaponRange(unitDef, weaponDefs),
-				estimatedDps = UnitCatalog.EstimateDps(unitDef, weaponDefs),
+				estimatedDps = UnitCatalog.EstimateDps(unitDef, weaponDefs, bossArmorTypeIndex),
 				fireMetalPerSecond = operatingCost.fireMetalPerSecond,
 				fireEnergyPerSecond = operatingCost.fireEnergyPerSecond,
 				upkeepMetalPerSecond = operatingCost.upkeepMetalPerSecond,
@@ -872,8 +849,10 @@ function EngagementTracker.BuildCounts(tracker, env)
 			else
 				defCounts.alive = defCounts.alive + 1
 				teamCounts.alive = teamCounts.alive + 1
-				local ready = false
+				-- With no live boss there is nothing to be far from; count as ready
+				local ready = true
 				if getUnitPosition and #bossPositions > 0 then
+					ready = false
 					local x, _, z = getUnitPosition(unitID)
 					if x and z then
 						local readyRadius = math.max(DEFAULT_READY_RADIUS, safeNumber(candidate.maxWeaponRange, 0) + READY_MARGIN)
@@ -915,6 +894,53 @@ function EngagementTracker.BuildCounts(tracker, env)
 	end
 
 	return countsByDef, teamRowsByTeam, ownedSourceDefIDs
+end
+
+--------------------------------------------------------------------------------
+-- ResistanceSampler
+--------------------------------------------------------------------------------
+
+-- Tracks the pveBossInfo damage accumulator per unit def and reports damage
+-- dealt over a sliding window, independent of the gadget's publish cadence
+local ResistanceSampler = {}
+
+function ResistanceSampler.New(windowSeconds)
+	return {
+		windowSeconds = math.max(1, safeNumber(windowSeconds, SCORE_WINDOW_SECONDS)),
+		samplesByDef = {},
+	}
+end
+
+function ResistanceSampler.Update(sampler, resistances, nowSeconds)
+	nowSeconds = safeNumber(nowSeconds, 0)
+	for defID, resistance in pairs(resistances or {}) do
+		local samples = sampler.samplesByDef[defID]
+		if not samples then
+			samples = {}
+			sampler.samplesByDef[defID] = samples
+		end
+		samples[#samples + 1] = {time = nowSeconds, damage = safeNumber(resistance.damage, 0)}
+		-- Keep one sample at or before the window edge so the delta spans the full window
+		while #samples > 1 and samples[2].time <= nowSeconds - sampler.windowSeconds do
+			table.remove(samples, 1)
+		end
+	end
+end
+
+-- Damage normalized to one full window, keyed by unit def. Short histories are
+-- extrapolated, clamped to 5x so a single early sample cannot spike the rate
+function ResistanceSampler.WindowDamages(sampler)
+	local result = {}
+	for defID, samples in pairs(sampler.samplesByDef) do
+		local first = samples[1]
+		local last = samples[#samples]
+		local elapsed = last.time - first.time
+		local delta = last.damage - first.damage
+		if elapsed > 0 and delta > 0 then
+			result[defID] = delta * sampler.windowSeconds / math.max(elapsed, sampler.windowSeconds * 0.2)
+		end
+	end
+	return result
 end
 
 --------------------------------------------------------------------------------
@@ -998,19 +1024,6 @@ local function confidenceFor(candidate, recentDelta, knowledge)
 	return ''
 end
 
-local function availabilityFor(candidate)
-	if candidate.ownedSource then
-		return 'Build', 0
-	end
-	if candidate.reachable and candidate.mapViable then
-		return 'Match', 1
-	end
-	if candidate.reachable then
-		return 'Sea', 2
-	end
-	return 'Unk', 3
-end
-
 function ScoringEngine.BuildRows(input)
 	input = input or {}
 	local bossInfo = input.bossInfo or {}
@@ -1020,6 +1033,9 @@ function ScoringEngine.BuildRows(input)
 	local energyPerMetal = input.energyPerMetal or DEFAULT_ENERGY_PER_METAL
 	local costMode = input.costMode or 'full'
 	local sampleWindowSeconds = math.max(1 / GAME_FRAMES_PER_SECOND, safeNumber(input.sampleWindowSeconds, SCORE_WINDOW_SECONDS))
+	-- The gadget grows the resistance accumulator by landed damage x 5 x difficulty
+	-- resistance mult; callers pass 5 x that mult here
+	local resistanceGainMult = math.max(0, safeNumber(input.resistanceGainMult, 5))
 	local rows = {}
 
 	for defID, candidate in pairs(input.candidates or {}) do
@@ -1040,19 +1056,19 @@ function ScoringEngine.BuildRows(input)
 		local phaseMultiplier = ScoringEngine.BossPhaseDamageMultiplier(bossInfo.healthPercent)
 		local estimatedBaseDamage = safeNumber(candidate.estimatedDps, 0) * SCORE_WINDOW_SECONDS * phaseMultiplier
 		local estimatedWindowDamage = math.max(recentWindowDamage, estimatedBaseDamage)
+		local currentResistance = ScoringEngine.EffectiveResistance(resistancePercent, bossInfo.staggerActive, bossInfo.mode)
+		local expectedAccumulatorDelta = estimatedWindowDamage * math.max(0, 1 - currentResistance) * resistanceGainMult
 		local projectedResistance = ScoringEngine.ProjectResistance(
 			resistance,
-			estimatedWindowDamage,
+			expectedAccumulatorDelta,
 			bossInfo.aliveMaxHealth,
 			bossInfo.resistanceCap
 		)
-		local currentResistance = ScoringEngine.EffectiveResistance(resistancePercent, bossInfo.staggerActive, bossInfo.mode)
 		local marginalResistance = ScoringEngine.EffectiveResistance((resistancePercent + projectedResistance) * 0.5, bossInfo.staggerActive, bossInfo.mode)
 		local currentDamage = estimatedBaseDamage * math.max(0, 1 - currentResistance)
 		local marginalDamage = estimatedBaseDamage * math.max(0, 1 - marginalResistance)
 		local counts = countsByDef[defID] or {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = 0, teams = {}}
 		local knowledge = knowledgeByDef[defID]
-		local availabilityLabel, availabilityRank = availabilityFor(candidate)
 		local historyAverage = safeNumber(knowledge and knowledge.averageScore, 0)
 		local historySamples = safeNumber(knowledge and knowledge.samples, 0)
 		local estimatedDamagePerCost = safeDivide(safeNumber(candidate.estimatedDps, 0), scoreCostMetalEq)
@@ -1093,8 +1109,6 @@ function ScoringEngine.BuildRows(input)
 			marginalDamagePerMetalEq = marginalDamage / scoreCostMetalEq,
 			liveContributionPerMetalEq = recentWindowDamage > 0 and recentWindowDamage / scoreCostMetalEq or 0,
 			confidence = confidenceFor(candidate, recentWindowDamage, knowledge),
-			availabilityLabel = availabilityLabel,
-			availabilityRank = availabilityRank,
 			teamSort = teamSort,
 			historyAverage = historyAverage,
 			historySamples = historySamples,
@@ -1267,6 +1281,7 @@ local Modules = {
 	BossInfoAdapter = BossInfoAdapter,
 	UnitCatalog = UnitCatalog,
 	EngagementTracker = EngagementTracker,
+	ResistanceSampler = ResistanceSampler,
 	ScoringEngine = ScoringEngine,
 	KnowledgeStore = KnowledgeStore,
 	_helpers = {
@@ -1359,11 +1374,12 @@ local widgetHeight = PANEL_DEFAULT_HEIGHT
 local activeTab = 'units'
 local rowPage = 1
 local currentPageCount = 1
-local availabilityMode = 'owned'
+local availabilityMode = 'match'
 local sortKey = 'marginalDamagePerMetalEq'
 local sortAscending = false
 local energyPerMetal = DEFAULT_ENERGY_PER_METAL
 local costMode = 'full'
+local requireHistory = false
 local tableFontScale = TABLE_FONT_DEFAULT_SCALE
 local myTeamID
 local sourceTeamID
@@ -1374,11 +1390,15 @@ local fullView = false
 local tracker = EngagementTracker.New()
 local catalog = {candidates = {}, sourceByBuilt = {}}
 local catalogBuilt = false
+local catalogArmorTypeIndex
+local cachedBossArmorTypeIndex
 local cachedHasMeaningfulWater
+local spawnDefsConfig
 local bossInfo = BossInfoAdapter.Normalize(nil, {})
-local resistanceLast = {}
+local resistanceSampler = ResistanceSampler.New(SCORE_WINDOW_SECONDS)
 local resistanceSamples = {}
 local knowledgeStore = KnowledgeStore.New()
+local knowledgeLastSampleFrame = {}
 
 local function configKey(suffix)
 	return 'BossKillerPlanner_' .. suffix
@@ -1474,6 +1494,7 @@ local function loadConfig()
 	if costMode ~= 'build' and costMode ~= 'full' then
 		costMode = 'full'
 	end
+	requireHistory = spGetConfigString(configKey('RequireHistory'), 'false') == 'true'
 	tableFontScale = clampTableFontScale(spGetConfigString(configKey('TableFontScale'), tostring(TABLE_FONT_DEFAULT_SCALE)))
 	clampWindowStateToViewport()
 end
@@ -1485,6 +1506,7 @@ local function saveConfig()
 	spSetConfigString(configKey('SortAscending'), tostring(sortAscending))
 	spSetConfigString(configKey('EnergyPerMetal'), tostring(energyPerMetal))
 	spSetConfigString(configKey('CostMode'), costMode)
+	spSetConfigString(configKey('RequireHistory'), tostring(requireHistory))
 	spSetConfigString(configKey('TableFontScale'), tostring(tableFontScale))
 end
 
@@ -1522,8 +1544,10 @@ updateDocumentPosition = function()
 	clampWindowStateToViewport()
 	panel.style.left = widgetPosX .. 'px'
 	panel.style.top = widgetPosY .. 'px'
-	panel.style.width = widgetWidth .. 'dp'
-	panel.style.height = widgetHeight .. 'dp'
+	-- px throughout: offset_width/absolute_left report px, so writing dp here
+	-- would rescale the panel by the dp ratio on every drag end
+	panel.style.width = widgetWidth .. 'px'
+	panel.style.height = widgetHeight .. 'px'
 end
 
 applyTableFontScale = function()
@@ -1672,18 +1696,92 @@ local function bossPositions()
 	return result
 end
 
-local function updateResistanceSamples(newBossInfo)
-	for defID, resistance in pairs(newBossInfo.resistances or {}) do
-		local previous = resistanceLast[defID]
-		if previous ~= nil then
-			resistanceSamples[defID] = math.max(0, resistance.damage - previous)
+-- One independent knowledge observation per unit def per score window.
+-- Runs on the data path so rendering stays free of persistence side effects
+local function sampleKnowledge()
+	if bossInfo.bossCount <= 0 then
+		return
+	end
+	local frame = spGetGameFrame()
+	local minGapFrames = SCORE_WINDOW_SECONDS * GAME_FRAMES_PER_SECOND
+	for defID, windowDamage in pairs(resistanceSamples) do
+		local candidate = catalog.candidates[defID]
+		if candidate and windowDamage > 0 then
+			local lastFrame = knowledgeLastSampleFrame[defID]
+			if not lastFrame or frame - lastFrame >= minGapFrames then
+				knowledgeLastSampleFrame[defID] = frame
+				local scoreCostMetalEq = math.max(1, (ScoringEngine.ScoreCost(candidate, energyPerMetal, costMode, SCORE_WINDOW_SECONDS)))
+				local resistance = bossInfo.resistances[defID]
+				KnowledgeStore.Merge(knowledgeStore, bossInfo.mode, bossInfo.difficulty, candidate, {
+					score = windowDamage / scoreCostMetalEq,
+					costMode = costMode,
+					energyPerMetal = energyPerMetal,
+					scoreWindowSeconds = SCORE_WINDOW_SECONDS,
+					resistancePercent = safeNumber(resistance and resistance.percent, 0),
+					scoreCostMetalEq = scoreCostMetalEq,
+					operatingMetalEqPerSecond = ScoringEngine.OperatingMetalEquivalentPerSecond(candidate, energyPerMetal),
+				})
+			end
 		end
-		resistanceLast[defID] = resistance.damage
 	end
 end
 
-local function catalogNeedsRebuild()
+-- Difficulty-selected config of the boss gadget (queenName/bossName, resistance mult)
+local function loadSpawnDefsConfig()
+	if spawnDefsConfig ~= nil then
+		return spawnDefsConfig or nil
+	end
+	local path = isRaptors and 'LuaRules/Configs/raptor_spawn_defs.lua' or 'LuaRules/Configs/scav_spawn_defs.lua'
+	local ok, config = pcall(VFS.Include, path)
+	spawnDefsConfig = (ok and type(config) == 'table') and config or false
+	return spawnDefsConfig or nil
+end
+
+-- 5x is the gadget's fixed accumulator factor. Endless-mode ramping
+-- (+0.5 mult per difficulty cycle) is not tracked
+local function resistanceGainMult()
+	local config = loadSpawnDefsConfig()
+	local difficultyMult = safeNumber(config and (config.queenResistanceMult or config.bossResistanceMult), 1)
+	return 5 * math.max(0.1, difficultyMult)
+end
+
+-- Armor type of the boss unit def; damage estimates read this armor class.
+-- Live bosses are the fallback when the config def name is missing.
+local function resolveBossArmorTypeIndex()
+	if cachedBossArmorTypeIndex ~= nil then
+		return cachedBossArmorTypeIndex
+	end
+
+	local config = loadSpawnDefsConfig()
+	local bossDefName = config and (config.queenName or config.bossName)
+	if not bossDefName then
+		bossDefName = isRaptors and ('raptor_queen_' .. tostring(modOptions.raptor_difficulty))
+			or ('scavengerbossv4_' .. tostring(modOptions.scav_difficulty) .. '_scav')
+	end
+	local bossDef = UnitDefNames[bossDefName]
+	if bossDef and bossDef.armorType then
+		cachedBossArmorTypeIndex = bossDef.armorType
+		return cachedBossArmorTypeIndex
+	end
+
+	for _, unitID in ipairs(bossInfo.aliveBossIDs or {}) do
+		local defID = spGetUnitDefID(unitID)
+		local unitDef = defID and UnitDefs[defID]
+		if unitDef and unitDef.armorType then
+			cachedBossArmorTypeIndex = unitDef.armorType
+			return cachedBossArmorTypeIndex
+		end
+	end
+
+	return nil
+end
+
+local function catalogNeedsRebuild(bossArmorType)
 	if not catalogBuilt then
+		return true
+	end
+
+	if catalogArmorTypeIndex ~= bossArmorType then
 		return true
 	end
 
@@ -1708,7 +1806,8 @@ local function buildCatalogWithOwnedSources()
 		unitDefNames = UnitDefNames,
 		sourceTeamID = sourceTeamID,
 	})
-	if catalogNeedsRebuild() then
+	local bossArmorType = resolveBossArmorTypeIndex()
+	if catalogNeedsRebuild(bossArmorType) then
 		if cachedHasMeaningfulWater == nil then
 			cachedHasMeaningfulWater = hasMeaningfulWater()
 		end
@@ -1719,7 +1818,9 @@ local function buildCatalogWithOwnedSources()
 			resistanceMap = bossInfo.resistances,
 			hasMeaningfulWater = cachedHasMeaningfulWater,
 			ownedSourceDefIDs = ownedSourceDefIDs,
+			bossArmorTypeIndex = bossArmorType,
 		})
+		catalogArmorTypeIndex = bossArmorType
 		catalogBuilt = true
 		return
 	end
@@ -1727,8 +1828,10 @@ local function buildCatalogWithOwnedSources()
 	applyOwnedSourceFlags(ownedSourceDefIDs)
 end
 
+local confidenceLetters = {high = 'H', med = 'M', low = 'L'}
+
 local function presentationRow(row)
-	local history = '-'
+	local history = ''
 	if (row.historySamples or 0) > 0 then
 		history = formatSI(row.historyAverage) .. '/' .. tostring(row.historySamples)
 	end
@@ -1736,27 +1839,20 @@ local function presentationRow(row)
 	if row.preBossSortSource and row.preBossSortSource ~= '' then
 		preBoss = row.preBossSortSource .. ' ' .. formatSI(row.preBossSortScore)
 	end
-	local counts = row.counts or {}
-	local teamCell = presentTeamCell(counts)
+	local teamCell = presentTeamCell(row.counts or {})
 	return {
-		def_id = row.defID,
 		name = row.name,
 		icon = row.icon,
 		source = row.sourceLabel,
 		source_tooltip = row.sourceLabel ~= '' and row.sourceLabel or 'No source path found',
-		availability = row.availabilityLabel,
-		resistance = string.format('%.0f%%', row.resistancePercent * 100),
-		resistance_value = row.resistancePercent,
+		resistance = tostring(round(row.resistancePercent * 100)) .. '%',
+		projected = tostring(round(row.projectedResistancePercent * 100)) .. '%',
 		resistance_damage = formatSI(row.resistanceDamage),
-		projected = string.format('%.0f%%', row.projectedResistancePercent * 100),
 		score = formatSI(row.marginalDamagePerMetalEq),
 		live_score = row.liveContributionPerMetalEq > 0 and formatSI(row.liveContributionPerMetalEq) or '',
+		conf = confidenceLetters[row.confidence] or '',
 		cost = formatSI(row.scoreCostMetalEq),
-		build_cost = formatSI(row.metalEq),
-		operating_cost = row.operatingMetalEqPerSecond > 0 and (formatSI(row.operatingMetalEqPerSecond) .. '/s') or '-',
-		operating_window_cost = row.operatingWindowMetalEq > 0 and formatSI(row.operatingWindowMetalEq) or '-',
-		build_time = formatSI(row.buildTime),
-		confidence = row.confidence,
+		operating_cost = row.operatingMetalEqPerSecond > 0 and (formatSI(row.operatingMetalEqPerSecond) .. '/s') or '',
 		history = history,
 		history_tooltip = string.format(
 			'Avg %s | Last %s | Best %s | Samples %d | Pre-boss %s | Confidence %s',
@@ -1770,9 +1866,6 @@ local function presentationRow(row)
 		team_label = teamCell.label,
 		team_color = teamCell.color,
 		team_tooltip = teamCell.tooltip,
-		ready_alive = tostring(counts.ready or 0) .. '/' .. tostring(counts.alive or 0),
-		building = tostring(counts.building or 0),
-		queued = tostring(counts.queuedOwn or 0),
 	}
 end
 
@@ -1819,12 +1912,14 @@ local function buildRows()
 	buildCatalogWithOwnedSources()
 	local filteredCandidates = UnitCatalog.ApplyAvailability(catalog.candidates, availabilityMode)
 	local teamInfo = collectTeamInfo()
+	-- Counts run on the full catalog so the Teams tab reports allies' units
+	-- even when the availability filter hides them from the Units tab
 	local countsByDef, teamRows = EngagementTracker.BuildCounts(tracker, {
 		unitDefs = UnitDefs,
 		unitDefNames = UnitDefNames,
 		bossPositions = bossPositions(),
 		getUnitPosition = spGetUnitPosition,
-		candidateMap = filteredCandidates,
+		candidateMap = catalog.candidates,
 		teamInfo = teamInfo,
 		sourceTeamID = sourceTeamID,
 	})
@@ -1837,8 +1932,19 @@ local function buildRows()
 		knowledgeByDef = KnowledgeStore.ByDefID(knowledgeStore, catalog, bossInfo.mode, bossInfo.difficulty),
 		energyPerMetal = energyPerMetal,
 		costMode = costMode,
-		sampleWindowSeconds = BOSS_INFO_FREQUENCY / GAME_FRAMES_PER_SECOND,
+		sampleWindowSeconds = SCORE_WINDOW_SECONDS,
+		resistanceGainMult = resistanceGainMult(),
 	})
+
+	if requireHistory then
+		local backedRows = {}
+		for i = 1, #rows do
+			if (rows[i].historySamples or 0) > 0 then
+				backedRows[#backedRows + 1] = rows[i]
+			end
+		end
+		rows = backedRows
+	end
 
 	local pageInfo = currentPageInfo(#rows, RANKED_ROW_LIMIT)
 	local unitRows = {}
@@ -1884,17 +1990,20 @@ local function buildRows()
 			return a.damage > b.damage
 		end)
 
-		for _, row in ipairs(rows) do
-			for _, teamCounts in pairs(row.counts.teams or {}) do
-				for _, team in ipairs(teamList) do
-					if team.teamID == teamCounts.teamID then
-						team.units[#team.units + 1] = {
-							name = row.name,
-							icon = row.icon,
-							ready_alive = tostring(teamCounts.ready) .. '/' .. tostring(teamCounts.alive),
-							building = tostring(teamCounts.building),
-						}
-						break
+		for defID, defCounts in pairs(countsByDef) do
+			local candidate = catalog.candidates[defID]
+			if candidate then
+				for _, teamCounts in pairs(defCounts.teams or {}) do
+					for _, team in ipairs(teamList) do
+						if team.teamID == teamCounts.teamID then
+							team.units[#team.units + 1] = {
+								name = candidate.displayName,
+								icon = candidate.icon,
+								ready_alive = tostring(teamCounts.ready) .. '/' .. tostring(teamCounts.alive),
+								building = tostring(teamCounts.building),
+							}
+							break
+						end
 					end
 				end
 			end
@@ -1912,39 +2021,24 @@ local function buildRows()
 		}
 	end
 
-	for _, row in ipairs(rows) do
-		local candidate = catalog.candidates[row.defID]
-		if candidate and row.liveContributionPerMetalEq > 0 then
-			KnowledgeStore.Merge(knowledgeStore, bossInfo.mode, bossInfo.difficulty, candidate, {
-				score = row.liveContributionPerMetalEq,
-				costMode = costMode,
-				energyPerMetal = energyPerMetal,
-				scoreWindowSeconds = SCORE_WINDOW_SECONDS,
-				resistancePercent = row.resistancePercent,
-				scoreCostMetalEq = row.scoreCostMetalEq,
-				operatingMetalEqPerSecond = row.operatingMetalEqPerSecond,
-			})
-		end
-	end
-
 	return unitRows, teamList, #rows > 0, pageInfo, sortInfo
 end
 
 local availabilityLabels = {
-	match = 'Match Viable',
+	match = 'Buildable by lobby',
 	map = 'Map Viable',
-	owned = 'Buildable',
+	owned = 'Buildable by player',
 	all = 'All Known',
 }
 
 local sortLabels = {
 	name = 'Unit',
 	sourceLabel = 'Source',
-	availabilityRank = 'Avail',
 	marginalDamagePerMetalEq = 'Marginal',
 	currentDamagePerMetalEq = 'Current',
 	liveContributionPerMetalEq = 'Live',
 	resistancePercent = 'Resist',
+	projectedResistancePercent = 'Proj',
 	resistanceDamage = 'Damage',
 	scoreCostMetalEq = 'Cost',
 	operatingMetalEqPerSecond = 'Use/s',
@@ -1955,8 +2049,8 @@ local sortLabels = {
 local defaultSortAscending = {
 	name = true,
 	sourceLabel = true,
-	availabilityRank = true,
 	resistancePercent = true,
+	projectedResistancePercent = true,
 	scoreCostMetalEq = true,
 	operatingMetalEqPerSecond = true,
 }
@@ -1964,8 +2058,8 @@ local defaultSortAscending = {
 local validSortKeys = {
 	name = true,
 	sourceLabel = true,
-	availabilityRank = true,
 	resistancePercent = true,
+	projectedResistancePercent = true,
 	resistanceDamage = true,
 	marginalDamagePerMetalEq = true,
 	currentDamagePerMetalEq = true,
@@ -2007,6 +2101,7 @@ local function updateRmlData()
 	dm_handle.is_teams = activeTab == 'teams'
 	dm_handle.status_text = statusText
 	dm_handle.availability_label = availabilityLabels[availabilityMode] or availabilityMode
+	dm_handle.history_filter_label = requireHistory and 'Has Hist' or 'Any Hist'
 	dm_handle.sort_label = sortInfo.fallback and 'Pre-boss estimate' or (sortLabels[sortKey] or sortKey)
 	dm_handle.sort_direction = sortInfo.ascending and 'Asc' or 'Desc'
 	dm_handle.energy_per_metal = tostring(energyPerMetal)
@@ -2050,7 +2145,8 @@ local function refreshBossInfo()
 		isScavengers = isScavengers,
 		modOptions = modOptions,
 	})
-	updateResistanceSamples(nextBossInfo)
+	ResistanceSampler.Update(resistanceSampler, nextBossInfo.resistances, spGetGameFrame() / GAME_FRAMES_PER_SECOND)
+	resistanceSamples = ResistanceSampler.WindowDamages(resistanceSampler)
 	bossInfo = nextBossInfo
 end
 
@@ -2076,6 +2172,7 @@ function widget:Initialize()
 		is_teams = activeTab == 'teams',
 		status_text = 'Starting...',
 		availability_label = availabilityLabels[availabilityMode],
+		history_filter_label = requireHistory and 'Has Hist' or 'Any Hist',
 		sort_label = sortLabels[sortKey],
 		sort_direction = 'Desc',
 		energy_per_metal = tostring(energyPerMetal),
@@ -2154,6 +2251,7 @@ function widget:GameFrame()
 	if frameCounter >= BOSS_INFO_FREQUENCY then
 		frameCounter = 0
 		refreshBossInfo()
+		sampleKnowledge()
 		markDataDirty(false)
 	end
 end
@@ -2293,6 +2391,13 @@ end
 
 function widget:ToggleCostMode()
 	costMode = costMode == 'full' and 'build' or 'full'
+	resetRowPage()
+	markDataDirty(true)
+	saveConfig()
+end
+
+function widget:ToggleHistoryFilter()
+	requireHistory = not requireHistory
 	resetRowPage()
 	markDataDirty(true)
 	saveConfig()
