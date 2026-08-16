@@ -198,4 +198,15 @@ do
   print('  [PASS] Same and descending levels are rejected; ascending levels are allowed cross-faction')
 end
 
+-- Test 7: Base Builder is identified by display name and never replaced
+print('Test 7: Protected display names')
+do
+  assertTrue(replacementPolicy.isProtectedHumanName('Base Builder'), 'Base Builder should be protected')
+  assertFalse(replacementPolicy.isProtectedHumanName('Construction Turret'), 'Ordinary nanos should not be protected by display name')
+  assertFalse(replacementPolicy.isProtectedHumanName('base builder'), 'Display name match should be exact')
+  assertFalse(replacementPolicy.isProtectedHumanName(nil), 'nil display names should not match')
+
+  print('  [PASS] Base Builder display name is protected')
+end
+
 print('\n=== All tests passed! ===')

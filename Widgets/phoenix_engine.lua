@@ -172,8 +172,13 @@ end
 -- Preserve evolving-family placement rules. Fusion and converter yardmaps
 -- enforce their upgrade ladders. Yardmap-free evnano variants use the
 -- directional replacement policy in canReplaceUnit instead.
+-- Display-name matches (e.g. Base Builder) cover tweak-injected units whose
+-- unitdef names are not stable.
 for uDefID, uDef in pairs(UnitDefs) do
-	if replacementPolicy.isProtectedEvolvingUnitName(uDef.name) then
+	if
+		replacementPolicy.isProtectedEvolvingUnitName(uDef.name) or
+			replacementPolicy.isProtectedHumanName(uDef.translatedHumanName)
+	 then
 		NEVER_RECLAIMABLE_UNITDEF_IDS[uDefID] = true
 	end
 end

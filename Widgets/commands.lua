@@ -13,6 +13,8 @@ end
 VFS.Include('LuaUI/Widgets/helpers.lua')
 VFS.Include('luaui/Headers/keysym.h.lua')
 
+local Json = Json or VFS.Include('common/luaUtilities/json.lua')
+
 local selectPrios = {
 	'ack_scav',
 	'ack',
@@ -50,6 +52,8 @@ local immobileBuilderDefIds = {
 }
 
 local spamUnitNames = {
+	'armliche',
+	'armliche_scav',
 	'armpnix',
 	'armpnix_scav',
 	'armsb',
@@ -2158,16 +2162,75 @@ local function handleAltEKey(selectedUnitIds)
 	Spring.GiveOrderArrayToUnitArray(reclaimers, reclaimCommands)
 end
 
+-- Attack orders for all living queens/bosses, lowest health first (pveBossInfo
+-- is the same source gui_raptor_panel_aggro.lua reads)
+local function queenAttackOrders()
+	local bossInfoRaw = Spring.GetGameRulesParam('pveBossInfo')
+	if not bossInfoRaw then
+		return {}
+	end
+
+	local bossInfo = Json.decode(bossInfoRaw)
+	if not bossInfo or not bossInfo.statuses then
+		return {}
+	end
+
+	local queens = {}
+	for queenID, status in pairs(bossInfo.statuses) do
+		if not status.isDead and status.health > 0 then
+			table.insert(queens, {id = tonumber(queenID), healthFraction = status.health / status.maxHealth})
+		end
+	end
+	table.sort(
+		queens,
+		function(a, b)
+			return a.healthFraction < b.healthFraction
+		end
+	)
+
+	local orders = {}
+	for i = 1, #queens do
+		orders[i] = {CMD.ATTACK, {queens[i].id}, {'shift'}}
+	end
+	return orders
+end
+
 local function handleSpamFactories(selectedUnitIds)
 	local factories = {}
+	local factoriesWithoutQueue = {}
+	local factoryAttackOrders = {}
 	for i = 1, #selectedUnitIds do
 		local unitID = selectedUnitIds[i]
 		local def = unitDef(unitID)
 		if def.isBuilder and def.isBuilding then
 			table.insert(factories, unitID)
+
+			local queue = Spring.GetUnitCommands(unitID, 1000)
+			local attackOrders = {}
+			for j = 1, #queue do
+				local command = queue[j]
+				if command.id == CMD.ATTACK then
+					table.insert(attackOrders, {CMD.ATTACK, command.params, {'shift'}})
+				end
+			end
+			if #attackOrders > 0 then
+				factoryAttackOrders[unitID] = attackOrders
+			elseif #queue == 0 then
+				table.insert(factoriesWithoutQueue, unitID)
+			end
 		end
 	end
+
 	Spring.GiveOrderArrayToUnitArray(factories, spamUnits)
+
+	-- Attack (rally) orders differ per factory, so they can't share the spam batch
+	for factoryID, attackOrders in pairs(factoryAttackOrders) do
+		Spring.GiveOrderArrayToUnitArray({factoryID}, attackOrders)
+	end
+
+	if #factoriesWithoutQueue > 0 then
+		Spring.GiveOrderArrayToUnitArray(factoriesWithoutQueue, queenAttackOrders())
+	end
 end
 
 -- Calculate distance between chunks (last command of chunk1 to first command of chunk2)
