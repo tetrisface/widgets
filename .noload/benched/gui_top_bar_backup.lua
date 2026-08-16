@@ -11,7 +11,7 @@ function widget:GetInfo()
 	}
 end
 
-local allowSavegame = true --Spring.Utilities.ShowDevUI()
+local allowSavegame = true --BAR.Utilities.ShowDevUI()
 
 local ui_scale = tonumber(Spring.GetConfigFloat('ui_scale', 1) or 1)
 
@@ -889,8 +889,8 @@ if Spring.GetMenuName and string.find(string.lower(Spring.GetMenuName()), 'chobb
 	Spring.SendLuaMenuMsg('disableLobbyButton')
 end
 
-local numPlayers = Spring.Utilities.GetPlayerCount()
-local isSinglePlayer = Spring.Utilities.Gametype.IsSinglePlayer()
+local numPlayers = BAR.Utilities.GetPlayerCount()
+local isSinglePlayer = BAR.Utilities.Gametype.IsSinglePlayer()
 
 local isSingle = false
 if not spec then

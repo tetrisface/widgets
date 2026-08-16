@@ -49,7 +49,7 @@ local relXpos = 0.3
 local borderPadding = 5
 local bladeSpeedMultiplier = 0.2
 local escapeKeyPressesQuit = false
-local allowSavegame = true -- Spring.Utilities.ShowDevUI()
+local allowSavegame = true -- BAR.Utilities.ShowDevUI()
 local spawnWarpInFrame = Game.spawnWarpInFrame
 
 -- System
@@ -63,8 +63,8 @@ local myAllyTeamList = spGetTeamList(myAllyTeamID)
 local numTeamsInAllyTeam = #myAllyTeamList
 
 -- Game mode / state
-local numPlayers = Spring.Utilities.GetPlayerCount()
-local isSinglePlayer = Spring.Utilities.Gametype.IsSinglePlayer()
+local numPlayers = BAR.Utilities.GetPlayerCount()
+local isSinglePlayer = BAR.Utilities.Gametype.IsSinglePlayer()
 local chobbyLoaded = false
 local isSingle = false
 local gameStarted = (spGetGameFrame() > 0)

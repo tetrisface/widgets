@@ -37,7 +37,7 @@ local AUTO_DGUN_OFF = 0
 local AUTO_DGUN_STOCKPILE_MAX = 1
 local AUTO_DGUN_ALWAYS = 2
 
-local AUTO_DGUN_DEFAULT = Spring.Utilities.Gametype.IsScavengers() and AUTO_DGUN_STOCKPILE_MAX or AUTO_DGUN_OFF
+local AUTO_DGUN_DEFAULT = BAR.Utilities.Gametype.IsScavengers() and AUTO_DGUN_STOCKPILE_MAX or AUTO_DGUN_OFF
 
 local CMD_AUTO_DGUN_DESCRIPTION = {
   id = CMD_AUTO_DGUN,

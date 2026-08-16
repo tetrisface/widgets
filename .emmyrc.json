@@ -16,6 +16,7 @@
     "disable": ["duplicate-set-field"],
     "globals": [
       "Spring",
+      "BAR",
       "VFS",
       "gl",
       "GL",

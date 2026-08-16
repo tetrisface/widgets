@@ -156,11 +156,11 @@ local function hasBit(val, bit)
 	return math.floor(val / bit) % 2 == 1
 end
 
--- Spring.Utilities is game-side and has been observed missing at Initialize time
+-- BAR.Utilities is game-side and has been observed missing at Initialize time
 -- (crashed with "attempt to index field 'Utilities'"), so fall back to the same
 -- team LuaAI scan BAR's Gametype helpers use, which needs only engine API.
 local function isPveGame()
-	local gametype = Spring.Utilities and Spring.Utilities.Gametype
+	local gametype = BAR and BAR.Utilities and BAR.Utilities.Gametype
 	if gametype then
 		return gametype.IsRaptors() or gametype.IsScavengers()
 	end

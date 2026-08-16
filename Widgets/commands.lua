@@ -722,7 +722,7 @@ local function handleCheatGiveUnits()
 	Spring.SendCommands('give 1 corca')
 	Spring.SendCommands('give 1 legca')
 
-	Spring.SendCommands('give 1 corjugg 2')
+	-- Spring.SendCommands('give 1 corjugg 2')
 
 	Spring.SendCommands('give 1 armcom')
 	Spring.SendCommands('give 1 armcomlvl2')
