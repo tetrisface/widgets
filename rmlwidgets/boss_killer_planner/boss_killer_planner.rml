@@ -54,7 +54,7 @@
 					<span class="header-tooltip">Unit name. Click any header to sort by it, click again to flip the direction.</span>
 				</span>
 				<span class="h-source sortable" data-sort="sourceLabel" onclick="widget:SetSort(event)">Source
-					<span class="header-tooltip">How to get this unit: builder &gt; factory chain that leads to it.</span>
+					<span class="header-tooltip">Build path to this unit as icons; hover an icon for its name. Border: red none owned, yellow building or queued, green built. Click an icon to jump to your nearest one; if you have none it walks up the tech path to what you do own and queues the missing step at the queue front, without joining its repeat cycle.</span>
 				</span>
 				<span class="h-num sortable" data-sort="resistancePercent" onclick="widget:SetSort(event)">Res
 					<span class="header-tooltip">Boss resistance against this unit type right now. Bosses build resistance against whatever damages them, up to 95% of the damage absorbed.</span>
@@ -81,18 +81,23 @@
 					<span class="header-tooltip anchor-right">Operating cost while firing: weapon shot costs plus upkeep, in metal equivalent per second.</span>
 				</span>
 				<span class="h-team sortable" data-sort="teamSort" onclick="widget:SetSort(event)">Teams
-					<span class="header-tooltip anchor-right">Ally count as ready/alive, +N building, qN queued by you. Ready means within weapon range plus a margin of a boss; with no boss alive everything counts as ready. Hover a cell for the per-player breakdown.</span>
+					<span class="header-tooltip anchor-right">Ally count: alive, +N building, qN queued by you. Color: red none, yellow building or queued, green alive. Hover a cell for the per-player breakdown.</span>
 				</span>
 				<span class="h-hist sortable" data-sort="historyAverage" onclick="widget:SetSort(event)">Hist
 					<span class="header-tooltip anchor-right">History from your earlier games at this mode and difficulty: average Live score / number of samples. Hover a cell for details.</span>
 				</span>
 			</div>
 			<div data-for="row : unit_rows" class="unit-row unit-grid">
-				<texture class="unit-icon" data-attr-src="row.icon"/>
+				<texture class="unit-icon" data-attr-src="row.icon" data-style-border-color="row.status_color"/>
 				<span class="unit-name">{{row.name}}</span>
 				<div class="source-cell">
-					<span class="source-label">{{row.source}}</span>
-					<span class="source-tooltip">{{row.source_tooltip}}</span>
+					<div class="source-chain">
+						<div data-for="step : row.source_chain" class="source-step">
+							<span class="chevron" data-if="it_index > 0">&gt;</span>
+							<texture class="source-icon" data-attr-src="step.icon" data-style-border-color="step.color" data-attr-defid="step.def_id" onclick="widget:SourceStepClick(event)"/>
+							<span class="icon-tooltip">{{step.name}}</span>
+						</div>
+					</div>
 				</div>
 				<span class="num-cell">{{row.resistance}}</span>
 				<span class="num-cell">{{row.projected}}</span>
@@ -126,7 +131,7 @@
 					<div data-for="unit : team.units" class="team-unit">
 						<texture class="small-icon" data-attr-src="unit.icon"/>
 						<span class="team-unit-name">{{unit.name}}</span>
-						<span class="team-unit-count">{{unit.ready_alive}}</span>
+						<span class="team-unit-count">{{unit.alive}}</span>
 						<span class="team-unit-building" data-if="unit.building != '0'">+{{unit.building}}</span>
 					</div>
 				</div>

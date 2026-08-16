@@ -173,23 +173,24 @@ end
 do
 	local empty = helpers.presentTeamCell({})
 	assertEq(empty.label, '', 'empty team cell label')
-	assertEq(empty.color, '#708698', 'empty team cell color')
-	assertTrue(empty.tooltip:find('ready 0', 1, true) ~= nil, 'empty team tooltip includes ready count')
+	assertEq(empty.color, '#C86A5A', 'empty team cell is red')
+	assertTrue(empty.tooltip:find('alive 0', 1, true) ~= nil, 'empty team tooltip includes alive count')
 
 	local active = helpers.presentTeamCell({
-		ready = 2,
 		alive = 5,
-		far = 4,
 		building = 1,
 		queuedOwn = 3,
 		teams = {
-			[9] = {teamID = 9, allyTeamID = 1, name = 'Blue', ready = 1, alive = 2, building = 1, far = 1},
+			[9] = {teamID = 9, allyTeamID = 1, name = 'Blue', alive = 2, building = 1},
 		},
 	})
-	assertEq(active.label, '2/5+1 q3', 'active team cell compact label')
-	assertEq(active.color, '#E8F2F8', 'active team cell color')
+	assertEq(active.label, '5+1 q3', 'active team cell compact label')
+	assertEq(active.color, '#7ED47E', 'alive team cell is green')
 	assertTrue(active.tooltip:find('own queued 3', 1, true) ~= nil, 'active team tooltip includes queued count')
-	assertTrue(active.tooltip:find('Blue | 1/2+1 | far 1', 1, true) ~= nil, 'active team tooltip includes team breakdown')
+	assertTrue(active.tooltip:find('Blue | 2+1', 1, true) ~= nil, 'active team tooltip includes team breakdown')
+
+	local buildingOnly = helpers.presentTeamCell({alive = 0, building = 2, queuedOwn = 0, teams = {}})
+	assertEq(buildingOnly.color, '#F4C96D', 'building-only team cell is yellow')
 	print('  [PASS] team cell presentation')
 end
 
@@ -350,7 +351,10 @@ do
 	})
 
 	assertTrue(catalog.candidates[4].reachable, 'grenadier reachable')
-	assertEq(catalog.candidates[4].sourceLabel, 'Commander > BioPrinter', 'source chain')
+	assertEq(catalog.candidates[4].sourceLabel, 'Commander > BioPrinter', 'source chain label')
+	assertEq(#catalog.candidates[4].sourceChain, 2, 'source chain length')
+	assertEq(catalog.candidates[4].sourceChain[1], 1, 'source chain root def')
+	assertEq(catalog.candidates[4].sourceChain[2], 2, 'source chain immediate builder def')
 	assertFalse(catalog.candidates[5].mapViable, 'sea unit hidden on dry map')
 	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'owned')[4].name, 'grenadier', 'owned filter keeps owned source')
 	assertEq(UnitCatalog.ApplyAvailability(catalog.candidates, 'match')[6], nil, 'match filter drops unreachable')
@@ -420,30 +424,17 @@ end
 do
 	local tracker = EngagementTracker.New()
 	EngagementTracker.UpdateUnit(tracker, 200, 4, 1, true, 1)
-	local candidateMap = {[4] = {maxWeaponRange = 100}}
-	local getPos = function()
-		return 0, 0, 0
-	end
-	local noBossCounts = EngagementTracker.BuildCounts(tracker, {
+	EngagementTracker.UpdateUnit(tracker, 201, 4, 1, false, 0.4)
+	local counts = EngagementTracker.BuildCounts(tracker, {
 		unitDefs = {},
-		candidateMap = candidateMap,
-		bossPositions = {},
-		getUnitPosition = getPos,
+		candidateMap = {[4] = {}},
 		teamInfo = {},
 	})
-	assertEq(noBossCounts[4].ready, 1, 'no live boss counts unit as ready')
-	assertEq(noBossCounts[4].far, 0, 'no live boss counts nothing as far')
-
-	local farCounts = EngagementTracker.BuildCounts(tracker, {
-		unitDefs = {},
-		candidateMap = candidateMap,
-		bossPositions = {{x = 100000, z = 100000}},
-		getUnitPosition = getPos,
-		teamInfo = {},
-	})
-	assertEq(farCounts[4].ready, 0, 'distant boss counts unit as not ready')
-	assertEq(farCounts[4].far, 1, 'distant boss counts unit as far')
-	print('  [PASS] readiness counts')
+	assertEq(counts[4].alive, 1, 'finished unit counts alive')
+	assertEq(counts[4].building, 1, 'unfinished unit counts building')
+	assertEq(counts[4].teams[1].alive, 1, 'team alive count')
+	assertEq(counts[4].teams[1].building, 1, 'team building count')
+	print('  [PASS] unit counts')
 end
 
 do
@@ -484,6 +475,28 @@ do
 	runtimeWeaponDefs[14] = {reload = 1, paralyzer = true, damages = {[0] = 1000}}
 	local empUnit = {weapons = {{weaponDef = 14}}}
 	assertNear(UnitCatalog.EstimateDps(empUnit, runtimeWeaponDefs), 0, 0.0001, 'paralyzer weapons contribute no boss damage')
+
+	runtimeWeaponDefs[15] = {reload = 2, energyCost = 5000, damages = {[0] = 30000}}
+	local kamikazeUnit = {canKamikaze = true, weapons = {{weaponDef = 15}}}
+	assertNear(UnitCatalog.EstimateDps(kamikazeUnit, runtimeWeaponDefs), 1000, 0.0001, 'kamikaze blast priced once per score window')
+	assertNear(UnitCatalog.EstimateOperatingCost(kamikazeUnit, runtimeWeaponDefs).fireEnergyPerSecond, 0, 0.0001, 'kamikaze pays no per-shot costs')
+
+	runtimeWeaponDefs[16] = {reload = 0.1, damages = {[0] = 1000}, customParams = {bogus = '1'}}
+	local bogusOnlyUnit = {weapons = {{weaponDef = 16}}}
+	assertNear(UnitCatalog.EstimateDps(bogusOnlyUnit, runtimeWeaponDefs), 0, 0.0001, 'bogus dummy weapons contribute no damage')
+
+	local weaponDefNames = {crawl_blast = {damages = {[0] = 2400}}}
+	local crawlingBomb = {
+		customParams = {instantselfd = 'true'},
+		selfDExplosion = 'crawl_blast',
+		weapons = {{weaponDef = 16}},
+	}
+	assertNear(
+		UnitCatalog.EstimateDps(crawlingBomb, runtimeWeaponDefs, nil, weaponDefNames),
+		80,
+		0.0001,
+		'crawling bomb priced by selfD blast once per score window'
+	)
 
 	local disintegrator = {weapons = {{weaponDef = 21}}}
 	local operating = UnitCatalog.EstimateOperatingCost(disintegrator, runtimeWeaponDefs)

@@ -4,8 +4,6 @@ local RML_PATH = 'luaui/rmlwidgets/boss_killer_planner/boss_killer_planner.rml'
 local BOSS_INFO_FREQUENCY = 90
 local QUEUE_SCAN_FREQUENCY = 300
 local RML_UPDATE_FREQUENCY = 90
-local READY_MARGIN = 700
-local DEFAULT_READY_RADIUS = 1800
 local DEFAULT_ENERGY_PER_METAL = 70
 local SCORE_WINDOW_SECONDS = 30
 local GAME_FRAMES_PER_SECOND = 30
@@ -22,8 +20,9 @@ local TABLE_FONT_BASE_DP = 12
 local TABLE_FONT_DEFAULT_SCALE = 1
 local TABLE_FONT_MIN_SCALE = 0.75
 local TABLE_FONT_MAX_SCALE = 1.35
-local TEAM_CELL_EMPTY_COLOR = '#708698'
-local TEAM_CELL_ACTIVE_COLOR = '#E8F2F8'
+local STATUS_NONE_COLOR = '#C86A5A'
+local STATUS_BUILDING_COLOR = '#F4C96D'
+local STATUS_DONE_COLOR = '#7ED47E'
 
 --------------------------------------------------------------------------------
 -- Pure helpers
@@ -183,30 +182,22 @@ end
 
 local function presentTeamCell(counts)
 	counts = counts or {}
-	local ready = safeNumber(counts.ready, 0)
 	local alive = safeNumber(counts.alive, 0)
-	local far = safeNumber(counts.far, 0)
 	local building = safeNumber(counts.building, 0)
 	local queuedOwn = safeNumber(counts.queuedOwn, 0)
 	local tooltip = {
-		string.format(
-			'Allyteam total | ready %d | far %d | building %d | own queued %d',
-			ready,
-			far,
-			building,
-			queuedOwn
-		),
+		string.format('Allyteam total | alive %d | building %d | own queued %d', alive, building, queuedOwn),
 	}
 
 	if alive + building + queuedOwn <= 0 then
 		return {
 			label = '',
-			color = TEAM_CELL_EMPTY_COLOR,
+			color = STATUS_NONE_COLOR,
 			tooltip = tooltip[1],
 		}
 	end
 
-	local label = tostring(ready) .. '/' .. tostring(alive)
+	local label = tostring(alive)
 	if building > 0 then
 		label = label .. '+' .. tostring(building)
 	end
@@ -221,19 +212,18 @@ local function presentTeamCell(counts)
 		return (a.allyTeamID or 0) < (b.allyTeamID or 0)
 	end)
 	for _, row in ipairs(teamCounts) do
-		local teamReady = safeNumber(row.ready, 0)
 		local teamAlive = safeNumber(row.alive, 0)
 		local teamBuilding = safeNumber(row.building, 0)
-		local teamLabel = tostring(teamReady) .. '/' .. tostring(teamAlive)
+		local teamLabel = tostring(teamAlive)
 		if teamBuilding > 0 then
 			teamLabel = teamLabel .. '+' .. tostring(teamBuilding)
 		end
-		tooltip[#tooltip + 1] = (row.name or ('Team ' .. tostring(row.teamID or '?'))) .. ' | ' .. teamLabel .. ' | far ' .. tostring(safeNumber(row.far, 0))
+		tooltip[#tooltip + 1] = (row.name or ('Team ' .. tostring(row.teamID or '?'))) .. ' | ' .. teamLabel
 	end
 
 	return {
 		label = label,
-		color = TEAM_CELL_ACTIVE_COLOR,
+		color = alive > 0 and STATUS_DONE_COLOR or STATUS_BUILDING_COLOR,
 		tooltip = table.concat(tooltip, '\n'),
 	}
 end
@@ -421,9 +411,13 @@ end
 
 -- Runtime WeaponDefs[id].damages is indexed by armor type ID (0 = default);
 -- armorTypeIndex selects the boss armor class when known. Paralyzer damages
--- are stun values, not HP damage, so EMP weapons contribute nothing
+-- are stun values and bogus weapons are targeting dummies; neither hurts a boss
 local function weaponDamageVsArmor(weaponDef, armorTypeIndex)
 	if not weaponDef or weaponDef.paralyzer then
+		return 0
+	end
+	local customParams = weaponDef.customParams or weaponDef.customparams
+	if customParams and customParams.bogus then
 		return 0
 	end
 	local damages = weaponDef.damages
@@ -517,9 +511,37 @@ local function weaponShotsPerCycle(weaponDef)
 	return math.max(1, safeNumber(weaponDef.salvoSize, 1)) * math.max(1, safeNumber(weaponDef.projectiles, 1))
 end
 
-function UnitCatalog.EstimateDps(unitDef, weaponDefs, armorTypeIndex)
+-- Engine kamikaze units set canKamikaze; BAR crawling bombs instead mark
+-- customparams.instantselfd and detonate via self-destruct through a gadget
+local function isSuicideUnit(unitDef)
+	if unitDef.canKamikaze then
+		return true
+	end
+	local customParams = unitDef.customParams or unitDef.customparams or {}
+	local instantSelfD = customParams.instantselfd
+	return instantSelfD ~= nil and instantSelfD ~= false and instantSelfD ~= 'false' and instantSelfD ~= '0'
+end
+
+function UnitCatalog.EstimateDps(unitDef, weaponDefs, armorTypeIndex, weaponDefNames)
 	if not unitDef then
 		return 0
+	end
+
+	-- Suicide units deliver one blast and die: price the self-destruct
+	-- explosion (or best real weapon) once per score window
+	if isSuicideUnit(unitDef) then
+		local blast = 0
+		local blastDef = weaponDefNames and unitDef.selfDExplosion and weaponDefNames[unitDef.selfDExplosion]
+		if blastDef then
+			blast = weaponDamageVsArmor(blastDef, armorTypeIndex)
+		end
+		for _, weapon in ipairs(unitDef.weapons or {}) do
+			local damage = weaponDamageVsArmor(resolveWeaponDef(weapon, weaponDefs), armorTypeIndex)
+			if damage > blast then
+				blast = damage
+			end
+		end
+		return blast / SCORE_WINDOW_SECONDS
 	end
 
 	local total = 0
@@ -567,8 +589,11 @@ function UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs, armorTypeIndex)
 	totals.upkeepMetalPerSecond = totals.upkeepMetalPerSecond + safeNumber(getUnitDefField(unitDef, 'metalUse', 'metaluse', 0), 0)
 	totals.upkeepEnergyPerSecond = totals.upkeepEnergyPerSecond + safeNumber(getUnitDefField(unitDef, 'energyUse', 'energyuse', 0), 0)
 
-	for _, weapon in ipairs(unitDef.weapons or {}) do
-		addWeaponOperatingCost(totals, resolveWeaponDef(weapon, weaponDefs), armorTypeIndex)
+	-- Suicide units pay no per-shot costs; their cost is the unit itself
+	if not isSuicideUnit(unitDef) then
+		for _, weapon in ipairs(unitDef.weapons or {}) do
+			addWeaponOperatingCost(totals, resolveWeaponDef(weapon, weaponDefs), armorTypeIndex)
+		end
 	end
 
 	totals.metalPerSecond = totals.fireMetalPerSecond + totals.upkeepMetalPerSecond
@@ -622,36 +647,42 @@ local function addBuildOptionClosure(rootDefID, ownedSourceDefIDs, env, visited)
 	end
 end
 
-local function buildSourceLabel(defID, sourceByBuilt, unitDefs, depth, visited)
-	depth = depth or 0
-	visited = visited or {}
-	if visited[defID] or depth > 2 then
-		return ''
-	end
-	visited[defID] = true
-
-	local sources = sourceByBuilt[defID]
-	if not sources or #sources == 0 then
-		return ''
-	end
-
-	table.sort(sources, function(a, b)
-		local ad = unitDefs[a]
-		local bd = unitDefs[b]
-		if ad and bd and ad.isFactory ~= bd.isFactory then
-			return ad.isFactory == true
+-- Preferred build path to a unit: array of def IDs from tech root to the
+-- immediate builder (max 3 hops, factories preferred at each step)
+local function buildSourceChain(defID, sourceByBuilt, unitDefs)
+	local chain = {}
+	local visited = {[defID] = true}
+	local currentDefID = defID
+	for _ = 1, 3 do
+		local sources = sourceByBuilt[currentDefID]
+		if not sources or #sources == 0 then
+			break
 		end
-		return unitDisplayName(ad) < unitDisplayName(bd)
-	end)
-
-	local sourceDefID = sources[1]
-	local sourceDef = unitDefs[sourceDefID]
-	local sourceName = unitDisplayName(sourceDef)
-	local parent = buildSourceLabel(sourceDefID, sourceByBuilt, unitDefs, depth + 1, visited)
-	if parent ~= '' then
-		return parent .. ' > ' .. sourceName
+		table.sort(sources, function(a, b)
+			local ad = unitDefs[a]
+			local bd = unitDefs[b]
+			if ad and bd and ad.isFactory ~= bd.isFactory then
+				return ad.isFactory == true
+			end
+			return unitDisplayName(ad) < unitDisplayName(bd)
+		end)
+		local sourceDefID = sources[1]
+		if visited[sourceDefID] then
+			break
+		end
+		visited[sourceDefID] = true
+		table.insert(chain, 1, sourceDefID)
+		currentDefID = sourceDefID
 	end
-	return sourceName
+	return chain
+end
+
+local function sourceChainLabel(chain, unitDefs)
+	local names = {}
+	for i = 1, #chain do
+		names[i] = unitDisplayName(unitDefs[chain[i]])
+	end
+	return table.concat(names, ' > ')
 end
 
 function UnitCatalog.Build(env)
@@ -659,6 +690,7 @@ function UnitCatalog.Build(env)
 	local unitDefs = env.unitDefs or {}
 	local unitDefNames = env.unitDefNames or {}
 	local weaponDefs = env.weaponDefs or {}
+	local weaponDefNames = env.weaponDefNames or {}
 	local resistanceMap = env.resistanceMap or {}
 	local hasMeaningfulWater = env.hasMeaningfulWater ~= false
 	local bossArmorTypeIndex = env.bossArmorTypeIndex
@@ -689,6 +721,7 @@ function UnitCatalog.Build(env)
 			local reachable = sourceByBuilt[numericDefID] ~= nil
 			local seaOnly = isSeaOnly(unitDef)
 			local operatingCost = UnitCatalog.EstimateOperatingCost(unitDef, weaponDefs, bossArmorTypeIndex)
+			local sourceChain = buildSourceChain(numericDefID, sourceByBuilt, unitDefs)
 			candidates[numericDefID] = {
 				defID = numericDefID,
 				name = unitDef.name or unitDef.unitname or tostring(numericDefID),
@@ -698,7 +731,7 @@ function UnitCatalog.Build(env)
 				energyCost = energyCost,
 				buildTime = buildTime,
 				maxWeaponRange = getWeaponRange(unitDef, weaponDefs),
-				estimatedDps = UnitCatalog.EstimateDps(unitDef, weaponDefs, bossArmorTypeIndex),
+				estimatedDps = UnitCatalog.EstimateDps(unitDef, weaponDefs, bossArmorTypeIndex, weaponDefNames),
 				fireMetalPerSecond = operatingCost.fireMetalPerSecond,
 				fireEnergyPerSecond = operatingCost.fireEnergyPerSecond,
 				upkeepMetalPerSecond = operatingCost.upkeepMetalPerSecond,
@@ -710,7 +743,8 @@ function UnitCatalog.Build(env)
 				mapViable = (not seaOnly) or hasMeaningfulWater,
 				seaOnly = seaOnly,
 				ownedSource = ownedSourceDefIDs[numericDefID] == true,
-				sourceLabel = buildSourceLabel(numericDefID, sourceByBuilt, unitDefs),
+				sourceChain = sourceChain,
+				sourceLabel = sourceChainLabel(sourceChain, unitDefs),
 				isBuilder = isBuilderOrFactory(unitDef),
 			}
 		end
@@ -803,11 +837,7 @@ end
 
 function EngagementTracker.BuildCounts(tracker, env)
 	env = env or {}
-	local unitDefs = env.unitDefs or {}
-	local unitDefNames = env.unitDefNames or {}
-	local bossPositions = env.bossPositions or {}
 	local teamInfo = env.teamInfo or {}
-	local getUnitPosition = env.getUnitPosition
 	local candidateMap = env.candidateMap or {}
 	local queuedOwn = tracker.queuedOwn or {}
 
@@ -815,14 +845,12 @@ function EngagementTracker.BuildCounts(tracker, env)
 	local teamRowsByTeam = {}
 	local ownedSourceDefIDs = EngagementTracker.OwnedSourceDefIDs(tracker, env)
 
-	for unitID, unit in pairs(tracker.units) do
-		local candidate = candidateMap[unit.defID]
-
-		if candidate then
+	for _, unit in pairs(tracker.units) do
+		if candidateMap[unit.defID] then
 			local team = teamInfo[unit.teamID] or {teamID = unit.teamID, name = 'Team ' .. tostring(unit.teamID), allyTeamID = unit.teamID}
 			local defCounts = countsByDef[unit.defID]
 			if not defCounts then
-				defCounts = {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = queuedOwn[unit.defID] or 0, teams = {}}
+				defCounts = {alive = 0, building = 0, queuedOwn = queuedOwn[unit.defID] or 0, teams = {}}
 				countsByDef[unit.defID] = defCounts
 			end
 
@@ -834,8 +862,6 @@ function EngagementTracker.BuildCounts(tracker, env)
 					name = team.name,
 					color = team.color,
 					alive = 0,
-					ready = 0,
-					far = 0,
 					building = 0,
 					queuedOwn = 0,
 				}
@@ -843,35 +869,12 @@ function EngagementTracker.BuildCounts(tracker, env)
 			end
 
 			local isFinished = unit.finished and unit.buildProgress >= 1
-			if not isFinished then
-				defCounts.building = defCounts.building + 1
-				teamCounts.building = teamCounts.building + 1
-			else
+			if isFinished then
 				defCounts.alive = defCounts.alive + 1
 				teamCounts.alive = teamCounts.alive + 1
-				-- With no live boss there is nothing to be far from; count as ready
-				local ready = true
-				if getUnitPosition and #bossPositions > 0 then
-					ready = false
-					local x, _, z = getUnitPosition(unitID)
-					if x and z then
-						local readyRadius = math.max(DEFAULT_READY_RADIUS, safeNumber(candidate.maxWeaponRange, 0) + READY_MARGIN)
-						local readySq = readyRadius * readyRadius
-						for _, pos in ipairs(bossPositions) do
-							if pos.x and pos.z and distanceSq(x, z, pos.x, pos.z) <= readySq then
-								ready = true
-								break
-							end
-						end
-					end
-				end
-				if ready then
-					defCounts.ready = defCounts.ready + 1
-					teamCounts.ready = teamCounts.ready + 1
-				else
-					defCounts.far = defCounts.far + 1
-					teamCounts.far = teamCounts.far + 1
-				end
+			else
+				defCounts.building = defCounts.building + 1
+				teamCounts.building = teamCounts.building + 1
 			end
 
 			teamRowsByTeam[unit.teamID] = teamRowsByTeam[unit.teamID] or {
@@ -887,7 +890,7 @@ function EngagementTracker.BuildCounts(tracker, env)
 	for defID, queuedCount in pairs(queuedOwn) do
 		local defCounts = countsByDef[defID]
 		if not defCounts then
-			defCounts = {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = 0, teams = {}}
+			defCounts = {alive = 0, building = 0, queuedOwn = 0, teams = {}}
 			countsByDef[defID] = defCounts
 		end
 		defCounts.queuedOwn = queuedCount
@@ -1067,7 +1070,7 @@ function ScoringEngine.BuildRows(input)
 		local marginalResistance = ScoringEngine.EffectiveResistance((resistancePercent + projectedResistance) * 0.5, bossInfo.staggerActive, bossInfo.mode)
 		local currentDamage = estimatedBaseDamage * math.max(0, 1 - currentResistance)
 		local marginalDamage = estimatedBaseDamage * math.max(0, 1 - marginalResistance)
-		local counts = countsByDef[defID] or {alive = 0, ready = 0, far = 0, building = 0, queuedOwn = 0, teams = {}}
+		local counts = countsByDef[defID] or {alive = 0, building = 0, queuedOwn = 0, teams = {}}
 		local knowledge = knowledgeByDef[defID]
 		local historyAverage = safeNumber(knowledge and knowledge.averageScore, 0)
 		local historySamples = safeNumber(knowledge and knowledge.samples, 0)
@@ -1078,8 +1081,7 @@ function ScoringEngine.BuildRows(input)
 			preBossSortScore = historyAverage
 			preBossSortSource = 'hist'
 		end
-		local teamSort = (counts.ready or 0) * 1000000
-			+ (counts.alive or 0) * 10000
+		local teamSort = (counts.alive or 0) * 10000
 			+ (counts.building or 0) * 100
 			+ (counts.queuedOwn or 0)
 
@@ -1088,6 +1090,7 @@ function ScoringEngine.BuildRows(input)
 			name = candidate.displayName,
 			icon = candidate.icon,
 			sourceLabel = candidate.sourceLabel ~= '' and candidate.sourceLabel or 'Unknown',
+			sourceChain = candidate.sourceChain or {},
 			resistancePercent = resistancePercent,
 			resistanceDamage = resistanceDamage,
 			projectedResistancePercent = projectedResistance,
@@ -1354,6 +1357,10 @@ local spAreTeamsAllied = Spring.AreTeamsAllied
 local spValidUnitID = Spring.ValidUnitID
 local spGetUnitCommands = Spring.GetUnitCommands
 local spIsGUIHidden = Spring.IsGUIHidden
+local spGetCameraPosition = Spring.GetCameraPosition
+local spSetCameraTarget = Spring.SetCameraTarget
+local spGiveOrderToUnit = Spring.GiveOrderToUnit
+local spClosestBuildPos = Spring.ClosestBuildPos
 
 local isRaptors = Utilities.Gametype.IsRaptors()
 local isScavengers = Utilities.Gametype.IsScavengers()
@@ -1685,15 +1692,34 @@ local function scanOwnQueues()
 	end
 end
 
-local function bossPositions()
-	local result = {}
-	for _, unitID in ipairs(bossInfo.aliveBossIDs or {}) do
-		local x, y, z = spGetUnitPosition(unitID)
-		if x and z then
-			result[#result + 1] = {x = x, y = y, z = z}
+-- Own-team status per unit def: 'done' (finished exists), 'building'
+-- (under construction or queued), or nil for none
+local function buildStatusByDef()
+	local statusByDef = {}
+	for _, unit in pairs(tracker.units) do
+		if unit.teamID == sourceTeamID then
+			if unit.finished and unit.buildProgress >= 1 then
+				statusByDef[unit.defID] = 'done'
+			elseif statusByDef[unit.defID] ~= 'done' then
+				statusByDef[unit.defID] = 'building'
+			end
 		end
 	end
-	return result
+	for defID, queuedCount in pairs(tracker.queuedOwn or {}) do
+		if queuedCount > 0 and not statusByDef[defID] then
+			statusByDef[defID] = 'building'
+		end
+	end
+	return statusByDef
+end
+
+local statusColors = {
+	done = STATUS_DONE_COLOR,
+	building = STATUS_BUILDING_COLOR,
+}
+
+local function statusColor(status)
+	return statusColors[status] or STATUS_NONE_COLOR
 end
 
 -- One independent knowledge observation per unit def per score window.
@@ -1815,6 +1841,7 @@ local function buildCatalogWithOwnedSources()
 			unitDefs = UnitDefs,
 			unitDefNames = UnitDefNames,
 			weaponDefs = WeaponDefs,
+			weaponDefNames = WeaponDefNames,
 			resistanceMap = bossInfo.resistances,
 			hasMeaningfulWater = cachedHasMeaningfulWater,
 			ownedSourceDefIDs = ownedSourceDefIDs,
@@ -1830,7 +1857,7 @@ end
 
 local confidenceLetters = {high = 'H', med = 'M', low = 'L'}
 
-local function presentationRow(row)
+local function presentationRow(row, statusByDef)
 	local history = ''
 	if (row.historySamples or 0) > 0 then
 		history = formatSI(row.historyAverage) .. '/' .. tostring(row.historySamples)
@@ -1840,11 +1867,21 @@ local function presentationRow(row)
 		preBoss = row.preBossSortSource .. ' ' .. formatSI(row.preBossSortScore)
 	end
 	local teamCell = presentTeamCell(row.counts or {})
+	local sourceChain = {}
+	for i = 1, #(row.sourceChain or {}) do
+		local chainDefID = row.sourceChain[i]
+		sourceChain[i] = {
+			icon = '#' .. tostring(chainDefID),
+			def_id = chainDefID,
+			name = unitDisplayName(UnitDefs[chainDefID]),
+			color = statusColor(statusByDef[chainDefID]),
+		}
+	end
 	return {
 		name = row.name,
 		icon = row.icon,
-		source = row.sourceLabel,
-		source_tooltip = row.sourceLabel ~= '' and row.sourceLabel or 'No source path found',
+		status_color = statusColor(statusByDef[row.defID]),
+		source_chain = sourceChain,
 		resistance = tostring(round(row.resistancePercent * 100)) .. '%',
 		projected = tostring(round(row.projectedResistancePercent * 100)) .. '%',
 		resistance_damage = formatSI(row.resistanceDamage),
@@ -1917,8 +1954,6 @@ local function buildRows()
 	local countsByDef, teamRows = EngagementTracker.BuildCounts(tracker, {
 		unitDefs = UnitDefs,
 		unitDefNames = UnitDefNames,
-		bossPositions = bossPositions(),
-		getUnitPosition = spGetUnitPosition,
 		candidateMap = catalog.candidates,
 		teamInfo = teamInfo,
 		sourceTeamID = sourceTeamID,
@@ -1950,11 +1985,12 @@ local function buildRows()
 	local unitRows = {}
 	local sortInfo = resolveUnitSort(rows)
 	if activeTab == 'units' then
+		local statusByDef = buildStatusByDef()
 		local sortedRows = shallowCopy(rows)
 		ScoringEngine.SortRows(sortedRows, sortInfo.key, sortInfo.ascending)
 		pageInfo = currentPageInfo(#sortedRows, RANKED_ROW_LIMIT)
 		for i = pageInfo.startIndex, pageInfo.endIndex do
-			unitRows[#unitRows + 1] = presentationRow(sortedRows[i])
+			unitRows[#unitRows + 1] = presentationRow(sortedRows[i], statusByDef)
 		end
 	end
 
@@ -1999,7 +2035,7 @@ local function buildRows()
 							team.units[#team.units + 1] = {
 								name = candidate.displayName,
 								icon = candidate.icon,
-								ready_alive = tostring(teamCounts.ready) .. '/' .. tostring(teamCounts.alive),
+								alive = tostring(teamCounts.alive),
 								building = tostring(teamCounts.building),
 							}
 							break
@@ -2401,6 +2437,98 @@ function widget:ToggleHistoryFilter()
 	resetRowPage()
 	markDataDirty(true)
 	saveConfig()
+end
+
+local function nearestOwnUnit(matchDefIDs)
+	local camX, _, camZ = spGetCameraPosition()
+	camX = camX or 0
+	camZ = camZ or 0
+	local bestUnitID, bestDistSq
+	for unitID, unit in pairs(tracker.units) do
+		if matchDefIDs[unit.defID] and unit.teamID == sourceTeamID and unit.finished and unit.buildProgress >= 1 then
+			local x, _, z = spGetUnitPosition(unitID)
+			if x and z then
+				local dist = distanceSq(camX, camZ, x, z)
+				if not bestDistSq or dist < bestDistSq then
+					bestUnitID, bestDistSq = unitID, dist
+				end
+			end
+		end
+	end
+	return bestUnitID
+end
+
+local function jumpToUnit(unitID)
+	local x, y, z = spGetUnitPosition(unitID)
+	if x then
+		spSetCameraTarget(x, y or 0, z, 0.5)
+	end
+end
+
+local function nearestOwnBuilderOf(defID)
+	local builderDefIDs = {}
+	for _, builderDefID in ipairs(catalog.sourceByBuilt[defID] or {}) do
+		builderDefIDs[builderDefID] = true
+	end
+	return nearestOwnUnit(builderDefIDs)
+end
+
+-- CMD.INSERT at position 0 with the 'alt' order option puts the build order at
+-- the queue front; OPT_INTERNAL keeps it out of the repeat cycle
+local function queueBuildAtBuilder(builderID, defID)
+	local targetDef = UnitDefs[defID]
+	if targetDef and targetDef.isBuilding then
+		local bx, by, bz = spGetUnitPosition(builderID)
+		local px, py, pz = spClosestBuildPos(sourceTeamID, defID, bx, by, bz, 600, 8, 0)
+		if px and px >= 0 then
+			spGiveOrderToUnit(builderID, CMD.INSERT, {0, -defID, CMD.OPT_INTERNAL, px, py, pz, 0}, {'alt'})
+		end
+	else
+		spGiveOrderToUnit(builderID, CMD.INSERT, {0, -defID, CMD.OPT_INTERNAL}, {'alt'})
+	end
+end
+
+-- Click a source-chain icon: jump to the nearest owned instance. Otherwise walk
+-- up the build graph until an owned builder exists and queue the missing step
+-- there, e.g. clicking a T2 unit with only a commander queues the T2 lab
+function widget:SourceStepClick(event)
+	local element = event and event.current_element
+	local defID = tonumber(element and element:GetAttribute('defid'))
+	if not defID then
+		return
+	end
+
+	local existingID = nearestOwnUnit({[defID] = true})
+	if existingID then
+		jumpToUnit(existingID)
+		return
+	end
+
+	local buildDefID = defID
+	local visited = {[defID] = true}
+	for _ = 1, 6 do
+		local builderID = nearestOwnBuilderOf(buildDefID)
+		if builderID then
+			jumpToUnit(builderID)
+			if not isSpectator then
+				queueBuildAtBuilder(builderID, buildDefID)
+			end
+			return
+		end
+
+		local nextDefID
+		for _, sourceDefID in ipairs(catalog.sourceByBuilt[buildDefID] or {}) do
+			if not visited[sourceDefID] then
+				nextDefID = sourceDefID
+				break
+			end
+		end
+		if not nextDefID then
+			return
+		end
+		visited[nextDefID] = true
+		buildDefID = nextDefID
+	end
 end
 
 function widget:AdjustEnergy(event)
