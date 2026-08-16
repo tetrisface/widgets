@@ -2162,9 +2162,8 @@ local function handleAltEKey(selectedUnitIds)
 	Spring.GiveOrderArrayToUnitArray(reclaimers, reclaimCommands)
 end
 
--- Attack orders for all living queens/bosses, lowest health first (pveBossInfo
--- is the same source gui_raptor_panel_aggro.lua reads)
-local function queenAttackOrders()
+-- Living queens/bosses from pveBossInfo (the same source gui_raptor_panel_aggro.lua reads)
+local function queenTargets()
 	local bossInfoRaw = Spring.GetGameRulesParam('pveBossInfo')
 	if not bossInfoRaw then
 		return {}
@@ -2178,27 +2177,49 @@ local function queenAttackOrders()
 	local queens = {}
 	for queenID, status in pairs(bossInfo.statuses) do
 		if not status.isDead and status.health > 0 then
-			table.insert(queens, {id = tonumber(queenID), healthFraction = status.health / status.maxHealth})
+			local id = tonumber(queenID)
+			local x, _, z = Spring.GetUnitPosition(id)
+			table.insert(queens, {id = id, healthFraction = status.health / status.maxHealth, x = x, z = z})
 		end
 	end
+	return queens
+end
+
+-- Attack orders sorted by lowest health, then by distance to the factory
+local function queenAttackOrders(factoryID, queens)
+	local factoryX, _, factoryZ = Spring.GetUnitPosition(factoryID)
+
+	local targets = {}
+	for i = 1, #queens do
+		local queen = queens[i]
+		targets[i] = {
+			id = queen.id,
+			healthFraction = queen.healthFraction,
+			distance = Distance(factoryX, factoryZ, queen.x, queen.z)
+		}
+	end
 	table.sort(
-		queens,
+		targets,
 		function(a, b)
-			return a.healthFraction < b.healthFraction
+			if a.healthFraction ~= b.healthFraction then
+				return a.healthFraction < b.healthFraction
+			end
+			return a.distance < b.distance
 		end
 	)
 
 	local orders = {}
-	for i = 1, #queens do
-		orders[i] = {CMD.ATTACK, {queens[i].id}, {'shift'}}
+	for i = 1, #targets do
+		orders[i] = {CMD.ATTACK, {targets[i].id}, {'shift'}}
 	end
 	return orders
 end
 
 local function handleSpamFactories(selectedUnitIds)
 	local factories = {}
-	local factoriesWithoutQueue = {}
 	local factoryAttackOrders = {}
+	local queens
+
 	for i = 1, #selectedUnitIds do
 		local unitID = selectedUnitIds[i]
 		local def = unitDef(unitID)
@@ -2216,7 +2237,10 @@ local function handleSpamFactories(selectedUnitIds)
 			if #attackOrders > 0 then
 				factoryAttackOrders[unitID] = attackOrders
 			elseif #queue == 0 then
-				table.insert(factoriesWithoutQueue, unitID)
+				queens = queens or queenTargets()
+				if #queens > 0 then
+					factoryAttackOrders[unitID] = queenAttackOrders(unitID, queens)
+				end
 			end
 		end
 	end
@@ -2226,10 +2250,6 @@ local function handleSpamFactories(selectedUnitIds)
 	-- Attack (rally) orders differ per factory, so they can't share the spam batch
 	for factoryID, attackOrders in pairs(factoryAttackOrders) do
 		Spring.GiveOrderArrayToUnitArray({factoryID}, attackOrders)
-	end
-
-	if #factoriesWithoutQueue > 0 then
-		Spring.GiveOrderArrayToUnitArray(factoriesWithoutQueue, queenAttackOrders())
 	end
 end
 
