@@ -1294,7 +1294,9 @@ if not RmlUi then
 	return
 end
 
-if not BAR.Utilities.Gametype.IsRaptors() and not BAR.Utilities.Gametype.IsScavengers() then
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+
+if not Utilities.Gametype.IsRaptors() and not Utilities.Gametype.IsScavengers() then
 	return false
 end
 
@@ -1338,8 +1340,8 @@ local spValidUnitID = Spring.ValidUnitID
 local spGetUnitCommands = Spring.GetUnitCommands
 local spIsGUIHidden = Spring.IsGUIHidden
 
-local isRaptors = BAR.Utilities.Gametype.IsRaptors()
-local isScavengers = BAR.Utilities.Gametype.IsScavengers()
+local isRaptors = Utilities.Gametype.IsRaptors()
+local isScavengers = Utilities.Gametype.IsScavengers()
 local modOptions = spGetModOptions()
 
 local document

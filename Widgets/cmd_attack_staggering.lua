@@ -1,5 +1,7 @@
+-- Returning exactly false makes the widget loader skip this file silently;
+-- any other value falls through to a logged "no GetInfo() call" failure.
 if Spring.GetSpectatingState() or Spring.IsReplay() then
-  return {}
+  return false
 end
 function widget:GetInfo()
   return {

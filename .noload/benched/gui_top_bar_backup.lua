@@ -889,8 +889,9 @@ if Spring.GetMenuName and string.find(string.lower(Spring.GetMenuName()), 'chobb
 	Spring.SendLuaMenuMsg('disableLobbyButton')
 end
 
-local numPlayers = BAR.Utilities.GetPlayerCount()
-local isSinglePlayer = BAR.Utilities.Gametype.IsSinglePlayer()
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+local numPlayers = Utilities.GetPlayerCount()
+local isSinglePlayer = Utilities.Gametype.IsSinglePlayer()
 
 local isSingle = false
 if not spec then

@@ -63,8 +63,9 @@ local myAllyTeamList = spGetTeamList(myAllyTeamID)
 local numTeamsInAllyTeam = #myAllyTeamList
 
 -- Game mode / state
-local numPlayers = BAR.Utilities.GetPlayerCount()
-local isSinglePlayer = BAR.Utilities.Gametype.IsSinglePlayer()
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+local numPlayers = Utilities.GetPlayerCount()
+local isSinglePlayer = Utilities.Gametype.IsSinglePlayer()
 local chobbyLoaded = false
 local isSingle = false
 local gameStarted = (spGetGameFrame() > 0)

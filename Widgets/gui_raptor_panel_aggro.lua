@@ -1,7 +1,9 @@
 -- Discord: https://discord.com/channels/549281623154229250/1203485910512173096/1203485910512173096
 -- Gist: https://gist.github.com/tetrisface/2f99f5a5b179e3ac42e7e63825880713
 
-if not BAR.Utilities.Gametype.IsRaptors() and not BAR.Utilities.Gametype.IsScavengers() then
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+
+if not Utilities.Gametype.IsRaptors() and not Utilities.Gametype.IsScavengers() then
 	return false
 end
 
@@ -22,7 +24,7 @@ end
 VFS.Include('luaui/Headers/keysym.h.lua')
 local panelTexture = ':n:LuaUI/Images/raptorpanel.tga'
 local I18N = Spring.I18N
-local isRaptors = BAR.Utilities.Gametype.IsRaptors()
+local isRaptors = Utilities.Gametype.IsRaptors()
 local useWaveMsg = isRaptors and VFS.Include('LuaRules/Configs/raptor_spawn_defs.lua').useWaveMsg or false
 local modOptions = Spring.GetModOptions()
 local nBosses = modOptions.raptor_queen_count
@@ -876,7 +878,7 @@ function widget:Initialize()
 	UpdateRules()
 	viewSizeX, viewSizeY = gl.GetViewSizes()
 	local x = math.abs(math.floor(viewSizeX - 320))
-	local y = math.abs(math.floor(viewSizeY - 300)) - (BAR.Utilities.Gametype.IsScavengers() and 257 or 0)
+	local y = math.abs(math.floor(viewSizeY - 300)) - (Utilities.Gametype.IsScavengers() and 257 or 0)
 
 	updatePos(x, y)
 

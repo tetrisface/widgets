@@ -11,7 +11,8 @@ function widget:GetInfo()
   }
 end
 
-if not (BAR.Utilities.Gametype.IsScavengers() or BAR.Utilities.Gametype.IsRaptors()) or Spring.GetModOptions().unit_restrictions_noair then
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+if not (Utilities.Gametype.IsScavengers() or Utilities.Gametype.IsRaptors()) or Spring.GetModOptions().unit_restrictions_noair then
   return false
 end
 

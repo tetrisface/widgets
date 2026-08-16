@@ -15,7 +15,8 @@ end
 -- Discord https://discord.com/channels/549281623154229250/1206703169585811456
 
 local nukes = not Spring.GetModOptions().unit_restrictions_nonukes
-local isScavengers = BAR.Utilities.Gametype.IsScavengers()
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+local isScavengers = Utilities.Gametype.IsScavengers()
 local font
 
 local nukeList

@@ -6,7 +6,7 @@ function table.echo(tbl)
 end
 
 function table.tostring2(tbl)
-  Spring.Debug.TableEcho(tbl)
+  ((BAR and BAR.Debug) or Spring.Debug).TableEcho(tbl)
 end
 
 -- use this for debugging:
@@ -286,4 +286,9 @@ end
 --   cache:put({unitID, cmd}, result)
 --   return result
 -- end
+
+-- Library, not a widget: returning exactly false makes the widget loader skip
+-- this file silently instead of logging "no GetInfo() call". VFS.Include
+-- callers ignore the return value.
+return false
 

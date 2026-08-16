@@ -1,4 +1,5 @@
-if not (BAR.Utilities.Gametype.IsRaptors() or BAR.Utilities.Gametype.IsScavengers()) then
+local Utilities = (BAR and BAR.Utilities) or Spring.Utilities
+if not (Utilities.Gametype.IsRaptors() or Utilities.Gametype.IsScavengers()) then
   return false
 end
 
