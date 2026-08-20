@@ -627,6 +627,83 @@ local function getBuildCommandsOnly(commands)
 	return buildCommands
 end
 
+-- Max half-footprint (elmos) among zero-speed unitdefs, to widen blocker searches
+local maxBlockerHalfFootprint = 0
+for _, def in pairs(UnitDefs) do
+	if def.speed == 0 then
+		local halfFootprint = math.max(def.xsize or 2, def.zsize or 2) * 4
+		if halfFootprint > maxBlockerHalfFootprint then
+			maxBlockerHalfFootprint = halfFootprint
+		end
+	end
+end
+
+local function unitHalfExtents(def, facing)
+	local rotated = facing == 1 or facing == 3
+	local halfX = (rotated and (def.zsize or 2) or (def.xsize or 2)) * 4
+	local halfZ = (rotated and (def.xsize or 2) or (def.zsize or 2)) * 4
+	return halfX, halfZ
+end
+
+-- Extractors and geothermals may be built in place on top of their lower tier
+local function isUpgradePair(buildDef, blockerDef)
+	if (buildDef.extractsMetal or 0) > 0 and (blockerDef.extractsMetal or 0) > 0 then
+		return true
+	end
+	return (buildDef.customParams and buildDef.customParams.geothermal) and
+		(blockerDef.customParams and blockerDef.customParams.geothermal) and true or false
+end
+
+-- The engine only auto-cancels a blocked build order when the blocker is immobile.
+-- Tweaked units flagged canmove with zero speed (e.g. scav hell's infinitybox)
+-- count as mobile blockers that "will move", leaving constructors waiting forever.
+-- Drop build commands whose spot is covered by a finished zero-speed unit;
+-- unfinished ones stay queued so constructors assist them.
+local function buildSpotOpen(command)
+	local buildDef = command.id and UnitDefs[-command.id]
+	local params = command.params
+	local x, z = params and params[1], params and params[3]
+	if not buildDef or not x or not z then
+		return true
+	end
+	local halfX, halfZ = unitHalfExtents(buildDef, params[4] or 0)
+	local blockerIds =
+		Spring.GetUnitsInRectangle(
+		x - halfX - maxBlockerHalfFootprint,
+		z - halfZ - maxBlockerHalfFootprint,
+		x + halfX + maxBlockerHalfFootprint,
+		z + halfZ + maxBlockerHalfFootprint
+	)
+	for i = 1, #blockerIds do
+		local blockerId = blockerIds[i]
+		local blockerDef = UnitDefs[Spring.GetUnitDefID(blockerId)]
+		if blockerDef and blockerDef.speed == 0 and not isUpgradePair(buildDef, blockerDef) then
+			local buildProgress = select(5, Spring.GetUnitHealth(blockerId))
+			if buildProgress and buildProgress >= 1 then
+				local blockerX, _, blockerZ = Spring.GetUnitPosition(blockerId)
+				local blockerHalfX, blockerHalfZ = unitHalfExtents(blockerDef, Spring.GetUnitBuildFacing(blockerId) or 0)
+				if
+					blockerX and math.abs(blockerX - x) < halfX + blockerHalfX and
+						math.abs(blockerZ - z) < halfZ + blockerHalfZ
+				 then
+					return false
+				end
+			end
+		end
+	end
+	return true
+end
+
+local function openSpotBuildCommands(commands)
+	local openCommands = {}
+	for _, command in ipairs(commands) do
+		if buildSpotOpen(command) then
+			table.insert(openCommands, command)
+		end
+	end
+	return openCommands
+end
+
 local function toOrderArrayCommand(command)
 	if not command then
 		return nil
@@ -824,7 +901,7 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 		if commands then
 			for j = 1, #commands do
 				local command = commands[j]
-				if command and command.id and command.id < 0 and command.params then
+				if command and command.id and command.id < 0 and command.params and buildSpotOpen(command) then
 					local commandString =
 						tostring(command.id) ..
 						' ' ..
@@ -1195,387 +1272,6 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 	end
 end
 
--- Handles Ctrl+Shift+F for maximum build power pooling
-local function buildQueueMaxPowerPooling(selectedUnitIds, mods)
-	if #selectedUnitIds == 0 then
-		return
-	end
-
-	-- Filter and analyze commands (merge duplicates to prevent cancellation)
-	local mergedCommands = {}
-	for i = 1, #selectedUnitIds do
-		local commands = Spring.GetUnitCommands(selectedUnitIds[i], 1000)
-		if commands then
-			for j = 1, #commands do
-				local command = commands[j]
-				if command and command.id and command.id < 0 and command.params then
-					local commandString =
-						tostring(command.id) ..
-						' ' ..
-							tostring(command.params[1] or 0) ..
-								' ' .. tostring(command.params[2] or 0) .. ' ' .. tostring(command.params[3] or 0)
-					if mergedCommands[commandString] == nil then
-						mergedCommands[commandString] = command
-					end
-				end
-			end
-		end
-	end
-
-	-- Calculate builder positions and total mobile build power
-	local builders = {}
-	local totalMobileBuildPower = 0
-	for i = 1, #selectedUnitIds do
-		local unitId = selectedUnitIds[i]
-		if unitId then
-			local x, _, z = Spring.GetUnitPosition(unitId)
-			if x and z then
-				local unitDefId = Spring.GetUnitDefID(unitId)
-				local def = UnitDefs[unitDefId]
-				if def and def.buildOptions and #def.buildOptions > 0 then
-					local buildSpeed = def.buildSpeed or 1
-					table.insert(
-						builders,
-						{
-							id = unitId,
-							x = x,
-							z = z,
-							buildSpeed = buildSpeed,
-							buildOptions = def.buildOptions,
-							unitDefId = unitDefId
-						}
-					)
-					totalMobileBuildPower = totalMobileBuildPower + buildSpeed
-				end
-			end
-		end
-	end
-
-	if #builders == 0 then
-		return
-	end
-
-	-- Calculate median builder position
-	local xPositions, zPositions = {}, {}
-	for _, builder in ipairs(builders) do
-		table.insert(xPositions, builder.x)
-		table.insert(zPositions, builder.z)
-	end
-	selectedPos = {x = median(xPositions), z = median(zPositions)}
-
-	-- Get immobile builders (nano turrets, etc.)
-	local allImmobileBuilders = Spring.GetTeamUnitsByDefs(myTeamId, immobileBuilderDefIds) or {}
-	for i = 1, #allImmobileBuilders do
-		if allImmobileBuilders[i] then
-			local x, _, z = Spring.GetUnitPosition(allImmobileBuilders[i])
-			if x and z then
-				local unitDefId = Spring.GetUnitDefID(allImmobileBuilders[i])
-				local unitDef = UnitDefs[unitDefId]
-				allImmobileBuilders[i] = {
-					id = allImmobileBuilders[i],
-					x = x,
-					z = z,
-					buildDistance = immobileBuilderDefs[unitDefId],
-					buildSpeed = (unitDef and unitDef.buildSpeed) or 0
-				}
-			end
-		end
-	end
-
-	-- Create enhanced command list with build power analysis
-	local commands, nCommands = {}, 0
-	if mergedCommands then
-		for _, command in pairs(mergedCommands) do
-			if command then
-				nCommands = nCommands + 1
-				local immobileBuildPower = 0
-				local nearbyNanos = {}
-
-				if command.params and command.params[1] and command.params[3] then
-					for j = 1, #allImmobileBuilders do
-						local builder = allImmobileBuilders[j]
-						if builder and builder.buildDistance and builder.x and builder.z then
-							if Distance(builder.x, builder.z, command.params[1], command.params[3]) < builder.buildDistance then
-								immobileBuildPower = immobileBuildPower + (builder.buildSpeed or 0)
-								table.insert(
-									nearbyNanos,
-									{
-										id = builder.id,
-										x = builder.x,
-										z = builder.z,
-										buildSpeed = builder.buildSpeed,
-										buildDistance = builder.buildDistance
-									}
-								)
-							end
-						end
-					end
-				end
-
-				commands[nCommands] = {
-					command.id,
-					command.params,
-					command.options,
-					id = command.id,
-					params = command.params,
-					options = command.options,
-					x = command.params and command.params[1],
-					z = command.params and command.params[3],
-					immobileBuildPower = immobileBuildPower,
-					nearbyNanos = nearbyNanos,
-					isShield = isShieldDefId[-command.id]
-				}
-			end
-		end
-	end
-
-	if nCommands == 0 then
-		return
-	end
-
-	-- Sort commands by immobile build power (descending), shields first
-	table.sort(
-		commands,
-		function(a, b)
-			if (a.isShield or 0) > (b.isShield or 0) then
-				return true
-			elseif (a.isShield or 0) < (b.isShield or 0) then
-				return false
-			end
-			return (a.immobileBuildPower or 0) > (b.immobileBuildPower or 0)
-		end
-	)
-
-	-- Batch assignment algorithm
-	local batches = {}
-	local busyImmobileBuilders = {} -- Map: immobile builder ID -> batch number
-	local availableBuilders = table.copy(builders)
-	local remainingCommands = table.copy(commands)
-
-	-- First batch (maximum pooling)
-	if #remainingCommands > 0 and #availableBuilders > 0 then
-		local firstCommand = remainingCommands[1]
-		local firstBatchCommands = {}
-
-		-- Find all commands with the same (highest) immobile build power
-		local maxImmobilePower = firstCommand.immobileBuildPower or 0
-		for i = 1, #remainingCommands do
-			local cmd = remainingCommands[i]
-			if (cmd.immobileBuildPower or 0) == maxImmobilePower then
-				table.insert(firstBatchCommands, cmd)
-			else
-				break
-			end
-		end
-
-		-- Mark immobile builders that can reach first command as busy
-		if firstCommand.params and firstCommand.params[1] and firstCommand.params[3] then
-			for j = 1, #allImmobileBuilders do
-				local builder = allImmobileBuilders[j]
-				if builder and builder.buildDistance and builder.x and builder.z then
-					if Distance(builder.x, builder.z, firstCommand.params[1], firstCommand.params[3]) < builder.buildDistance then
-						busyImmobileBuilders[builder.id] = 1
-					end
-				end
-			end
-		end
-
-		-- Assign ALL mobile builders to first batch
-		table.insert(
-			batches,
-			{
-				commands = firstBatchCommands,
-				assignedBuilders = table.copy(availableBuilders),
-				firstCommand = firstCommand
-			}
-		)
-
-		-- Remove first batch commands from remaining
-		for i = #remainingCommands, 1, -1 do
-			for _, batchCmd in ipairs(firstBatchCommands) do
-				if remainingCommands[i] == batchCmd then
-					table.remove(remainingCommands, i)
-					break
-				end
-			end
-		end
-
-		-- All builders are now assigned to batch 1, so availableBuilders is empty
-		availableBuilders = {}
-	end
-
-	-- Subsequent batches
-	while #remainingCommands > 0 do
-		-- Recalculate idle immobile build power for remaining commands
-		local commandIdlePower = {}
-		for i = 1, #remainingCommands do
-			local cmd = remainingCommands[i]
-			commandIdlePower[i] = 0
-			local idleNanos = {}
-
-			if cmd.params and cmd.params[1] and cmd.params[3] then
-				for j = 1, #allImmobileBuilders do
-					local builder = allImmobileBuilders[j]
-					if builder and builder.buildDistance and builder.x and builder.z then
-						-- Check if builder is not busy
-						if not busyImmobileBuilders[builder.id] then
-							-- Check if builder can reach this command
-							if Distance(builder.x, builder.z, cmd.params[1], cmd.params[3]) < builder.buildDistance then
-								-- Check if builder is idle (cannot reach any previous batch's first command)
-								local isIdle = true
-								for _, prevBatch in ipairs(batches) do
-									if
-										prevBatch.firstCommand and prevBatch.firstCommand.params and prevBatch.firstCommand.params[1] and
-											prevBatch.firstCommand.params[3]
-									 then
-										if
-											Distance(builder.x, builder.z, prevBatch.firstCommand.params[1], prevBatch.firstCommand.params[3]) <
-												builder.buildDistance
-										 then
-											isIdle = false
-											break
-										end
-									end
-								end
-
-								if isIdle then
-									commandIdlePower[i] = commandIdlePower[i] + (builder.buildSpeed or 0)
-									table.insert(idleNanos, builder.id)
-								end
-							end
-						end
-					end
-				end
-			end
-
-			cmd.idleImmobileBuildPower = commandIdlePower[i]
-			cmd.idleNanos = idleNanos
-		end
-
-		-- Sort remaining commands by idle immobile build power
-		table.sort(
-			remainingCommands,
-			function(a, b)
-				if (a.isShield or 0) > (b.isShield or 0) then
-					return true
-				elseif (a.isShield or 0) < (b.isShield or 0) then
-					return false
-				end
-				return (a.idleImmobileBuildPower or 0) > (b.idleImmobileBuildPower or 0)
-			end
-		)
-
-		-- Check if we have commands with idle immobile builders
-		local bestCommand = remainingCommands[1]
-		if not bestCommand or (bestCommand.idleImmobileBuildPower or 0) <= 0 then
-			break -- No more idle immobile builders
-		end
-
-		-- Get one mobile builder from the first batch
-		local mobileBuilder = nil
-		if #batches > 0 and #batches[1].assignedBuilders > 0 then
-			-- Take one builder from batch 1
-			mobileBuilder = table.remove(batches[1].assignedBuilders, 1)
-		elseif #availableBuilders > 0 then
-			-- Use an available builder if any
-			mobileBuilder = table.remove(availableBuilders, 1)
-		else
-			break -- No more mobile builders available
-		end
-
-		if not mobileBuilder then
-			break
-		end
-
-		-- Find all commands with the same (highest) idle immobile build power
-		local maxIdlePower = bestCommand.idleImmobileBuildPower or 0
-		local batchCommands = {}
-		for i = 1, #remainingCommands do
-			local cmd = remainingCommands[i]
-			if (cmd.idleImmobileBuildPower or 0) == maxIdlePower then
-				table.insert(batchCommands, cmd)
-			else
-				break
-			end
-		end
-
-		-- Mark idle immobile builders that can reach this batch's first command as busy
-		if bestCommand.params and bestCommand.params[1] and bestCommand.params[3] then
-			for _, nanoId in ipairs(bestCommand.idleNanos or {}) do
-				busyImmobileBuilders[nanoId] = #batches + 1
-			end
-		end
-
-		-- Create new batch with one mobile builder
-		table.insert(
-			batches,
-			{
-				commands = batchCommands,
-				assignedBuilders = {mobileBuilder},
-				firstCommand = bestCommand
-			}
-		)
-
-		-- Remove batch commands from remaining
-		for i = #remainingCommands, 1, -1 do
-			for _, batchCmd in ipairs(batchCommands) do
-				if remainingCommands[i] == batchCmd then
-					table.remove(remainingCommands, i)
-					break
-				end
-			end
-		end
-	end
-
-	-- Apply optimized queues to builders
-	for _, batch in ipairs(batches) do
-		if #batch.assignedBuilders > 0 and #batch.commands > 0 then
-			-- Sort commands within batch by shields first only
-			local batchCommands = table.copy(batch.commands)
-			table.sort(
-				batchCommands,
-				function(a, b)
-					return (a.isShield or 0) > (b.isShield or 0)
-				end
-			)
-
-			for _, builder in ipairs(batch.assignedBuilders) do
-				if builder and builder.buildOptions then
-					local builderCommands = {}
-					for _, command in ipairs(batchCommands) do
-						if command and command.id then
-							if builder.buildOptions and #builder.buildOptions > 0 then
-								if table.contains(builder.buildOptions, -command.id) then
-									table.insert(builderCommands, command)
-								elseif replacementMap[-command.id] then
-									for replacementN = 1, #replacementMap[-command.id] or 0 do
-										local replacementId = replacementMap[-command.id][replacementN]
-										if table.contains(builder.buildOptions, replacementId) then
-											local temp = table.copy(command)
-											temp[1] = -replacementId
-											table.insert(builderCommands, temp)
-											break
-										end
-									end
-								end
-							end
-						end
-					end
-
-					Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
-					local maxNCommands = 510
-					if #builderCommands > maxNCommands then
-						for k = #builderCommands, maxNCommands + 1, -1 do
-							builderCommands[k] = nil
-						end
-					end
-					Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
-				end
-			end
-		end
-	end
-end
-
 -- Handles Ctrl+F for merging and sorting build commands
 local function buildQueueDistributeTransform(selectedUnitIds, mods)
 	if #selectedUnitIds == 0 then
@@ -1586,7 +1282,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 		local commands = Spring.GetUnitCommands(selectedUnitIds[i], 1000)
 		for j = 1, #commands do
 			local command = commands[j]
-			if command.id < 1 then
+			if command.id < 1 and buildSpotOpen(command) then
 				local commandString =
 					tostring(commands[j].id) ..
 					' ' ..
@@ -2362,7 +2058,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 	for _, builder in ipairs(builders) do
 		local commands = Spring.GetUnitCommands(builder.id, 1000)
 		if commands then
-			local buildCommands = getBuildCommandsOnly(commands)
+			local buildCommands = openSpotBuildCommands(getBuildCommandsOnly(commands))
 			if #buildCommands > 0 then
 				table.insert(
 					allCommandChunks,
@@ -2395,7 +2091,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 		-- First, get existing commands for this builder to avoid duplicates
 		local existingCommands = Spring.GetUnitCommands(targetBuilder.id, 1000)
 		if existingCommands then
-			local existingBuildCommands = getBuildCommandsOnly(existingCommands)
+			local existingBuildCommands = openSpotBuildCommands(getBuildCommandsOnly(existingCommands))
 			for _, command in ipairs(existingBuildCommands) do
 				local signature = generateCommandSignature(command)
 				if signature then
