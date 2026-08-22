@@ -630,7 +630,7 @@ end
 -- Max half-footprint (elmos) among zero-speed unitdefs, to widen blocker searches
 local maxBlockerHalfFootprint = 0
 for _, def in pairs(UnitDefs) do
-	if def.speed == 0 then
+	if def.speed <= 0.01 then
 		local halfFootprint = math.max(def.xsize or 2, def.zsize or 2) * 4
 		if halfFootprint > maxBlockerHalfFootprint then
 			maxBlockerHalfFootprint = halfFootprint

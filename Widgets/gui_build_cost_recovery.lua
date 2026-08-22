@@ -168,6 +168,7 @@ local spGetPlayerInfo = Spring.GetPlayerInfo
 local spGetTeamColor = Spring.GetTeamColor
 
 local spGetMouseState = Spring.GetMouseState
+local spGetActiveCommand = Spring.GetActiveCommand
 local GetGroundInfo = Spring.GetGroundInfo
 local TraceScreenRay = Spring.TraceScreenRay
 
@@ -371,9 +372,13 @@ local function getAverageMexOutput(uDef)
 end
 
 local function getMetalExtractorOutput(uDef)
-  local parsed = parseMetalExtractorFromTooltip(spGetTooltip())
-  if parsed and parsed.inc > 0 then
-    return parsed.inc, parsed.out
+  local tooltip = spGetTooltip()
+  -- terrain tooltips ("Pos x z ...") carry ground metal density, not extractor income
+  if tooltip and string.find(tooltip, 'Pos', 1, true) ~= 1 then
+    local parsed = parseMetalExtractorFromTooltip(tooltip)
+    if parsed and parsed.inc > 0 then
+      return parsed.inc, parsed.out
+    end
   end
 
   local x, z = getMexPlacementCoords()
@@ -534,6 +539,13 @@ function split(pString, pPattern)
 end
 
 function widget:Update(deltaTime)
+  local _, activeCmdID = spGetActiveCommand()
+  if activeCmdID and activeCmdID < 0 then
+    uDefID = -activeCmdID
+    timeCounter = math.huge -- re-evaluate the tooltip as soon as the build command clears
+    return
+  end
+
   if (timeCounter < update) then
     timeCounter = timeCounter + deltaTime
     return
@@ -547,12 +559,6 @@ function widget:Update(deltaTime)
     if i ~= 1 then
       uDefID = resolveUnitDefFromTooltip(text)
     end
-  end
-
-  local OrderID = WG["cmdID"] or nil
-  if OrderID and OrderID < 0 then
-    OrderID = math.abs(OrderID)
-    uDefID = OrderID
   end
 end
 
