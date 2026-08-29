@@ -63,6 +63,25 @@ foreach ($widgetDirectory in $widgetDirectories) {
     Write-Output "Linked $linkPath -> $resolvedSourcePath"
 }
 
+# A junction whose target vanished (e.g. a branch switch in community-widgets dropped the widget
+# directory) makes the engine's directory walker throw; that C++ exception escapes through the Lua VM
+# and LuaUI fails to load entirely. Prune such links so a stale junction can never reach the game.
+$widgetLinkRoot = Join-Path $repositoryRoot 'Widgets'
+$danglingLinks = Get-ChildItem -LiteralPath $widgetLinkRoot -Force |
+    Where-Object {
+        $_.LinkType -eq 'Junction' -and
+            -not (Test-Path -LiteralPath ($_.Target | Select-Object -First 1) -PathType Container)
+    }
+
+foreach ($danglingLink in $danglingLinks) {
+    $target = $danglingLink.Target -join ';'
+    if (-not $PSCmdlet.ShouldProcess($danglingLink.FullName, "Remove dangling junction (missing target $target)")) {
+        continue
+    }
+    Remove-Item -LiteralPath $danglingLink.FullName -Force
+    Write-Output "Removed dangling junction: $($danglingLink.FullName) (missing target $target)"
+}
+
 $gitExcludeOutput = & git -C $repositoryRoot rev-parse --git-path info/exclude
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitExcludeOutput)) {
     throw 'Unable to locate the repository-local Git exclude file.'

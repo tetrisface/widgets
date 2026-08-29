@@ -262,9 +262,10 @@ local function parseMetalExtractorFromTooltip(tooltip)
   end
 
   local plain = stripTooltipColors(tooltip)
-  local inc = tonumber(plain:match('Metal:?[^%d%-+]*([%+%-]?[%d%.]+)'))
-  local out = tonumber(plain:match('Energy:?[^%d]*%-([%d%.]+)'))
-    or tonumber(plain:match('Energy:?[^%d%-+]*([%d%.]+)'))
+  local inc = tonumber(plain:match('Metal:[^%d%-+]*([%+%-]?[%d%.]+)'))
+  -- engine stats line is "Energy: +<make>/-<use>"; the use side is the upkeep
+  local out = tonumber(plain:match('Energy:[^%d]*[%d%.]+[^%d]*%-([%d%.]+)'))
+    or tonumber(plain:match('Energy:[^%d]*%-([%d%.]+)'))
 
   if not inc and not out then
     local legacy = { inc = 0, out = 0, passed = false }
@@ -371,10 +372,25 @@ local function getAverageMexOutput(uDef)
   return sum / #rsf.metalSpotsList
 end
 
+-- Only the engine's unit-stats tooltip ("Metal: +2.0/-0.0 Energy: ...") carries extractor income.
+local function isUnitStatsTooltip(tooltip)
+  if not tooltip or tooltip == '' then
+    return false
+  end
+  -- terrain tooltips ("Pos x z ...") carry ground metal density
+  if string.find(tooltip, 'Pos', 1, true) == 1 then
+    return false
+  end
+  -- build-option tooltips ("Build: <name> ... Metal cost 50 / Energy cost 500") carry the unit's cost
+  if string.find(tooltip, 'Build: ', 1, true) == 1 then
+    return false
+  end
+  return true
+end
+
 local function getMetalExtractorOutput(uDef)
   local tooltip = spGetTooltip()
-  -- terrain tooltips ("Pos x z ...") carry ground metal density, not extractor income
-  if tooltip and string.find(tooltip, 'Pos', 1, true) ~= 1 then
+  if isUnitStatsTooltip(tooltip) then
     local parsed = parseMetalExtractorFromTooltip(tooltip)
     if parsed and parsed.inc > 0 then
       return parsed.inc, parsed.out

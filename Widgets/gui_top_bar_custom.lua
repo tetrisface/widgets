@@ -217,7 +217,6 @@ local blinkProgress = 0
 local guishaderCheckUpdateRate = 0.5
 
 local nextSmoothUpdate = 0
-local nextMmLevelResend = 0  -- CUSTOM: timer for periodic mmLevel re-send (see widget:Update)
 --------------------------------------------------------------------------------
 
 local function getPlayerLiveAllyCount()
@@ -1332,16 +1331,6 @@ function widget:Update(dt)
 					updateResbar('metal')
 				end
 			end
-		end
-	end
-
-	-- CUSTOM: periodically re-send mmLevel to the server to work around a likely engine-side bug
-	-- where newly built metalmakers don't inherit the current conversion setting until char(137)
-	-- is re-sent. This ensures all metalmakers (including new ones) respect the current mmLevel.
-	if not spec and gameStarted and mmLevel and now > nextMmLevelResend then
-		nextMmLevelResend = now + 3
-		if not draggingConversionIndicator then
-			Spring.SendLuaRulesMsg(stringFormat(string.char(137) .. '%i', mathFloor(mmLevel * 100)))
 		end
 	end
 

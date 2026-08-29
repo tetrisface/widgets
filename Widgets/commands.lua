@@ -2354,16 +2354,21 @@ function widget:KeyPress(key, mods, isRepeat)
 	if (key == KEYSYMS.A or key == KEYSYMS.S or key == KEYSYMS.D) and mods['alt'] then
 		return conQueueSliceCommand(key, selectedUnitIds, mods)
 	elseif (key == KEYSYMS.F) and mods['ctrl'] then
+		-- Returning true consumes the key so uikeys.txt binds on the same chord do not also fire;
+		-- fall through on an empty selection so plain `select ...` binds still work.
 		buildQueueDistributeTransform(selectedUnitIds, mods)
+		return #selectedUnitIds > 0
 	elseif (key == KEYSYMS.F) and mods['shift'] and mods['alt'] and not mods['ctrl'] then
 		buildQueueOptimalPooling(selectedUnitIds, mods)
 	elseif key == KEYSYMS.F and mods['alt'] and not mods['shift'] and not mods['ctrl'] then
 		handleScavMexUpgrade(selectedUnitIds)
+		return #selectedUnitIds > 0
 	elseif key == KEYSYMS.Q and mods['shift'] and not mods['alt'] and not mods['ctrl'] then
 		buildQueueRedundancy(selectedUnitIds, mods)
 	elseif key == KEYSYMS.E and mods['alt'] and not mods['shift'] and mods['ctrl'] then
 		handleAltEKey(selectedUnitIds)
 	elseif key == KEYSYMS.G and mods.alt then
 		handleSpamFactories(selectedUnitIds)
+		return #selectedUnitIds > 0
 	end
 end

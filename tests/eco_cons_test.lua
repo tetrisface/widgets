@@ -85,6 +85,7 @@ local state = {
   positions = {},
   radii = {},
   resources = {},
+  rulesParams = {},
   selectedUnits = {},
   teamResources = {},
   teamUnits = {},
@@ -98,8 +99,10 @@ local function resetCounters()
   state.removeOrderBatches = 0
   state.rulesMessages = 0
   state.spotlights = 0
+  state.teamResourceCalls = 0
   state.teamUnitCalls = 0
   state.unitResourceCalls = 0
+  state.lastRulesMessage = nil
 end
 
 widget = {}
@@ -183,10 +186,11 @@ Spring = {
   GetSelectedUnits = function() return state.selectedUnits end,
   GetSpectatingState = function() return state.spectating == true end,
   GetTeamResources = function(_, resourceType)
+    state.teamResourceCalls = state.teamResourceCalls + 1
     local values = state.teamResources[resourceType] or {100, 1000, 0, 10, 0, 0, 0, 0}
     return table.unpack(values)
   end,
-  GetTeamRulesParam = function() return state.mmLevel end,
+  GetTeamRulesParam = function(_, name) return state.rulesParams[name] end,
   GetTeamUnits = function()
     state.teamUnitCalls = state.teamUnitCalls + 1
     return state.teamUnits
@@ -225,8 +229,9 @@ Spring = {
   GiveOrderToUnit = function() end,
   GiveOrderToUnitArray = function() end,
   IsReplay = function() return false end,
-  SendLuaRulesMsg = function()
+  SendLuaRulesMsg = function(message)
     state.rulesMessages = state.rulesMessages + 1
+    state.lastRulesMessage = message
   end
 }
 
@@ -239,6 +244,7 @@ ECO_CONS_TEST = nil
 local function initialize(teamUnits, defIDs)
   state.teamUnits = teamUnits or {}
   state.defIDs = defIDs or {}
+  state.rulesParams = {}
   state.spectating = false
   resetCounters()
   widget:Initialize()
@@ -341,12 +347,138 @@ test('optional spotlight and conversion rules parameters are nil-safe', function
   api.addObjectSpotlight('unit', 'me', 101)
   assertEqual(state.spotlights, 1, 'available spotlight is called')
 
-  state.mmLevel = nil
-  assertFalse(api.sendMetalMakerLevelIfNeeded(1), 'missing mmLevel skips send')
+  state.rulesParams = {}
+  state.teamResources.metal = {970, 1000, 0, 100, 50, 0, 0, 0}
+  api.updateResourceNeeds()
+  assertFalse(api.sendNudgedMetalMakerLevel(), 'missing mmLevel skips send')
   assertEqual(state.rulesMessages, 0, 'no rules message without mmLevel')
-  state.mmLevel = 0.4
-  assertTrue(api.sendMetalMakerLevelIfNeeded(1), 'available mmLevel sends')
-  assertEqual(state.rulesMessages, 1, 'one rules message with mmLevel')
+  state.teamResources.metal = nil
+end)
+
+test('already-in-stall means the storage runs out at the current pull, not pull above stock', function()
+  initialize()
+  state.teamResources.metal = {800, 10000, 1000, 1200, 1000, 0, 0, 0}
+  state.teamResources.energy = {100, 10000, 1000, 900, 900, 0, 0, 0}
+  api.beginFrame()
+  local _, _, _, _, metalStall = api.getResourceStatus('metal')
+  local _, _, _, _, energyStall = api.getResourceStatus('energy')
+  assertFalse(metalStall, 'pull above stock is not a stall while income covers it')
+  assertTrue(energyStall, 'one second of runway is a stall')
+
+  state.teamResources.metal = {5000, 10000, 12000, 15000, 12000, 0, 0, 0}
+  api.beginFrame()
+  local _, _, _, _, bigEconomyStall = api.getResourceStatus('metal')
+  assertFalse(bigEconomyStall, 'rising storage in a big economy is not a stall')
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+end)
+
+test('resource trend is the windowed mean with a dead band', function()
+  assertEqual(api.trendSign({50, 50, -10, 50, 50}, 10), 1, 'one dip does not reset a rising trend')
+  assertEqual(api.trendSign({5, -5, 5, -5, 5}, 10), 0, 'noise inside the dead band is flat')
+  assertEqual(api.trendSign({-50, -50, -50}, 10), -1, 'falling trend')
+  assertEqual(api.trendSign({}, 10), 0, 'empty window is flat')
+
+  initialize()
+  state.teamResources.metal = {5000, 10000, 6000, 8000, 6000, 0, 0, 0}
+  state.teamResources.energy = {5000, 10000, 900, 1000, 900, 0, 0, 0}
+  api.updateResourceNeeds()
+  local metalRising, metalFalling, energyRising, energyFalling = api.getTrend()
+  assertTrue(metalRising, 'first sample after initialize lands in the window')
+  assertFalse(metalFalling, 'rising metal is not falling')
+  assertTrue(energyRising, 'rising energy')
+  assertFalse(energyFalling, 'rising energy is not falling')
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+end)
+
+test('build power need follows team runway instead of single-target stall predictions', function()
+  initialize()
+  state.teamResources.metal = {5000, 10000, 12000, 15000, 12000, 0, 0, 0}
+  state.teamResources.energy = {5000, 10000, 900, 1000, 900, 0, 0, 0}
+  api.updateResourceNeeds()
+  local powerNeed = api.getNeeds()
+  assertTrue(powerNeed >= 0.75, 'rising metal with pull above stock still wants build power')
+
+  initialize()
+  state.teamResources.energy = {500, 10000, 1000, 900, 1000, 0, 0, 0}
+  api.updateResourceNeeds()
+  powerNeed = api.getNeeds()
+  assertEqual(powerNeed, 0, 'energy emptying within the runway horizon blocks build power')
+
+  initialize()
+  state.teamResources.metal = {50, 10000, 200, 100, 200, 0, 0, 0}
+  state.teamResources.energy = {5000, 10000, 900, 1000, 900, 0, 0, 0}
+  api.updateResourceNeeds()
+  powerNeed = api.getNeeds()
+  assertEqual(powerNeed, 0, 'metal stall blocks build power')
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+end)
+
+test('conversion snapshot reads the game rules params and clamps the surplus floor', function()
+  initialize()
+  state.rulesParams = {mmLevel = 0.88, mmUse = 950, mmCapacity = 1000}
+  local snapshot = api.readConversionSnapshot()
+  assertTrue(snapshot.available, 'mmLevel present')
+  assertTrue(snapshot.saturated, '95% use is saturated')
+  assertNear(snapshot.floor, 0.99, 0.000001, 'floor never reaches full storage')
+
+  state.rulesParams = {mmLevel = 0.5, mmUse = 500, mmCapacity = 1000}
+  snapshot = api.readConversionSnapshot()
+  assertFalse(snapshot.saturated, 'half use is not saturated')
+  assertNear(snapshot.floor, 0.62, 0.000001, 'floor is level plus bias')
+
+  state.rulesParams = {mmLevel = 0.5}
+  assertTrue(api.readConversionSnapshot().saturated, 'no converters counts as saturated')
+
+  state.rulesParams = {}
+  assertFalse(api.readConversionSnapshot().available, 'missing mmLevel is unavailable')
+end)
+
+test('conversion level nudges are symmetric, bounded, and rounded', function()
+  local throttled = {level = 0.5, capacity = 1000, saturated = false}
+  assertNear(api.nudgeMetalMakerLevel(throttled, 0.97, false), 0.52, 0.000001, 'full metal raises the floor')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.75, capacity = 1000, saturated = false}, 0.97, false), nil, 'raise stops at the cap')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.88, capacity = 1000, saturated = false}, 0.97, false), nil, 'manual levels above the cap are left alone')
+  assertNear(api.nudgeMetalMakerLevel({level = 0.2, capacity = 1000, saturated = false}, 0.5, true), 0.18, 0.000001, 'leaking energy lowers a throttling floor')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.12, capacity = 1000, saturated = false}, 0.5, true), nil, 'lower stops at the UI floor')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = true}, 0.5, true), nil, 'saturated converters are not the floor problem')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 0, saturated = true}, 0.5, true), nil, 'no converters, nothing to nudge')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = false}, 0.97, true), nil, 'both overflowing leaves the floor alone')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = false}, 0.5, false), nil, 'balanced eco leaves the floor alone')
+
+  initialize()
+  state.rulesParams = {mmLevel = 0.57, mmUse = 0, mmCapacity = 0}
+  state.teamResources.metal = {970, 1000, 0, 100, 50, 0, 0, 0}
+  state.teamResources.energy = {500, 1000, 0, 100, 50, 0, 0, 0}
+  api.updateResourceNeeds()
+  assertTrue(api.sendNudgedMetalMakerLevel(), 'full metal sends a raise')
+  assertEqual(state.lastRulesMessage, string.char(137) .. '59', 'raise is rounded, not floored')
+
+  initialize()
+  state.rulesParams = {mmLevel = 0.2, mmUse = 500, mmCapacity = 1000}
+  state.teamResources.metal = {500, 1000, 0, 100, 50, 0, 0, 0}
+  state.teamResources.energy = {1000, 1000, 0, 500, 100, 0, 0, 0}
+  api.updateResourceNeeds()
+  assertTrue(api.sendNudgedMetalMakerLevel(), 'leaking energy sends a lower')
+  assertEqual(state.lastRulesMessage, string.char(137) .. '18', 'lower steps by two percent')
+
+  state.rulesParams.mmUse = 960
+  api.updateResourceNeeds()
+  assertFalse(api.sendNudgedMetalMakerLevel(), 'saturated converters send nothing')
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+end)
+
+test('resources are sampled on a fixed frame cadence independent of the builder roster', function()
+  initialize()
+  widget:GameFrame(30)
+  assertEqual(state.teamResourceCalls, 2, 'sample frame reads both resources once')
+  widget:GameFrame(31)
+  assertEqual(state.teamResourceCalls, 2, 'builder frames do not sample resources')
+  widget:GameFrame(60)
+  assertEqual(state.teamResourceCalls, 4, 'next sample frame reads again')
 end)
 
 test('purged command queues are filtered, cached, and invalidatable', function()

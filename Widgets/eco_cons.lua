@@ -54,13 +54,25 @@ local STALL_LEVEL = 0.01           -- resource fraction below this == stalling
 local LEAK_LEVEL = 0.99            -- resource fraction above this == leaking
 local METAL_LEVEL_HIGH = 0.8       -- metal level deemed comfortably high
 local METAL_LEVEL_LOW = 0.15       -- metal level above this still allows power building
-local MM_LEVEL_BIAS = 0.12         -- bias added to mmLevel rules param
+local METAL_LEVEL_FULL = 0.96      -- metal level at which the conversion floor may be raised
 local POWER_NEED_AFFORDABLE_FLOOR = 0.75 -- minimum buildpower priority when eco can afford it
+local STALL_RUNWAY_SECONDS = 2     -- storage empties within this at the current pull == already stalling
+local POWER_RUNWAY_SECONDS = 10    -- no extra build power if a resource empties within this at the current drain
+local TREND_DEADBAND = 0.001       -- |mean(income - expense)| below this fraction of storage per second counts as flat
+
+-- energy conversion (mmLevel is the storage fraction converters may not eat below;
+-- the game converts at most 2 * (1 - mmLevel) * energyStorage per second, whatever the converter count)
+local MM_LEVEL_BIAS = 0.12         -- margin above mmLevel before energy counts as surplus
+local MM_LEVEL_MIN = 0.12          -- top bar UI floor for the conversion level
+local MM_LEVEL_MAX = 0.75          -- MM_LEVEL_MAX + MM_LEVEL_BIAS must stay below LEAK_LEVEL
+local MM_LEVEL_STEP = 0.02         -- conversion level change per resource sample
+local MM_SATURATION = 0.95         -- mmUse / mmCapacity at or above this == converters saturated
 
 -- scanning / timing
 local CANDIDATE_SCAN_PADDING = 250 -- buildDistance + this == idle-candidate scan radius
 local EARLY_GAME_REPAIR_FRAMES = 60 * 30 -- ~1 minute; below this, queued REPAIR is honored
-local REGULARIZATION_WINDOW = 5    -- frames in income/expense derivative smoother
+local REGULARIZATION_WINDOW = 5    -- samples in the income/expense trend window
+local RESOURCE_SAMPLE_INTERVAL = 30 -- frames between resource samples; matches engine TEAM_SLOWUPDATE_RATE
 local FORWARDED_CLEANUP_INTERVAL = 100 -- frames between forwardedFromTargetIds purges
 local BUILDER_RESCAN_INTERVAL = 300    -- frames between full builder roster rescans
 local BATCH_ORDER_INTERVAL = 4         -- frames between BatchOrder() calls
@@ -98,14 +110,14 @@ local reclaimTargetsPrev
 local possibleMetalMakersMetalProduction = 0
 local possibleMetalMakersUpkeep = 0
 local releasedMetal = 0
-local regularizationCounter = 1
+local regularizationCounter = 0
 local energyLevel = 0.5
 local isEnergyLeaking = true
 local isEnergyStalling = false
 local isMetalLeaking = true
 local isMetalStalling = false
 local metalLevel = 0.5
-local metalMakersLevel = 0.5
+local conversionSnapshot
 local positiveMMLevel = true
 local regularizedNegativeMetal = false
 local regularizedNegativeEnergy = false
@@ -396,8 +408,9 @@ function widget:Initialize()
   possibleMetalMakersMetalProduction = 0
   reclaimTargets = NewSetList()
   reclaimTargetsPrev = NewSetList()
-  regularizedResourceDerivativesEnergy = {true}
-  regularizedResourceDerivativesMetal = {true}
+  regularizedResourceDerivativesEnergy = {}
+  regularizedResourceDerivativesMetal = {}
+  regularizationCounter = 0
   assignedTargetBuildSpeed = {}
   upgradableFromDefIds = {}
   upgradableToDefIds = {}
@@ -694,6 +707,7 @@ local function readResourceSnapshot(resourceType)
 
   local localDelta = income - expenseActual
   local level = SafeDivide(current, storage, 0)
+  local runwaySeconds = localDelta < 0 and current / -localDelta or math.huge
 
   return {
     current = current,
@@ -706,6 +720,7 @@ local function readResourceSnapshot(resourceType)
     received = received or 0,
     localDelta = localDelta,
     level = level,
+    runwaySeconds = runwaySeconds,
     isOverflowing = level > LEAK_LEVEL,
     isLocallyPositive = localDelta > 0,
     isLocallyNegative = localDelta < 0
@@ -722,12 +737,28 @@ local function ResourceDrainPressure(resourceSnapshot)
   )
 end
 
-local function areMetalMakersSaturated()
-  return getMetalMakersUpkeep() >= possibleMetalMakersUpkeep
+-- Converter state as published by game_energy_conversion.lua (BAR converter defs carry
+-- no energyUpkeep, so unit-def upkeep sums cannot tell whether converters are saturated).
+local function readConversionSnapshot()
+  local level = Spring.GetTeamRulesParam(myTeamId, 'mmLevel')
+  local use = Spring.GetTeamRulesParam(myTeamId, 'mmUse') or 0
+  local capacity = Spring.GetTeamRulesParam(myTeamId, 'mmCapacity') or 0
+  return {
+    available = level ~= nil,
+    level = level or 0,
+    use = use,
+    capacity = capacity,
+    saturated = use >= capacity * MM_SATURATION, -- true with zero converters: nothing throttles the surplus
+    floor = math.min((level or 0) + MM_LEVEL_BIAS, LEAK_LEVEL)
+  }
 end
 
 local function recomputePowerNeed(metalSnapshot, energySnapshot)
-  if not needPower or anyBuildWillMStall or anyBuildWillEStall or isMetalStalling or isEnergyStalling then
+  if
+    not needPower or isMetalStalling or isEnergyStalling or
+      metalSnapshot.runwaySeconds < POWER_RUNWAY_SECONDS or
+      energySnapshot.runwaySeconds < POWER_RUNWAY_SECONDS
+   then
     powerNeed = 0
     return
   end
@@ -742,7 +773,7 @@ local function recomputePowerNeed(metalSnapshot, energySnapshot)
   powerNeed = math.max(POWER_NEED_AFFORDABLE_FLOOR, Clamp01(metalPressure * energyPressure))
 end
 
-local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
+local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot, conversion)
   energyNeed = 0
   mMMNeed = 0
 
@@ -752,34 +783,34 @@ local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
   end
 
   local metalOverflowing = isMetalLeaking or metalSnapshot.isOverflowing
-  local energyAboveMMLevel = energySnapshot.level > metalMakersLevel
+  local energyAboveMMLevel = energySnapshot.level > conversion.floor
   local energyInvestmentBlocked =
     energySnapshot.isOverflowing or isEnergyLeaking or
     (energyAboveMMLevel and energySnapshot.isLocallyNegative)
 
   if energyInvestmentBlocked then
     if
-      not metalOverflowing and energyAboveMMLevel and areMetalMakersSaturated() and
+      not metalOverflowing and energyAboveMMLevel and conversion.saturated and
         not anyBuildWillEStall
      then
-      mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.75, 1)
+      mMMNeed = Interpolate(energySnapshot.level, conversion.floor, 1, 0.75, 1)
     end
     return
   end
 
   if anyBuildWillEStall or regularizedNegativeEnergy then
-    energyNeed = Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75)
+    energyNeed = Interpolate(energySnapshot.level, 0, conversion.floor, 1, 0.75)
     return
   end
 
   if positiveMMLevel then
     energyNeed = Interpolate(
-      1 - (energySnapshot.level - metalMakersLevel) - (areMetalMakersSaturated() and 0.5 or 0),
+      1 - (energySnapshot.level - conversion.floor) - (conversion.saturated and 0.5 or 0),
       0, 1, 0, 0.5
     )
 
     if energySnapshot.isLocallyPositive and energySnapshot.income > math.max(energySnapshot.expenseActual, energySnapshot.expenseWanted) then
-      log('mm pos e', energySnapshot.level, metalMakersLevel)
+      log('mm pos e', energySnapshot.level, conversion.floor)
       if
         energySnapshot.expenseWanted > energySnapshot.expenseActual and
           metalSnapshot.expenseWanted > metalSnapshot.expenseActual and
@@ -795,15 +826,15 @@ local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
           log(string.format('ratios e %0.2f m %0.2f need e %0.2f m %0.2f', eRatio, mRatio, energyNeed, mMMNeed))
         end
       else
-        mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.75, 1)
+        mMMNeed = Interpolate(energySnapshot.level, conversion.floor, 1, 0.75, 1)
       end
     else
-      mMMNeed = Interpolate(energySnapshot.level, metalMakersLevel, 1, 0.5, 1)
+      mMMNeed = Interpolate(energySnapshot.level, conversion.floor, 1, 0.5, 1)
     end
   elseif regularizedPositiveEnergy then
-    energyNeed = Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75)
+    energyNeed = Interpolate(energySnapshot.level, 0, conversion.floor, 1, 0.75)
   else
-    energyNeed = anyBuildWillMStall and Interpolate(energySnapshot.level, 0, metalMakersLevel, 1, 0.75) or 0.5
+    energyNeed = anyBuildWillMStall and Interpolate(energySnapshot.level, 0, conversion.floor, 1, 0.75) or 0.5
   end
 
   -- clamp: don't build more of a resource type that is already overflowing
@@ -815,23 +846,45 @@ local function recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
   end
 end
 
+-- Sign of the windowed mean: 1 rising, -1 falling, 0 flat (within the dead band).
+local function TrendSign(samples, deadband)
+  local count = #samples
+  if count == 0 then
+    return 0
+  end
+  local sum = 0
+  for i = 1, count do
+    sum = sum + samples[i]
+  end
+  local mean = sum / count
+  if mean > deadband then
+    return 1
+  end
+  if mean < -deadband then
+    return -1
+  end
+  return 0
+end
+
 local function UpdateResourceNeeds()
   local metalSnapshot = readResourceSnapshot('metal')
   local energySnapshot = readResourceSnapshot('energy')
+  conversionSnapshot = readConversionSnapshot()
 
   regularizationCounter = (regularizationCounter % REGULARIZATION_WINDOW) + 1
-  regularizedResourceDerivativesMetal[regularizationCounter] = metalSnapshot.isLocallyPositive
-  regularizedResourceDerivativesEnergy[regularizationCounter] = energySnapshot.isLocallyPositive
-  regularizedPositiveMetal = table.full_of(regularizedResourceDerivativesMetal, true)
-  regularizedPositiveEnergy = table.full_of(regularizedResourceDerivativesEnergy, true)
-  regularizedNegativeMetal = table.full_of(regularizedResourceDerivativesMetal, false)
-  regularizedNegativeEnergy = table.full_of(regularizedResourceDerivativesEnergy, false)
+  regularizedResourceDerivativesMetal[regularizationCounter] = metalSnapshot.localDelta
+  regularizedResourceDerivativesEnergy[regularizationCounter] = energySnapshot.localDelta
+  local metalTrend = TrendSign(regularizedResourceDerivativesMetal, TREND_DEADBAND * metalSnapshot.storage)
+  local energyTrend = TrendSign(regularizedResourceDerivativesEnergy, TREND_DEADBAND * energySnapshot.storage)
+  regularizedPositiveMetal = metalTrend > 0
+  regularizedPositiveEnergy = energyTrend > 0
+  regularizedNegativeMetal = metalTrend < 0
+  regularizedNegativeEnergy = energyTrend < 0
 
   metalLevel = metalSnapshot.level
   energyLevel = energySnapshot.level
 
-  metalMakersLevel = (Spring.GetTeamRulesParam(myTeamId, 'mmLevel') or 0) + MM_LEVEL_BIAS
-  positiveMMLevel = areMetalMakersSaturated() and energyLevel > metalMakersLevel
+  positiveMMLevel = conversionSnapshot.saturated and energyLevel > conversionSnapshot.floor
 
   isMetalStalling = metalLevel < STALL_LEVEL and not regularizedPositiveMetal
   isEnergyStalling = energyLevel < STALL_LEVEL and not regularizedPositiveEnergy
@@ -843,13 +896,13 @@ local function UpdateResourceNeeds()
     (positiveMMLevel or not regularizedNegativeEnergy)
   needEnergy =
     isEnergyStalling or
-    not (energySnapshot.isOverflowing or isEnergyLeaking or (energyLevel > metalMakersLevel and energySnapshot.isLocallyNegative))
+    not (energySnapshot.isOverflowing or isEnergyLeaking or (energyLevel > conversionSnapshot.floor and energySnapshot.isLocallyNegative))
   needMM =
     positiveMMLevel and not metalSnapshot.isOverflowing and
     (not regularizedNegativeEnergy or isEnergyLeaking or isMetalStalling)
 
   recomputePowerNeed(metalSnapshot, energySnapshot)
-  recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot)
+  recomputeEnergyAndMMNeed(metalSnapshot, energySnapshot, conversionSnapshot)
 end
 
 local function PopulateResourceStatus()
@@ -866,6 +919,7 @@ local function PopulateResourceStatus()
         current = current or 0,
         storage = storage or 0,
         pullExpWanted = pullExpWanted or 0,
+        income = income,
         expense = 0
       }
     end
@@ -892,7 +946,8 @@ local function PopulateResourceStatus()
   end
 
   for resourceType, data in pairs(resourceData) do
-    local alreadyInStall = data.pullExpWanted > data.current or data.expense > data.current
+    local drainRate = data.pullExpWanted - data.income
+    local alreadyInStall = drainRate > 0 and data.current < drainRate * STALL_RUNWAY_SECONDS
     cachedResourceStatus[resourceType] = {
       data.total,
       data.current,
@@ -1817,8 +1872,6 @@ local function Builders(gameFrame)
     end
   end
 
-  UpdateResourceNeeds()
-
   RefreshSelectedUnits()
 
   if gameFrame % BATCH_ORDER_INTERVAL == 0 then
@@ -1879,24 +1932,47 @@ end
 -- ============================================================
 -- Widget callbacks
 -- ============================================================
-local function SendMetalMakerLevelIfNeeded(currentMetalLevel)
-  if not currentMetalLevel or currentMetalLevel <= 0.96 then return false end
+-- Conversion level to request, or nil to leave it alone. Raises the floor while metal is
+-- full so converters keep energy in storage; lowers it while energy overflows and the
+-- floor (not converter capacity) is what throttles conversion.
+local function NudgeMetalMakerLevel(conversion, currentMetalLevel, energyLeaking)
+  local level = conversion.level
+  if currentMetalLevel >= METAL_LEVEL_FULL and not energyLeaking then
+    if level >= MM_LEVEL_MAX then return end
+    return math.min(MM_LEVEL_MAX, level + MM_LEVEL_STEP)
+  end
+  if energyLeaking and currentMetalLevel < METAL_LEVEL_FULL and conversion.capacity > 0 and not conversion.saturated then
+    if level <= MM_LEVEL_MIN then return end
+    return math.max(MM_LEVEL_MIN, level - MM_LEVEL_STEP)
+  end
+end
 
-  local currentMMLevel = Spring.GetTeamRulesParam(myTeamId, 'mmLevel')
-  if not currentMMLevel then return false end
+local function LevelPercent(level)
+  return math.floor(level * 100 + 0.5)
+end
 
-  Spring.SendLuaRulesMsg(
-    string.format(string.char(137) .. '%i', math.min(88, math.floor(currentMMLevel * 100 + 2)))
-  )
+local function SendNudgedMetalMakerLevel()
+  if not conversionSnapshot or not conversionSnapshot.available then return false end
+
+  local target = NudgeMetalMakerLevel(conversionSnapshot, metalLevel, isEnergyLeaking)
+  if not target then return false end
+
+  local percent = LevelPercent(target)
+  if percent == LevelPercent(conversionSnapshot.level) then return false end
+
+  Spring.SendLuaRulesMsg(string.format(string.char(137) .. '%i', percent))
   return true
 end
 
 function widget:GameFrame(gameFrame)
+  if gameFrame % RESOURCE_SAMPLE_INTERVAL == 0 then
+    UpdateResourceNeeds()
+    SendNudgedMetalMakerLevel()
+  end
+
   gameFrameModulo = GameFrameModulo()
 
   if gameFrame % gameFrameModulo == 0 then
-    SendMetalMakerLevelIfNeeded(metalLevel)
-
     buildersJitterModulo = BuildersJitterModulo()
 
     -- log(
@@ -2062,7 +2138,15 @@ if ECO_CONS_TEST then
       energyNeed = nextEnergyNeed
       mMMNeed = nextMMNeed
     end,
-    sendMetalMakerLevelIfNeeded = SendMetalMakerLevelIfNeeded,
+    updateResourceNeeds = UpdateResourceNeeds,
+    nudgeMetalMakerLevel = NudgeMetalMakerLevel,
+    sendNudgedMetalMakerLevel = SendNudgedMetalMakerLevel,
+    readConversionSnapshot = readConversionSnapshot,
+    trendSign = TrendSign,
+    getNeeds = function() return powerNeed, energyNeed, mMMNeed end,
+    getTrend = function()
+      return regularizedPositiveMetal, regularizedNegativeMetal, regularizedPositiveEnergy, regularizedNegativeEnergy
+    end,
     hasMultiSlotBuildQueue = hasMultiSlotBuildQueue
   }
 end
