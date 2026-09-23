@@ -8,7 +8,7 @@ KEYBIND_SCRIPT := ./scripts/Repair-BarKeybinds.ps1
 
 help:
 	@echo "Widget workspace commands:"
-	@echo "  make sync-widget-links     Create/update community-widget junctions"
+	@echo "  make sync-widget-links     Create/update widget junctions (community-widgets, widgets-extra)"
 	@echo "  make preview-widget-links  Show the junction changes without applying them"
 	@echo "  make links                 Short alias for sync-widget-links"
 	@echo "  make keybinds              Point every BAR write dir's uikeys.txt at this repo"

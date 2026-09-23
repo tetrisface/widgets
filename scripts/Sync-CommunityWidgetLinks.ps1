@@ -2,27 +2,26 @@
 param()
 
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
-# Only the direct 'community-widgets' submodule is a valid source. The nested copy at
+# Only the direct submodules are valid sources. The nested copy at
 # BAR-Widgets/Widgets/tetrisface is pinned to whatever upstream recorded, so any
 # `git submodule update` in BAR-Widgets silently reverts it and the linked widgets
 # disappear from the game mid-session.
-$communityCandidates = @(
-    Join-Path $repositoryRoot 'community-widgets'
-)
-$communityWidgetsRoot = $communityCandidates |
-    Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
-    Select-Object -First 1
-
-if (-not $communityWidgetsRoot) {
-    throw "Community widgets checkout not found. Checked: $($communityCandidates -join ', ')"
+# Ordered by precedence: when both hold a widget, the community-widgets copy is linked.
+$sourceRoots = @('community-widgets', 'widgets-extra') | ForEach-Object { Join-Path $repositoryRoot $_ }
+$missingRoots = @($sourceRoots | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Container) })
+if ($missingRoots.Count -gt 0) {
+    throw "Widget source checkout not found: $($missingRoots -join ', ')"
 }
 
-$widgetDirectories = Get-ChildItem -LiteralPath $communityWidgetsRoot -Directory |
-    Where-Object {
-        $manifestPath = Join-Path $_.FullName 'manifest.json'
-        $entrypointPath = Join-Path $_.FullName ($_.Name + '.lua')
-        (Test-Path -LiteralPath $manifestPath -PathType Leaf) -and
-            (Test-Path -LiteralPath $entrypointPath -PathType Leaf)
+$widgetDirectories = $sourceRoots |
+    ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.lua')) -PathType Leaf } |
+    Group-Object Name |
+    ForEach-Object {
+        if ($_.Count -gt 1) {
+            Write-Warning "Duplicate widget $($_.Name): linking $($_.Group[0].FullName), ignoring $(@($_.Group | Select-Object -Skip 1).FullName -join ', ')"
+        }
+        $_.Group[0]
     } |
     Sort-Object Name
 
@@ -30,11 +29,6 @@ $linkExclusionPatterns = [System.Collections.Generic.List[string]]::new()
 
 foreach ($widgetDirectory in $widgetDirectories) {
     $widgetName = $widgetDirectory.Name
-    # This widget is managed in widgets-extra (widgets-extra/gui_pve_stats) and must not be linked from community-widgets.
-    if ($widgetName -eq 'gui_pve_stats') {
-        Write-Output "Skipping managed widget from sync: $widgetName"
-        continue
-    }
     $sourcePath = $widgetDirectory.FullName
     $linkPath = Join-Path (Join-Path $repositoryRoot 'Widgets') $widgetName
 	$linkExclusionPatterns.Add("/Widgets/$widgetName/")
