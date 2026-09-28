@@ -704,6 +704,27 @@ local function openSpotBuildCommands(commands)
 	return openCommands
 end
 
+-- Reissued queues follow a STOP. Reusing a command's original options would keep the unshifted
+-- order that started the queue, and the engine clears the whole queue on any unshifted order.
+local queuedOptions = {'shift'}
+
+-- Replaces a unit's queue without it ever going empty. A STOP empties it and fires UnitIdle, which
+-- makes BAR's ImmobileBuilder widget give nanos an unshifted FIGHT that lands after the new orders
+-- and wipes them. An unshifted WAIT goes to the queue front without flushing, so it holds the queue
+-- open while the old orders are removed by tag and the new ones are appended behind it.
+local function replaceQueue(unitIds, orders)
+	for _, unitId in ipairs(unitIds) do
+		local tags = {}
+		for i, command in ipairs(Spring.GetUnitCommands(unitId, -1) or {}) do
+			tags[i] = command.tag
+		end
+		Spring.GiveOrderToUnit(unitId, CMD.WAIT, {}, 0)
+		Spring.GiveOrderToUnit(unitId, CMD.REMOVE, tags, 0)
+		Spring.GiveOrderArrayToUnit(unitId, orders)
+		Spring.GiveOrderToUnit(unitId, CMD.REMOVE, {CMD.WAIT}, {'alt'})
+	end
+end
+
 local function toOrderArrayCommand(command)
 	if not command then
 		return nil
@@ -714,7 +735,7 @@ local function toOrderArrayCommand(command)
 		return nil
 	end
 
-	return {commandId, command[2] or command.params or {}, command[3] or command.options or {}}
+	return {commandId, command[2] or command.params or {}, queuedOptions}
 end
 
 -- Generate signature from all build command positions
@@ -999,10 +1020,10 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 				commands[nCommands] = {
 					command.id,
 					command.params,
-					command.options,
+					queuedOptions,
 					id = command.id,
 					params = command.params,
-					options = command.options,
+					options = queuedOptions,
 					x = command.params and command.params[1],
 					z = command.params and command.params[3],
 					immobileBuildPower = immobileBuildPower,
@@ -1258,14 +1279,13 @@ local function buildQueueOptimalPooling(selectedUnitIds, mods)
 						end
 					end
 
-					Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
 					local maxNCommands = 510
 					if #builderCommands > maxNCommands then
 						for k = #builderCommands, maxNCommands + 1, -1 do
 							builderCommands[k] = nil
 						end
 					end
-					Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
+					replaceQueue({builder.id}, builderCommands)
 				end
 			end
 		end
@@ -1324,10 +1344,10 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 		commands[nCommands] = {
 			command.id,
 			command.params,
-			command.options,
+			queuedOptions,
 			id = command.id,
 			params = command.params,
-			options = command.options,
+			options = queuedOptions,
 			buildSpeed = 0,
 			assistersBuildSpeeds = {},
 			isShield = isShieldDefId[-command.id],
@@ -1362,8 +1382,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 	if not mods['shift'] and mods['alt'] then
 		table.sort(commands, SortbuildSpeedDistance)
 		commands = snake_sort_with_lookahead(commands, lookahead_steps)
-		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {}, {})
-		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, commands)
+		replaceQueue(selectedUnitIds, commands)
 	elseif mods['shift'] and not mods['alt'] then
 		-- Ctrl+Shift+F - power max pooling (was K-Means clustering)
 		local builders = {}
@@ -1473,7 +1492,6 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 					end
 				end
 			end
-			Spring.GiveOrderToUnit(builder.id, CMD.STOP, {}, {})
 			local maxNCommands = 510
 			if #builderCommands > maxNCommands then
 				-- Truncate the table to maxNCommands elements
@@ -1481,7 +1499,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 					builderCommands[k] = nil
 				end
 			end
-			Spring.GiveOrderArrayToUnit(builder.id, builderCommands)
+			replaceQueue({builder.id}, builderCommands)
 		end
 	elseif not mods['alt'] and not mods['shift'] then
 		-- Ctrl+Alt+Shift+F - Rotate starting corner clockwise
@@ -1677,8 +1695,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 			end
 		end
 
-		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
-		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
+		replaceQueue(selectedUnitIds, orderedCommands)
 	elseif mods['alt'] and mods['shift'] then
 		-- Filter to only build commands and generate signature
 		commands = getBuildCommandsOnly(commands)
@@ -1839,8 +1856,7 @@ local function buildQueueDistributeTransform(selectedUnitIds, mods)
 			end
 		end
 
-		Spring.GiveOrderToUnitArray(selectedUnitIds, CMD.STOP, {})
-		Spring.GiveOrderArrayToUnitArray(selectedUnitIds, orderedCommands)
+		replaceQueue(selectedUnitIds, orderedCommands)
 	end
 end
 
@@ -2154,9 +2170,6 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 			end
 
 			if #orderArray > 0 then
-				-- Stop current commands and give new ones
-				Spring.GiveOrderToUnit(targetBuilder.id, CMD.STOP, {}, {})
-
 				-- Limit to max commands to avoid overwhelming the unit
 				local maxNCommands = 500
 				if #orderArray > maxNCommands then
@@ -2165,7 +2178,7 @@ local function buildQueueRedundancy(selectedUnitIds, mods)
 					end
 				end
 
-				Spring.GiveOrderArrayToUnit(targetBuilder.id, orderArray)
+				replaceQueue({targetBuilder.id}, orderArray)
 			end
 		end
 	end
