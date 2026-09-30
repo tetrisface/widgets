@@ -29,9 +29,10 @@ local CMD_AVOID_QUEUED_DESCRIPTION = {
   params = {1, 'avoid_queued_off', 'avoid_queued_on'}
 }
 
-Spring.I18N.set('en.ui.orderMenu.avoid_queued_off', 'Avoid Queued Off')
-Spring.I18N.set('en.ui.orderMenu.avoid_queued_on', 'Avoid Queued On')
-Spring.I18N.set(
+local i18n = (BAR and BAR.I18N) or Spring.I18N
+i18n.set('en.ui.orderMenu.avoid_queued_off', 'Avoid Queued Off')
+i18n.set('en.ui.orderMenu.avoid_queued_on', 'Avoid Queued On')
+i18n.set(
   'en.ui.orderMenu.avoid_queued_tooltip',
   'Prevents build commands that conflict with queued buildings from other builders'
 )

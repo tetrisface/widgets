@@ -50,7 +50,7 @@ local CMD_FORCE_STATE_DESCRIPTION = {
 }
 
 -- Localization
-local i18n = Spring.I18N
+local i18n = (BAR and BAR.I18N) or Spring.I18N
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_BUILT_DESCRIPTION.params[2], 'Built Default')
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_BUILT_DESCRIPTION.params[3], 'Built Off')
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_BUILT_DESCRIPTION.params[4], 'Built On')

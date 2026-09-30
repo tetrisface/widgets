@@ -43,9 +43,10 @@ local CMD_AUTO_REPLACE_DESCRIPTION = {
 	params = {1, 'auto_replace_off', 'auto_replace_on'}
 }
 
-Spring.I18N.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
-Spring.I18N.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
-Spring.I18N.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
+local i18n = (BAR and BAR.I18N) or Spring.I18N
+i18n.set('en.ui.orderMenu.auto_replace_off', 'Auto Replace Off')
+i18n.set('en.ui.orderMenu.auto_replace_on', 'Auto Replace On')
+i18n.set('en.ui.orderMenu.auto_replace_tooltip', 'Automatically reclaim blocking units when placing buildings')
 
 -- Target definitions
 local factions = {'arm', 'cor', 'leg'}

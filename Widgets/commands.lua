@@ -281,8 +281,9 @@ end
 local function dumpUnitDefToLog(def)
 	echoUnitDefWidgetFields(def)
 
-	if Spring.Debug and Spring.Debug.TableEcho then
-		Spring.Debug.TableEcho(def)
+	local Debug = (BAR and BAR.Debug) or Spring.Debug
+	if Debug and Debug.TableEcho then
+		Debug.TableEcho(def)
 		return
 	end
 

@@ -13,7 +13,7 @@ end
 VFS.Include('LuaUI/Widgets/helpers.lua')
 
 local echo = Spring.Echo
-local i18n = Spring.I18N
+local i18n = (BAR and BAR.I18N) or Spring.I18N
 local GetSelectedUnits = Spring.GetSelectedUnits
 local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitCommands = Spring.GetUnitCommands

@@ -52,7 +52,7 @@ local CMD_AUTO_DGUN_DESCRIPTION = {
 local nModes = #CMD_AUTO_DGUN_DESCRIPTION.params - 1
 
 -- Localization
-local i18n = Spring.I18N
+local i18n = (BAR and BAR.I18N) or Spring.I18N
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[2], 'Auto D-Gun Off')
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[3], 'Auto D-Gun Fill')
 i18n.set('en.ui.orderMenu.' .. CMD_AUTO_DGUN_DESCRIPTION.params[4], 'Auto D-Gun Deplete')
