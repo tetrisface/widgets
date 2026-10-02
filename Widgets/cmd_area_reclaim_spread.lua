@@ -295,12 +295,19 @@ local function areaAllows(fid, block)
 	return def and def.reclaimable and (block.areaCtrl or def.autoreclaim)
 end
 
+-- Scav Constructor Guard keeps some wrecks for resurrection
+local function isGuarded(fid)
+	local guard = WG['scav_constructor_guard']
+	return guard ~= nil and guard.isProtectedFeature(fid)
+end
+
 local function candidatesFor(unit, block, cache)
 	local list, seen = {}, {}
 	local function add(fid, fromArea)
 		if seen[fid] then return end
 		seen[fid] = true
 		if fromArea and not areaAllows(fid, block) then return end
+		if block.kind == 'reclaim' and isGuarded(fid) then return end
 		local feature = featureRecord(fid, block.kind, cache)
 		if not feature then return end
 		if fromArea and block.areaMeta and feature.reclaimLeft < 1 then return end

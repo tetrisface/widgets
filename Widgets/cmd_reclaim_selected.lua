@@ -4,30 +4,35 @@ function widget:GetInfo()
 		desc = 'Reclaim selected units with nearby nano turrets',
 		author = 'manshanko',
 		date = '2025-04-01',
+		home = 'https://github.com/manshanko/bar-widgets',
 		layer = 2,
-		enabled = false,
-		handler = true
+		handler = true,
 	}
+end
+
+local CONFIG = {
+	-- change default action on button press to shuffle
+	shuffle = true,
+}
+
+if Spring.GetSpectatingState() then
+	return
 end
 
 VFS.Include('LuaUI/Widgets/helpers.lua')
 
-local CONFIG = {
-	-- shuffle reclaim selected orders when shuffle key is held
-	-- default keybind is space (32)
-	shuffle_key = 32
-}
-
 local i18n = (BAR and BAR.I18N) or Spring.I18N
 local GetSelectedUnits = Spring.GetSelectedUnits
+local GetUnitCommandCount = Spring.GetUnitCommandCount
 local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitPosition = Spring.GetUnitPosition
-local GetUnitSeparation = Spring.GetUnitSeparation
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
 local GiveOrderToUnitArray = Spring.GiveOrderToUnitArray
+local GiveOrderArrayToUnit = Spring.GiveOrderArrayToUnit
 local UnitDefs = UnitDefs
 local CMD_RECLAIM = CMD.RECLAIM
 local CMD_INSERT = CMD.INSERT
+local CMD_OPT_ALT = CMD.OPT_ALT
 local CMD_OPT_SHIFT = CMD.OPT_SHIFT
 
 local CMD_RECLAIM_SELECTED = 28329
@@ -36,7 +41,7 @@ local CMD_RECLAIM_SELECTED_DESCRIPTION = {
 	type = CMDTYPE.ICON,
 	name = 'Reclaim Units',
 	cursor = nil,
-	action = 'reclaim_selected'
+	action = 'reclaim_selected',
 }
 
 i18n.set('en.ui.orderMenu.' .. CMD_RECLAIM_SELECTED_DESCRIPTION.action, 'Reclaim Selected')
@@ -54,94 +59,78 @@ for unit_def_id, unit_def in pairs(UnitDefs) do
 	end
 end
 
-local ALT = {'alt'}
-local CMD_CACHE = {0, CMD_RECLAIM, CMD_OPT_SHIFT, 0}
-local SHUFFLE_MODIFIER = false
+local CMD_CACHE = { 0, CMD_RECLAIM, CMD_OPT_SHIFT, 0 }
 
 local function ntNearUnit(target_unit_id)
-	local x, _, z = Spring.GetUnitBasePosition(target_unit_id)
+	local x, _, z = GetUnitPosition(target_unit_id)
 	local units_near = GetUnitsInCylinder(x, z, MAX_DISTANCE, -3)
-
 	local unit_ids = {}
 	for _, id in ipairs(units_near) do
-		if IsInBuildRange(id, target_unit_id) then
-
+		if NANO_DEFS[GetUnitDefID(id)] and target_unit_id ~= id and IsInBuildRange(id, target_unit_id) then
 			unit_ids[#unit_ids + 1] = id
 		end
-		-- local dist = NANO_DEFS[GetUnitDefID(id)]
-		-- if dist ~= nil and target_unit_id ~= id then
-		-- 	if dist > GetUnitSeparation(target_unit_id, id, true) then
-		-- 		unit_ids[#unit_ids + 1] = id
-		-- 	end
-		-- end
 	end
 
 	return unit_ids
 end
 
--- local function ntNearUnit(target_unit_id)
--- 	local pos = {GetUnitPosition(target_unit_id)}
--- 	local units_near = GetUnitsInCylinder(pos[1], pos[3], MAX_DISTANCE, -3)
--- 	local unit_ids = {}
--- 	local reclaimeeDefID = GetUnitDefID(target_unit_id)
--- 	for _, reclaimerID in ipairs(units_near) do
--- 		-- local dist = NANO_DEFS[reclaimerID]
--- 		-- if dist ~= nil and target_unit_id ~= reclaimerID then
--- 		-- if dist > GetUnitSeparation(target_unit_id, id, true) then
--- 		-- distance between units
--- 		local reclaimerPos = Spring.GetUnitBasePosition(reclaimerID)
--- 		local unitDistances = Distance(reclaimerPos[1], reclaimerPos[3], pos[1], pos[3])
--- 		if dist > GetUnitEffectiveBuildRangePatched(reclaimerID, reclaimeeDefID) then
--- 			unit_ids[#unit_ids + 1] = reclaimerID
--- 		-- end
--- 		end
--- 	end
-
--- 	return unit_ids
--- end
-
 local function signalReclaim(target_unit_id)
 	local unit_ids = ntNearUnit(target_unit_id)
 
 	CMD_CACHE[4] = target_unit_id
-	GiveOrderToUnitArray(unit_ids, CMD_INSERT, CMD_CACHE, ALT)
+	GiveOrderToUnitArray(unit_ids, CMD_INSERT, CMD_CACHE, CMD_OPT_ALT)
 end
 
+local TASKS = nil
 local function signalReclaimShuffle(target_unit_ids)
-	local tasks = {}
-	for i = 1, #target_unit_ids do
-		local unit_ids = ntNearUnit(target_unit_ids[i])
-		table.shuffle(unit_ids)
-		tasks[i] = {
-			num_units = #unit_ids,
-			unit_ids = unit_ids,
-			target_unit_id = target_unit_ids[i]
-		}
-	end
+	TASKS = coroutine.wrap(function()
+		local nt_seen = {}
+		local nt_queue = {}
+		for i = 1, #target_unit_ids do
+			local unit_id = target_unit_ids[i]
+			local nt_ids = ntNearUnit(unit_id)
+			for i = 1, #nt_ids do
+				local nt_id = nt_ids[i]
+				if not (nt_seen[nt_id] and nt_seen[nt_id][unit_id]) then
+					nt_seen[nt_id] = nt_seen[nt_id] or {}
+					nt_seen[nt_id][unit_id] = true
 
-	local num_tasks = #tasks
-	local split = num_tasks
-	while num_tasks > 0 do
-		for i, group in pairs(tasks) do
-			local grp_unit_ids = group.unit_ids
-			local num_units = group.num_units
-			local take = math.ceil(math.min(math.max(4, num_units / split), num_units))
-			group.num_units = group.num_units - take
-
-			local unit_ids = {}
-			for i = 1, take do
-				unit_ids[i] = grp_unit_ids[num_units - i]
+					nt_queue[nt_id] = nt_queue[nt_id] or {}
+					nt_queue[nt_id][#nt_queue[nt_id] + 1] = {
+						CMD_RECLAIM,
+						unit_id,
+						CMD_OPT_SHIFT,
+					}
+				end
 			end
-
-			if group.num_units == 0 then
-				tasks[i] = nil
-				num_tasks = num_tasks - 1
-			end
-
-			CMD_CACHE[4] = group.target_unit_id
-			GiveOrderToUnitArray(unit_ids, CMD_INSERT, CMD_CACHE, ALT)
 		end
-	end
+
+		local executed = 0
+		for nt_id, cmds in pairs(nt_queue) do
+			local num_cmds = GetUnitCommandCount(nt_id)
+			if num_cmds then
+				table.shuffle(cmds)
+
+				-- Try to append reclaim orders if user does multiple reclaim selected.
+				-- This check is arbitrary but works in the common case.
+				if num_cmds <= 5 then
+					cmds[1][3] = nil
+				end
+				GiveOrderArrayToUnit(nt_id, cmds)
+				nt_queue[nt_id] = nil
+
+				executed = executed + 5 + #cmds
+				if executed > 200 then
+					executed = 0
+					coroutine.yield()
+				end
+			end
+		end
+
+		TASKS = nil
+	end)
+
+	TASKS()
 end
 
 local function handleReclaimSelected()
@@ -164,9 +153,9 @@ function widget:CommandsChanged()
 	end
 end
 
-function widget:CommandNotify(cmd_id)
+function widget:CommandNotify(cmd_id, cmd_params, cmd_options)
 	if cmd_id == CMD_RECLAIM_SELECTED then
-		if SHUFFLE_MODIFIER then
+		if CONFIG.shuffle then
 			handleReclaimSelectedShuffle()
 		else
 			handleReclaimSelected()
@@ -174,15 +163,9 @@ function widget:CommandNotify(cmd_id)
 	end
 end
 
-function widget:KeyPress(key, _, is_repeat)
-	if key == CONFIG.shuffle_key and not is_repeat then
-		SHUFFLE_MODIFIER = true
-	end
-end
-
-function widget:KeyRelease(key)
-	if key == CONFIG.shuffle_key then
-		SHUFFLE_MODIFIER = false
+function widget:GameFrame(n)
+	if TASKS and n % 3 == 0 then
+		TASKS()
 	end
 end
 

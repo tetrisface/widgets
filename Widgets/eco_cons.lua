@@ -33,6 +33,7 @@ local GetUnitDefID = Spring.GetUnitDefID
 local GetUnitHealth = Spring.GetUnitHealth
 local GetUnitIsBuilding = Spring.GetUnitIsBuilding
 local GetUnitBasePosition = Spring.GetUnitBasePosition
+local GetUnitBuildeeRadius = Spring.GetUnitBuildeeRadius
 local GetUnitRadius = Spring.GetUnitRadius
 local GetUnitResources = Spring.GetUnitResources
 local GetUnitsInCylinder = Spring.GetUnitsInCylinder
@@ -76,6 +77,8 @@ local RESOURCE_SAMPLE_INTERVAL = 30 -- frames between resource samples; matches 
 local FORWARDED_CLEANUP_INTERVAL = 100 -- frames between forwardedFromTargetIds purges
 local BUILDER_RESCAN_INTERVAL = 300    -- frames between full builder roster rescans
 local BATCH_ORDER_INTERVAL = 4         -- frames between BatchOrder() calls
+local REMOVE_RESEND_FRAMES = 15        -- a REMOVE needs a few frames to reach its unit; resend only if the command outlives this
+local MIN_ASSIGN_SECONDS = 1           -- a target its current builders finish sooner gets nobody else: the order would land on a finished unit
 
 local function applyResponsivenessSpeed(speed)
   responsivenessSpeed = speed
@@ -151,6 +154,14 @@ local InvalidatePurgedUnitCommands
 local logNoop = function()
 end
 log = logNoop
+
+-- Observer seam: an evaluator (eco_cons_eval.lua) installs a sink via WG.eco_cons to see every order given.
+local decisionSink
+local function emitDecision(kind, builderId, targetId)
+  if decisionSink then
+    decisionSink(kind, builderId, targetId)
+  end
+end
 
 -- ============================================================
 -- Decision predicates (queue shape & reclaim eligibility)
@@ -468,6 +479,25 @@ function widget:Initialize()
     setResponsivenessSpeed = function(value)
       applyResponsivenessSpeed(math.max(0.25, math.min(4, value)))
     end,
+    setDecisionSink = function(sink) decisionSink = sink end,
+    ecoTypeOf = function(unitDefID)
+      for name, group in pairs(ecoBuildingTypeDefIds) do
+        if group.map[unitDefID] then return name end
+      end
+    end,
+    getDecisionState = function()
+      return {
+        powerNeed = powerNeed,
+        energyNeed = energyNeed,
+        mMMNeed = mMMNeed,
+        isMetalStalling = isMetalStalling,
+        isEnergyStalling = isEnergyStalling,
+        isMetalLeaking = isMetalLeaking,
+        isEnergyLeaking = isEnergyLeaking,
+        anyBuildWillMStall = anyBuildWillMStall,
+        anyBuildWillEStall = anyBuildWillEStall
+      }
+    end,
   }
 end
 
@@ -580,6 +610,7 @@ end
 local function reclaim(builderId, unitId)
   GiveOrderToUnit(builderId, CMD.INSERT, {0, CMD.RECLAIM, CMD.OPT_SHIFT, unitId}, {'alt'})
   InvalidatePurgedUnitCommands(builderId)
+  emitDecision('reclaim', builderId, unitId)
 end
 
 local function reclaimByEcoType(builderId, features, needMetalNow, needEnergyNow)
@@ -606,10 +637,18 @@ local function purgeRepairs(builderId, cmdQueue)
 
   local removeCommands = {}
   local purgedQueue = {}
+  -- BAR's ImmobileBuilder widget keeps nano turrets on a FIGHT order and answers an idle turret
+  -- with an unshifted one, which also wipes whatever was ordered in between. Theirs stays.
+  local builder = builders[builderId]
+  local keepsFightOrder = builder and not builder.def.canMove
+  local gameFrame = Spring.GetGameFrame()
+  local previousRemoveSentFrames = builder and builder.removeSentFrames or {}
+  local removeSentFrames = {}
   for i = 1, #cmdQueue do
     local cmd = cmdQueue[i]
     local targetId = cmd.params[1]
     local shouldRemove = false
+    local purgeKind = 'purge_repair'
 
     if cmd.id == CMD.REPAIR then -- 40
       local health, maxHealth, _, _, targetBuild = GetUnitHealth(targetId)
@@ -617,7 +656,6 @@ local function purgeRepairs(builderId, cmdQueue)
         (targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth) or
           isBeingReclaimed(targetId)
        then
-        table.insert(removeCommands, {CMD.REMOVE, {cmd.tag}, {'ctrl'}})
         shouldRemove = true
         if not targetBuild then
           reclaimTargets:Remove(targetId)
@@ -628,7 +666,8 @@ local function purgeRepairs(builderId, cmdQueue)
       if #cmd.params == 1 then
         reclaimTargets:Add(targetId)
       end
-    elseif cmd.id < 0 or cmd.id == CMD.FIGHT then
+    elseif cmd.id < 0 or (cmd.id == CMD.FIGHT and not keepsFightOrder) then
+      purgeKind = cmd.id < 0 and 'purge_build' or 'purge_fight'
       local buildQueueUnits = GetUnitsInCylinder(cmd.params[1], cmd.params[3], 5, myTeamId)
       if buildQueueUnits and #buildQueueUnits > 0 then
         local buildingUnitId = buildQueueUnits[1]
@@ -641,10 +680,8 @@ local function purgeRepairs(builderId, cmdQueue)
          then
           local health, maxHealth, _, _, targetBuild = GetUnitHealth(buildingUnitId)
           if targetBuild ~= nil and health ~= nil and targetBuild >= 1 and health >= maxHealth then
-            table.insert(removeCommands, {CMD.REMOVE, {cmd.tag}, {'ctrl'}})
             shouldRemove = true
           elseif isBeingReclaimed(buildingUnitId) then
-            table.insert(removeCommands, {CMD.REMOVE, {cmd.tag}, {'ctrl'}})
             shouldRemove = true
             reclaimTargets:Remove(buildingUnitId)
             reclaimTargetsPrev:Remove(buildingUnitId)
@@ -653,11 +690,22 @@ local function purgeRepairs(builderId, cmdQueue)
       end
     end
 
-    if not shouldRemove then
+    if shouldRemove then
+      local sentFrame = previousRemoveSentFrames[cmd.tag]
+      local isOnItsWay = sentFrame and gameFrame - sentFrame < REMOVE_RESEND_FRAMES
+      removeSentFrames[cmd.tag] = isOnItsWay and sentFrame or gameFrame
+      if not isOnItsWay then
+        removeCommands[#removeCommands + 1] = {CMD.REMOVE, {cmd.tag}, {'ctrl'}}
+        emitDecision(purgeKind, builderId)
+      end
+    else
       purgedQueue[#purgedQueue + 1] = cmd
     end
   end
 
+  if builder then
+    builder.removeSentFrames = removeSentFrames
+  end
   if #removeCommands > 0 then
     Spring.GiveOrderArrayToUnit(builderId, removeCommands)
   end
@@ -1154,6 +1202,7 @@ local function BuildQueueSkipAssisted(builder, targetId, cmdQueueTag, _cmdQueueT
     -- moveOnFromBuilding(builder.id, targetId, cmdQueueTag, cmdQueueTagg)
     GiveOrderToUnit(builder.id, CMD.REMOVE, {cmdQueueTag}, {'ctrl'}) -- was 0 instead of 'ctrl' for a while
     InvalidatePurgedUnitCommands(builder.id)
+    emitDecision('skip_assisted', builder.id, targetId)
     if targetId then
       forwardedFromTargetIds:Add(targetId)
     end
@@ -1340,9 +1389,11 @@ local function tryReclaimOrGuard(builder, builderPosX, builderPosZ, isBuildingEc
       if metal and metal > 0 and (metalLevel > 0.97 or isMetalLeaking) then
         GiveOrderToUnit(builderId, CMD.REMOVE, {nil}, {'ctrl'})
         InvalidatePurgedUnitCommands(builderId)
+        emitDecision('reclaim_cancel', builderId)
       elseif energy and energy > 0 and (energyLevel > 0.97 or isEnergyLeaking) then
         GiveOrderToUnit(builderId, CMD.REMOVE, {nil}, {'ctrl'})
         InvalidatePurgedUnitCommands(builderId)
+        emitDecision('reclaim_cancel', builderId)
       end
     end
   else
@@ -1360,6 +1411,7 @@ local function tryReclaimOrGuard(builder, builderPosX, builderPosZ, isBuildingEc
               {'alt'}
             )
             InvalidatePurgedUnitCommands(builderId)
+            emitDecision('clear_wreck', builderId)
             reclaiming = true
             break
           elseif feature and feature.health and feature.health >= 81 then
@@ -1373,6 +1425,7 @@ local function tryReclaimOrGuard(builder, builderPosX, builderPosZ, isBuildingEc
       log('guarding', builderDef.translatedHumanName, '->', guardBuilders[1])
       GiveOrderToUnit(builderId, CMD.INSERT, {0, CMD.GUARD, CMD.OPT_SHIFT, guardBuilders[1]}, {'alt'})
       InvalidatePurgedUnitCommands(builderId)
+      emitDecision('guard', builderId, guardBuilders[1])
     end
   end
 
@@ -1418,6 +1471,7 @@ local function tryRepairMostDamaged(builder, targetId, damaged, nDamaged, multiS
       not multiSlotBuildQueue
    then
     repair(builder.id, damagedTargetId, false)
+    emitDecision('repair_damaged', builder.id, damagedTargetId)
     isRepairingDamaged = true
   end
   return isRepairingDamaged, targetHealthRatio
@@ -1472,7 +1526,7 @@ local function getCandidateAlternatives(ecoBuildingList)
   for i = 1, #candidateAlternativeUnitIds do
     local unitId = candidateAlternativeUnitIds[i]
     local build = select(5, GetUnitHealth(unitId))
-    if build and build < 1 then
+    if build and build < 1 and getBuildTimeLeft(unitId, UnitDefs[GetUnitDefID(unitId)]) >= MIN_ASSIGN_SECONDS then
       local x, _, z = GetUnitBasePosition(unitId)
       table.insert(
         candidateAlternatives,
@@ -1484,7 +1538,7 @@ local function getCandidateAlternatives(ecoBuildingList)
           alreadyBuilding = {},
           x = x,
           z = z,
-          radius = GetUnitRadius(unitId) or 0
+          radius = GetUnitBuildeeRadius(unitId) or 0
         }
       )
     end
@@ -1493,15 +1547,20 @@ local function getCandidateAlternatives(ecoBuildingList)
   return candidateAlternatives
 end
 
+-- The engine (CBuilderCAI::IsInBuildRange) accepts a target whose 2D center distance is within
+-- buildDistance + the target's buildee radius. A nano turret ordered beyond that keeps the order at
+-- its queue front and stands still until others finish the target, so it gets exactly the engine's
+-- reach; a mobile builder walks the last elmos and keeps a wider one.
 local function IsWithinBuildRange(builderSnapshot, candidate)
   if not builderSnapshot.x or not builderSnapshot.z or not candidate.x or not candidate.z then
     return false
   end
 
-  local surfaceRange = builderSnapshot.builder.def.buildDistance - 12
-  if surfaceRange <= 0 then return false end
-
-  local centerRange = surfaceRange + builderSnapshot.radius + candidate.radius
+  local builderDef = builderSnapshot.builder.def
+  local centerRange = builderDef.buildDistance + candidate.radius
+  if builderDef.canMove then
+    centerRange = centerRange + builderSnapshot.radius - 12
+  end
   local deltaX = builderSnapshot.x - candidate.x
   local deltaZ = builderSnapshot.z - candidate.z
   return deltaX * deltaX + deltaZ * deltaZ < centerRange * centerRange
@@ -1581,16 +1640,16 @@ local function NormalizedPositiveNeeds()
     end
   )
 
-  -- normalize need values so that they sum to 1
+  -- Scale down only when the needs claim more than every builder. Normalizing up would hand a
+  -- small residual need (e.g. energy 0.19 at 99% storage) all builders whenever the dominant
+  -- need has nothing to assist.
   local sum = 0
   for _, need in ipairs(positiveNeeds) do
     sum = sum + need.value
   end
-  if sum <= 0 then
-    return {}
-  end
+  local scale = math.max(1, sum)
   for _, need in ipairs(positiveNeeds) do
-    need.value = need.value / sum
+    need.value = need.value / scale
   end
 
   return positiveNeeds
@@ -1716,6 +1775,9 @@ local function BatchOrder(gameFrame)
             end
 
             Spring.GiveOrderToUnitArray(_builders, CMD.INSERT, {0, CMD.REPAIR, CMD.OPT_CTRL, targetId}, {'alt'})
+            for _, builderId in ipairs(_builders) do
+              emitDecision('assign_' .. needName, builderId, targetId)
+            end
           end
         end
       end
@@ -1755,6 +1817,7 @@ local function processBuilder(builder, gameFrame)
    then
     GiveOrderToUnit(builderId, CMD.REMOVE, {nil}, {'ctrl'})
     InvalidatePurgedUnitCommands(builderId)
+    emitDecision('unwait', builderId)
     commandQueue, nCommandQueue = GetPurgedUnitCommands(builderId)
   end
 
@@ -1823,6 +1886,7 @@ local function processBuilder(builder, gameFrame)
             not multiSlotBuildQueue
           )
           repair(builderId, candidateId, false)
+          emitDecision('finish_neighbour', builderId, candidateId)
           AddObjectSpotlight(
             'unit',
             'me',
@@ -1934,14 +1998,16 @@ end
 -- ============================================================
 -- Conversion level to request, or nil to leave it alone. Raises the floor while metal is
 -- full so converters keep energy in storage; lowers it while energy overflows and the
--- floor (not converter capacity) is what throttles conversion.
+-- floor (not converter capacity) is what throttles conversion. Without converters the level
+-- throttles nothing, so a manual setting is left alone.
 local function NudgeMetalMakerLevel(conversion, currentMetalLevel, energyLeaking)
+  if conversion.capacity <= 0 then return end
   local level = conversion.level
   if currentMetalLevel >= METAL_LEVEL_FULL and not energyLeaking then
     if level >= MM_LEVEL_MAX then return end
     return math.min(MM_LEVEL_MAX, level + MM_LEVEL_STEP)
   end
-  if energyLeaking and currentMetalLevel < METAL_LEVEL_FULL and conversion.capacity > 0 and not conversion.saturated then
+  if energyLeaking and currentMetalLevel < METAL_LEVEL_FULL and not conversion.saturated then
     if level <= MM_LEVEL_MIN then return end
     return math.max(MM_LEVEL_MIN, level - MM_LEVEL_STEP)
   end
@@ -1961,6 +2027,7 @@ local function SendNudgedMetalMakerLevel()
   if percent == LevelPercent(conversionSnapshot.level) then return false end
 
   Spring.SendLuaRulesMsg(string.format(string.char(137) .. '%i', percent))
+  emitDecision(target > conversionSnapshot.level and 'mm_up' or 'mm_down')
   return true
 end
 
@@ -2125,6 +2192,8 @@ if ECO_CONS_TEST then
     isWithinBuildRange = IsWithinBuildRange,
     buildBatchBuilderSnapshots = BuildBatchBuilderSnapshots,
     getCandidateAlternatives = getCandidateAlternatives,
+    normalizedPositiveNeeds = NormalizedPositiveNeeds,
+    setAssignedTargetBuildSpeed = function(speeds) assignedTargetBuildSpeed = speeds end,
     scanNearbyBuildables = scanNearbyBuildables,
     beginFrame = beginFrame,
     getPurgedUnitCommands = GetPurgedUnitCommands,

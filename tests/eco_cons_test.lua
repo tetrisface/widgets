@@ -52,7 +52,9 @@ local function unitDef(overrides)
     buildDistance = 100,
     buildOptions = {},
     buildSpeed = 0,
+    buildTime = 1000,
     canAssist = false,
+    canMove = true,
     cost = 100,
     customParams = {},
     energyMake = 0,
@@ -213,6 +215,10 @@ Spring = {
     return health.health, health.maxHealth, nil, nil, health.build
   end,
   GetUnitIsBuilding = function(unitID) return state.buildTargets and state.buildTargets[unitID] end,
+  GetUnitBuildeeRadius = function(unitID)
+    state.radiusCalls = state.radiusCalls + 1
+    return state.radii[unitID] or 0
+  end,
   GetUnitRadius = function(unitID)
     state.radiusCalls = state.radiusCalls + 1
     return state.radii[unitID] or 0
@@ -225,6 +231,9 @@ Spring = {
   GetUnitsInCylinder = function() return state.unitsInCylinder or {} end,
   GiveOrderArrayToUnit = function()
     state.removeOrderBatches = state.removeOrderBatches + 1
+  end,
+  GiveOrderArrayToUnitArray = function(unitIDs, orders)
+    state.lastArrayOrders = {unitIDs = unitIDs, orders = orders}
   end,
   GiveOrderToUnit = function() end,
   GiveOrderToUnitArray = function() end,
@@ -445,11 +454,12 @@ test('conversion level nudges are symmetric, bounded, and rounded', function()
   assertEqual(api.nudgeMetalMakerLevel({level = 0.12, capacity = 1000, saturated = false}, 0.5, true), nil, 'lower stops at the UI floor')
   assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = true}, 0.5, true), nil, 'saturated converters are not the floor problem')
   assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 0, saturated = true}, 0.5, true), nil, 'no converters, nothing to nudge')
+  assertEqual(api.nudgeMetalMakerLevel({level = 0.14, capacity = 0, saturated = true}, 0.97, false), nil, 'no converters leaves a manual level alone even with full metal')
   assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = false}, 0.97, true), nil, 'both overflowing leaves the floor alone')
   assertEqual(api.nudgeMetalMakerLevel({level = 0.5, capacity = 1000, saturated = false}, 0.5, false), nil, 'balanced eco leaves the floor alone')
 
   initialize()
-  state.rulesParams = {mmLevel = 0.57, mmUse = 0, mmCapacity = 0}
+  state.rulesParams = {mmLevel = 0.57, mmUse = 0, mmCapacity = 1000}
   state.teamResources.metal = {970, 1000, 0, 100, 50, 0, 0, 0}
   state.teamResources.energy = {500, 1000, 0, 100, 50, 0, 0, 0}
   api.updateResourceNeeds()
@@ -469,6 +479,80 @@ test('conversion level nudges are symmetric, bounded, and rounded', function()
   assertFalse(api.sendNudgedMetalMakerLevel(), 'saturated converters send nothing')
   state.teamResources.metal = nil
   state.teamResources.energy = nil
+end)
+
+test('evaluator seam reports decisions, needs, and eco classification', function()
+  initialize()
+  local emitted = {}
+  WG.eco_cons.setDecisionSink(function(kind) emitted[#emitted + 1] = kind end)
+  state.rulesParams = {mmLevel = 0.57, mmUse = 0, mmCapacity = 1000}
+  state.teamResources.metal = {970, 1000, 0, 100, 50, 0, 0, 0}
+  state.teamResources.energy = {500, 1000, 0, 100, 50, 0, 0, 0}
+  api.updateResourceNeeds()
+  api.sendNudgedMetalMakerLevel()
+  assertEqual(emitted[1], 'mm_up', 'nudge is reported with its direction')
+
+  api.setNeeds(0.1, 0.2, 0.3)
+  local decisionState = WG.eco_cons.getDecisionState()
+  assertEqual(decisionState.energyNeed, 0.2, 'needs are exposed')
+  decisionState.energyNeed = 9
+  assertEqual(WG.eco_cons.getDecisionState().energyNeed, 0.2, 'state is a copy')
+  assertEqual(WG.eco_cons.ecoTypeOf(1), 'power', 'builders count as build power')
+  assertEqual(WG.eco_cons.ecoTypeOf(3), nil, 'non-eco defs have no type')
+
+  WG.eco_cons.setDecisionSink(nil)
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+end)
+
+test('a small need is not inflated to every builder while the dominant need has nothing to assist', function()
+  UnitDefs[5] = unitDef({extractsMetal = 1, isBuilding = true, translatedHumanName = 'mex'})
+  initialize()
+  state.defIDs = {[40] = 4, [50] = 5}
+  local candidateByDef = {[4] = 40}
+  local savedGetTeamUnitsByDefs = Spring.GetTeamUnitsByDefs
+  Spring.GetTeamUnitsByDefs = function(_, defIDs)
+    local units = {}
+    for _, defID in ipairs(defIDs) do
+      units[#units + 1] = candidateByDef[defID]
+    end
+    return units
+  end
+  state.health = {[40] = {health = 50, maxHealth = 100, build = 0.5}, [50] = {health = 50, maxHealth = 100, build = 0.5}}
+
+  api.setNeeds(0.19, 0, 0.98)
+  local needs = api.normalizedPositiveNeeds()
+  assertEqual(#needs, 1, 'the need without unfinished buildings is dropped')
+  assertNear(needs[1].value, 0.19, 0.000001, 'the remaining need keeps its own share')
+
+  candidateByDef[5] = 50
+  api.setNeeds(0.75, 0, 0.99)
+  needs = api.normalizedPositiveNeeds()
+  assertEqual(needs[1].name, 'mMM', 'largest need first')
+  assertNear(needs[1].value + needs[2].value, 1, 0.000001, 'oversubscribed needs split every builder')
+
+  Spring.GetTeamUnitsByDefs = savedGetTeamUnitsByDefs
+  state.health = {}
+  UnitDefs[5] = nil
+end)
+
+test('a target about to be finished by its current builders is not a candidate', function()
+  initialize({101}, {[101] = 1, [401] = 4, [402] = 4})
+  state.teamUnitsByDefs = {401, 402}
+  state.health = {[401] = {health = 90, maxHealth = 100, build = 0.9}, [402] = {health = 90, maxHealth = 100, build = 0.9}}
+  state.positions = {[401] = {50, 0, 0}, [402] = {60, 0, 0}}
+  api.setAssignedTargetBuildSpeed({[401] = 500, [402] = 50})
+
+  local candidates = api.getCandidateAlternatives({4})
+  assertEqual(#candidates, 1, 'the target finishing within a second is skipped')
+  assertEqual(candidates[1].id, 402, 'the one that takes longer remains')
+
+  api.setAssignedTargetBuildSpeed({})
+  assertEqual(#api.getCandidateAlternatives({4}), 2, 'nobody on it: both remain')
+
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
 end)
 
 test('resources are sampled on a fixed frame cadence independent of the builder roster', function()
@@ -506,6 +590,53 @@ test('purged command queues are filtered, cached, and invalidatable', function()
   assertEqual(count, 1, 'invalidated queue refetch count')
   assertEqual(queue[1].id, CMD.WAIT, 'invalidated queue refetch content')
   assertEqual(state.commandCalls, 2, 'invalidation reaches engine')
+end)
+
+test('a stale command is removed once while its REMOVE is on the way, and again if it outlives that', function()
+  initialize({101}, {[101] = 1})
+  state.health[501] = {health = 100, maxHealth = 100, build = 1}
+  state.commands[101] = {{id = CMD.REPAIR, params = {501}, tag = 1}}
+  state.gameFrame = 200
+  api.beginFrame()
+  local _, count = api.getPurgedUnitCommands(101)
+  assertEqual(count, 0, 'stale repair leaves the logical queue')
+  assertEqual(state.removeOrderBatches, 1, 'removal issued')
+
+  state.gameFrame = 201
+  api.beginFrame()
+  _, count = api.getPurgedUnitCommands(101)
+  assertEqual(count, 0, 'still out of the logical queue while the removal travels')
+  assertEqual(state.removeOrderBatches, 1, 'no second removal a frame later')
+
+  state.gameFrame = 215
+  api.beginFrame()
+  api.getPurgedUnitCommands(101)
+  assertEqual(state.removeOrderBatches, 2, 'removal resent when the command is still there')
+
+  state.gameFrame = nil
+  state.health[501] = nil
+end)
+
+test('a nano turret keeps the FIGHT order that a mobile builder loses over a finished building', function()
+  UnitDefs[6] = unitDef({buildSpeed = 100, canAssist = true, canMove = false, isBuilder = true, translatedHumanName = 'nano turret'})
+  initialize({101, 102}, {[101] = 1, [102] = 6, [601] = 4})
+  state.health[601] = {health = 100, maxHealth = 100, build = 1}
+  state.unitsInCylinder = {601}
+  local fight = {{id = CMD.FIGHT, params = {50, 0, 50}, tag = 1}}
+  state.commands[101] = fight
+  state.commands[102] = fight
+  api.beginFrame()
+
+  local _, mobileCount = api.getPurgedUnitCommands(101)
+  assertEqual(mobileCount, 0, 'mobile builder FIGHT over a finished building is purged')
+  assertEqual(state.removeOrderBatches, 1, 'one removal issued')
+  local _, turretCount = api.getPurgedUnitCommands(102)
+  assertEqual(turretCount, 1, 'nano turret FIGHT stays')
+  assertEqual(state.removeOrderBatches, 1, 'no removal issued for the turret')
+
+  state.unitsInCylinder = nil
+  state.health[601] = nil
+  UnitDefs[6] = nil
 end)
 
 test('resource and upkeep scans avoid redundant full-team engine calls', function()
@@ -547,9 +678,13 @@ test('candidate scoring and radius-aware squared range preserve behavior', funct
   assertNear(candidate.score, 0.44, 0.000001, 'precomputed combined candidate score')
   assertNear(api.scoreEcoCandidate(candidate), candidate.score, 0.000001, 'score equivalence')
 
-  local builderSnapshot = {builder = {def = {buildDistance = 100}}, x = 0, z = 0, radius = 10}
+  local builderSnapshot = {builder = {def = {buildDistance = 100, canMove = true}}, x = 0, z = 0, radius = 10}
   assertTrue(api.isWithinBuildRange(builderSnapshot, {x = 117, z = 0, radius = 20}), 'inside surface range')
   assertFalse(api.isWithinBuildRange(builderSnapshot, {x = 118, z = 0, radius = 20}), 'strict range boundary')
+
+  local turretSnapshot = {builder = {def = {buildDistance = 100, canMove = false}}, x = 0, z = 0, radius = 30}
+  assertTrue(api.isWithinBuildRange(turretSnapshot, {x = 119, z = 0, radius = 20}), 'turret reaches buildDistance + target radius')
+  assertFalse(api.isWithinBuildRange(turretSnapshot, {x = 121, z = 0, radius = 20}), 'turret own radius adds no reach')
 end)
 
 test('nearby build-range checks receive target unit IDs, not definition IDs', function()
@@ -582,6 +717,8 @@ test('batch snapshots fetch builder commands, positions, and radii once', functi
   assertEqual(state.radiusCalls, 3, 'one radius fetch per candidate builder')
 
   state.teamUnitsByDefs = {401, 402}
+  state.defIDs[401] = 4
+  state.defIDs[402] = 4
   state.health[401] = {health = 50, maxHealth = 100, build = 0.5}
   state.health[402] = {health = 60, maxHealth = 100, build = 0.6}
   state.positions[401] = {100, 0, 100}
