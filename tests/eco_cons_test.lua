@@ -51,12 +51,16 @@ local function unitDef(overrides)
   local result = {
     buildDistance = 100,
     buildOptions = {},
+    name = 'testunit',
+    xsize = 4,
+    zsize = 4,
     buildSpeed = 0,
     buildTime = 1000,
     canAssist = false,
     canMove = true,
     cost = 100,
     customParams = {},
+    energyCost = 1000,
     energyMake = 0,
     energyUpkeep = 0,
     extractsMetal = 0,
@@ -153,7 +157,7 @@ UnitDefs = {
 IsInBuildRange = function(builderID, targetID)
   state.lastBuildRangeBuilderID = builderID
   state.lastBuildRangeTargetID = targetID
-  return true
+  return not (state.outOfRange and state.outOfRange[targetID])
 end
 
 VFS = {
@@ -197,7 +201,31 @@ Spring = {
     state.teamUnitCalls = state.teamUnitCalls + 1
     return state.teamUnits
   end,
-  GetTeamUnitsByDefs = function() return state.teamUnitsByDefs end,
+  GetTeamUnitDefCount = function(_, unitDefID)
+    local count = 0
+    for _, unitID in ipairs(state.teamUnitsByDefs) do
+      if state.defIDs[unitID] == unitDefID then count = count + 1 end
+    end
+    return count
+  end,
+  GetTeamUnitsByDefs = function(_, unitDefIDs)
+    local wanted = {}
+    for _, unitDefID in ipairs(unitDefIDs) do wanted[unitDefID] = true end
+    local units = {}
+    for _, unitID in ipairs(state.teamUnitsByDefs) do
+      local defID = state.defIDs[unitID]
+      if defID == nil or wanted[defID] then units[#units + 1] = unitID end
+    end
+    return units
+  end,
+  GetGroundHeight = function() return 0 end,
+  GetUnitBuildFacing = function() return 0 end,
+  -- as the engine: 2 for an open spot, 2 plus a feature id when a reclaimable feature is in the way
+  TestBuildOrder = function(_, x, _, z)
+    local spot = x .. ',' .. z
+    if state.featureSpots and state.featureSpots[spot] then return 2, 9000 end
+    return state.openSpots and state.openSpots[spot] and 2 or 0
+  end,
   GetUnitBasePosition = function(unitID)
     state.positionCalls = state.positionCalls + 1
     local position = state.positions[unitID]
@@ -235,7 +263,10 @@ Spring = {
   GiveOrderArrayToUnitArray = function(unitIDs, orders)
     state.lastArrayOrders = {unitIDs = unitIDs, orders = orders}
   end,
-  GiveOrderToUnit = function() end,
+  GiveOrderToUnit = function(unitID, cmdID, params, options)
+    state.lastOrder = {unitID = unitID, cmdID = cmdID, params = params, options = options}
+    if state.orders then state.orders[#state.orders + 1] = state.lastOrder end
+  end,
   GiveOrderToUnitArray = function() end,
   IsReplay = function() return false end,
   SendLuaRulesMsg = function(message)
@@ -425,6 +456,44 @@ test('build power need follows team runway instead of single-target stall predic
   state.teamResources.energy = nil
 end)
 
+test('build power need and rounds stop at break-even', function()
+  UnitDefs[7] = unitDef({name = 'corfus', canMove = false, metalCost = 1000, energyCost = 10000})
+  UnitDefs[11] = unitDef({name = 'armnanotc', buildSpeed = 200, canAssist = true, canMove = false, isBuilder = true})
+  initialize({}, {[701] = 7})
+  -- 400 build points per second on a fusion costing 1 metal and 10 energy per build point
+  api.setAssignedTargetBuildSpeed({[701] = 400})
+  api.setTotalBuildSpeed(500)
+  -- {current, storage, pull, income, expense, share, sent, received}
+  state.teamResources.metal = {9000, 10000, 400, 700, 400, 0, 0, 0}
+  state.teamResources.energy = {8000, 10000, 4000, 20000, 4000, 0, 0, 0}
+  assertNear(api.buildPowerShortfall(), 200, 1e-9, 'metal feeds 300 more, 100 of which is idle already; energy would feed 1600')
+  assertEqual(api.batchSize('power', UnitDefs[11]), 1, '200 short at 200 a turret: one')
+  api.updateResourceNeeds()
+  assertTrue(api.getNeeds() >= 0.75, 'short of break-even: build power wanted')
+
+  state.teamResources.metal = {9000, 10000, 400, 400, 400, 0, 0, 300}
+  assertNear(api.buildPowerShortfall(), 200, 1e-9, 'metal allies hand over is supply too')
+
+  state.teamResources.metal = {9000, 10000, 400, 650, 400, 0, 0, 0}
+  assertNear(api.buildPowerShortfall(), 150, 1e-9, '150 short')
+  assertEqual(api.batchSize('power', UnitDefs[11]), 0, 'a whole turret would overshoot: none')
+
+  state.teamResources.metal = {9000, 10000, 400, 500, 400, 0, 0, 0}
+  assertNear(api.buildPowerShortfall(), 0, 1e-9, 'the idle build power alone uses up the surplus')
+  api.updateResourceNeeds()
+  assertEqual(api.getNeeds(), 0, 'at break-even: no more build power, assisted or placed')
+
+  api.setAssignedTargetBuildSpeed({})
+  assertEqual(api.buildPowerShortfall(), nil, 'nothing under construction: cannot be told')
+  api.updateResourceNeeds()
+  assertTrue(api.getNeeds() >= 0.75, 'and so does not block')
+
+  api.setTotalBuildSpeed(0)
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+  UnitDefs[7], UnitDefs[11] = nil, nil
+end)
+
 test('conversion snapshot reads the game rules params and clamps the surplus floor', function()
   initialize()
   state.rulesParams = {mmLevel = 0.88, mmUse = 950, mmCapacity = 1000}
@@ -555,6 +624,360 @@ test('a target about to be finished by its current builders is not a candidate',
   state.positions = {}
 end)
 
+test('family keys join faction and scav versions, adjacent spots touch the anchor', function()
+  assertEqual(api.familyKey('armfus'), 'fus', 'arm prefix')
+  assertEqual(api.familyKey('corfus_scav'), 'fus', 'cor prefix and scav suffix')
+  assertEqual(api.familyKey('legmmkr'), 'mmkr', 'leg prefix')
+  local spots = api.adjacentPositions(1000, 2000, 24, 16, 8, 8)
+  assertEqual(spots[1][1] .. ',' .. spots[1][2], '1032,2000', 'east: anchor half + own half')
+  assertEqual(spots[4][1] .. ',' .. spots[4][2], '1000,1976', 'north likewise with z extents')
+end)
+
+test('the family the player invested most in is extended, not the most numerous', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 1000, canMove = false, cost = 4000, xsize = 6, zsize = 6})
+  UnitDefs[8] = unitDef({name = 'armfus', energyMake = 1000, canMove = false, cost = 4000, xsize = 6, zsize = 6})
+  UnitDefs[12] = unitDef({name = 'armwin', energyMake = 10, canMove = false, cost = 40})
+  UnitDefs[10] = unitDef({buildOptions = {8, 12}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'armck'})
+  initialize({110}, {[110] = 10, [701] = 7, [721] = 12, [722] = 12, [723] = 12})
+  state.teamUnitsByDefs = {701, 721, 722, 723}
+  state.health = {}
+  for _, unitID in ipairs(state.teamUnitsByDefs) do
+    state.health[unitID] = {health = 100, maxHealth = 100, build = 1}
+  end
+  state.positions = {[110] = {0, 0, 0}, [701] = {1000, 0, 1000}, [721] = {100, 0, 0}, [722] = {200, 0, 0}, [723] = {300, 0, 0}}
+  state.openSpots = {['1048,1000'] = true, ['332,0'] = true}
+  state.selectedUnits = {}
+  api.refreshSelectedUnits()
+  state.lastOrder = nil
+
+  api.setNeeds(0, 0.95, 0)
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder and state.lastOrder.params[2], -8, 'one fusion outweighs three wind turbines')
+
+  state.lastOrder = nil
+  state.openSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[8], UnitDefs[10], UnitDefs[12] = nil, nil, nil, nil
+end)
+
+test('a round places as many buildings as the shortfall calls for, each on its own spot', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[10] = unitDef({buildOptions = {7}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'corck'})
+  initialize({110}, {[110] = 10, [701] = 7})
+  state.teamUnitsByDefs = {701}
+  state.health = {[701] = {health = 100, maxHealth = 100, build = 1}}
+  state.positions = {[110] = {0, 0, 0}, [701] = {1000, 0, 1000}}
+  -- open: east of the anchor, and the two spots continuing that row; nothing else
+  state.openSpots = {['1048,1000'] = true, ['1096,1000'] = true, ['1144,1000'] = true}
+  state.selectedUnits = {}
+  api.refreshSelectedUnits()
+
+  state.teamResources.metal = {100000, 100000, 0, 100, 0, 0, 0, 0}
+  state.teamResources.energy = {10, 1000, 350, 100, 100, 0, 0, 0}
+  assertEqual(api.batchSize('energy', UnitDefs[7]), 3, '250 short at 100 each: three')
+  state.teamResources.energy = {10, 1000, 5000, 100, 100, 0, 0, 0}
+  assertEqual(api.batchSize('energy', UnitDefs[7]), 6, 'capped')
+  assertEqual(api.batchSize('power', UnitDefs[7]), 0, 'build power: none while nothing is under construction')
+  state.teamResources.metal = {1000, 10000, 0, 100, 0, 0, 0, 0}
+  UnitDefs[7].cost = 1400
+  assertEqual(api.batchSize('energy', UnitDefs[7]), 2, 'capped by stored metal plus 20 s of income: 3000 pays for two')
+  UnitDefs[7].cost = 5000
+  assertEqual(api.batchSize('energy', UnitDefs[7]), 1, 'never less than one')
+  UnitDefs[7].cost = 100
+  state.teamResources.metal = {100000, 100000, 0, 100, 0, 0, 0, 0}
+
+  state.orders = {}
+  api.setNeeds(0, 0.95, 0)
+  api.placeForNeeds(100)
+  assertEqual(#state.orders, 3, 'only three spots are open, each ordered once')
+  assertEqual(state.orders[1].params[1] .. '@' .. state.orders[1].params[4], '0@1048', 'first touches the anchor')
+  assertEqual(state.orders[2].params[1] .. '@' .. state.orders[2].params[4], '1@1096', 'second continues from the first')
+  assertEqual(state.orders[3].params[1] .. '@' .. state.orders[3].params[4], '2@1144', 'third continues the row')
+
+  state.orders = nil
+  state.lastOrder = nil
+  state.teamResources.energy = nil
+  state.teamResources.metal = nil
+  state.openSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[10] = nil, nil
+end)
+
+test('a busy builder is borrowed only when no idle one can place, never off a frame it builds alone', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[10] = unitDef({buildOptions = {7}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'corck'})
+  local function setUp(teamUnits)
+    local defIDs = {[701] = 7}
+    for _, unitID in ipairs(teamUnits) do defIDs[unitID] = 10 end
+    initialize(teamUnits, defIDs)
+    state.teamUnitsByDefs = {701}
+    state.health = {[701] = {health = 100, maxHealth = 100, build = 1}}
+    state.positions = {[110] = {900, 0, 1000}, [112] = {0, 0, 0}, [113] = {950, 0, 1000}, [701] = {1000, 0, 1000}}
+    state.openSpots = {['1048,1000'] = true}
+    state.selectedUnits = {}
+    api.refreshSelectedUnits()
+    state.lastOrder = nil
+    api.setNeeds(0, 0.95, 0)
+  end
+  local ownBuildQueue = {{id = -7, params = {3000, 0, 3000, 0}, tag = 1}}
+
+  setUp({110})
+  state.commands[110] = ownBuildQueue
+  api.builderById(110).targetId = 950
+  api.setAssignedTargetBuildSpeed({[950] = 100})
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder, nil, 'it is the only one on its frame: left alone')
+
+  api.setAssignedTargetBuildSpeed({[950] = 500})
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder and state.lastOrder.unitID, 110, 'others are on its frame too: borrowed')
+
+  setUp({110, 112, 113})
+  state.commands[110] = ownBuildQueue
+  state.commands[113] = {{id = CMD.MOVE, params = {0, 0, 0}, tag = 1}}
+  api.builderById(110).targetId = 950
+  api.setAssignedTargetBuildSpeed({[950] = 500})
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder and state.lastOrder.unitID, 112, 'an idle builder goes first though it is further away; a moving one never')
+
+  state.commands[110], state.commands[113] = nil, nil
+  api.setAssignedTargetBuildSpeed({})
+  state.lastOrder = nil
+  state.openSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[10] = nil, nil
+end)
+
+test('an acting advisor is waited for briefly, can change the family or call a round off, and never stalls it', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 1000, canMove = false, cost = 4000, xsize = 6, zsize = 6})
+  UnitDefs[12] = unitDef({name = 'corwin', energyMake = 10, canMove = false, cost = 40})
+  UnitDefs[10] = unitDef({buildOptions = {7, 12}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'corck'})
+  local function setUp()
+    initialize({110}, {[110] = 10, [701] = 7, [721] = 12})
+    state.teamUnitsByDefs = {701, 721}
+    state.health = {[701] = {health = 100, maxHealth = 100, build = 1}, [721] = {health = 100, maxHealth = 100, build = 1}}
+    state.positions = {[110] = {0, 0, 0}, [701] = {1000, 0, 1000}, [721] = {100, 0, 0}}
+    state.openSpots = {['1048,1000'] = true, ['132,0'] = true}
+    state.selectedUnits = {}
+    api.refreshSelectedUnits()
+    state.lastOrder = nil
+    api.setNeeds(0, 0.95, 0)
+  end
+
+  setUp()
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder.params[2], -7, 'no advisor: the heuristic family, at once')
+  local context = WG.eco_cons.getAdvisorContext()
+  assertEqual(#context.rounds, 1, 'the round is still visible to an advisor that only watches')
+  assertEqual(context.rounds[1].ecoType .. ':' .. context.rounds[1].heuristicFamily, 'energy:fus', 'with what the heuristics chose')
+  assertEqual(#context.rounds[1].families, 2, 'and every family owned, to choose from')
+
+  setUp()
+  WG.eco_cons.setAdvisorMode('act')
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder, nil, 'acting advisor: the due round waits')
+  WG.eco_cons.setAdvice('energy', {frame = 110, family = 'win', place = true})
+  api.placeForNeeds(130)
+  assertEqual(state.lastOrder.params[2], -12, 'and follows the advised family')
+
+  setUp()
+  WG.eco_cons.setAdvisorMode('act')
+  api.placeForNeeds(100)
+  api.placeForNeeds(130)
+  api.placeForNeeds(160)
+  assertEqual(state.lastOrder, nil, 'still inside the wait')
+  api.placeForNeeds(190)
+  assertEqual(state.lastOrder.params[2], -7, 'no advice in time: the heuristics go ahead')
+
+  setUp()
+  WG.eco_cons.setAdvisorMode('act')
+  api.placeForNeeds(100)
+  WG.eco_cons.setAdvice('energy', {frame = 110, place = false})
+  api.placeForNeeds(130)
+  api.placeForNeeds(160)
+  assertEqual(state.lastOrder, nil, 'advised against: nothing placed, and not retried at once')
+
+  setUp()
+  WG.eco_cons.setAdvisorMode('act')
+  WG.eco_cons.setAdvice('energy', {frame = 100, family = 'win', place = true})
+  api.placeForNeeds(400)
+  assertEqual(state.lastOrder, nil, 'stale advice does not count as advice: the round waits for fresh one')
+
+  state.lastOrder = nil
+  state.openSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[10], UnitDefs[12] = nil, nil, nil
+end)
+
+test('queued buildings are part of the cluster: a round goes beyond them and never onto them', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[10] = unitDef({buildOptions = {7}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'corck'})
+  local function setUp(standing, queuedXs, openSpots)
+    local defIDs = {[110] = 10, [112] = 10}
+    state.teamUnitsByDefs, state.health, state.positions = {}, {}, {[110] = {900, 0, 1000}, [112] = {0, 0, 0}}
+    for index, x in ipairs(standing) do
+      local unitID = 700 + index
+      defIDs[unitID] = 7
+      state.teamUnitsByDefs[index] = unitID
+      state.health[unitID] = {health = 100, maxHealth = 100, build = 1}
+      state.positions[unitID] = {x, 0, 1000}
+    end
+    initialize({110, 112}, defIDs)
+    state.commands[112] = {}
+    for index, x in ipairs(queuedXs) do
+      state.commands[112][index] = {id = -7, params = {x, 0, 1000, 0}, tag = index}
+    end
+    state.openSpots = openSpots
+    state.selectedUnits = {}
+    api.refreshSelectedUnits()
+    state.lastOrder = nil
+    api.setNeeds(0, 0.95, 0)
+  end
+
+  -- another builder has the next two spots of the row queued; to the engine they are open ground
+  setUp({1000}, {1048, 1096}, {['1048,1000'] = true, ['1096,1000'] = true, ['1144,1000'] = true})
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder.unitID, 110, 'the idle builder places, not the one whose queue it is')
+  assertEqual(state.lastOrder.params[4], 1144, 'beyond the end of the queued row')
+
+  -- a queued gap between two standing buildings is the only spot the engine calls open on that row
+  local emitted = {}
+  setUp({1000, 1096}, {1048}, {['1048,1000'] = true, ['1000,1048'] = true})
+  WG.eco_cons.setDecisionSink(function(kind) emitted[kind] = true end)
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder.params[4] .. ',' .. state.lastOrder.params[6], '1000,1048', 'the queued gap is left to its owner')
+  assertTrue(emitted.avoided_queued_spot == true, 'and the log says a queued spot was avoided')
+
+  WG.eco_cons.setDecisionSink(nil)
+  state.commands[112] = nil
+  state.lastOrder = nil
+  state.openSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[10] = nil, nil
+end)
+
+test('a starved need with nothing to assist places the scav version next to the nearest cluster', function()
+  UnitDefs[7] = unitDef({name = 'corfus', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[8] = unitDef({name = 'armfus', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[9] = unitDef({name = 'armfus_scav', energyMake = 100, canMove = false, xsize = 6, zsize = 6})
+  UnitDefs[10] = unitDef({buildOptions = {8, 9}, buildSpeed = 100, canAssist = true, isBuilder = true, name = 'armck'})
+  initialize({110, 111, 701, 702}, {[110] = 10, [111] = 10, [701] = 7, [702] = 7})
+  state.teamUnitsByDefs = {701, 702}
+  state.health = {[701] = {health = 100, maxHealth = 100, build = 1}, [702] = {health = 100, maxHealth = 100, build = 1}}
+  state.positions = {[110] = {0, 0, 0}, [701] = {1000, 0, 1000}, [702] = {1048, 0, 1000}}
+  state.openSpots = {['1096,1000'] = true}
+  state.featureSpots = {['952,1000'] = true}
+  state.selectedUnits = {}
+  api.refreshSelectedUnits()
+  state.lastOrder = nil
+
+  api.setNeeds(0, 0.95, 0)
+  api.placeForNeeds(100)
+  local order = state.lastOrder
+  assertEqual(order.unitID, 110, 'the free mobile builder gets the order; 111 died and has no position')
+  assertEqual(order.cmdID, CMD.INSERT, 'inserted ahead of its queue')
+  assertEqual(order.params[2], -9, 'scav version preferred over armfus')
+  assertEqual(order.params[4] .. ',' .. order.params[6], '1096,1000', 'the open spot, not the one with a wreck on it')
+
+  state.lastOrder = nil
+  state.commands[110] = {{id = -9, params = {1096, 0, 1000, 0}, tag = 5}}
+  api.placeForNeeds(500)
+  assertEqual(state.lastOrder, nil, 'nothing more while the builder still holds the build order')
+  state.commands[110] = nil
+  api.placeForNeeds(600)
+  assertEqual(state.lastOrder, nil, 'nor right after: the cooldown runs from when the round was last under way')
+
+  state.teamUnitsByDefs = {701, 702, 703}
+  state.defIDs[703] = 7
+  state.health[703] = {health = 10, maxHealth = 100, build = 0.1}
+  state.positions[703] = {1096, 0, 1000}
+  api.setAssignedTargetBuildSpeed({[703] = 1000000})
+  assertEqual(#api.getCandidateAlternatives({7}), 0, 'about to finish: no longer an assist candidate')
+  api.placeForNeeds(1000)
+  assertEqual(state.lastOrder, nil, 'yet an unfinished building of the type still blocks placement')
+  api.setAssignedTargetBuildSpeed({})
+
+  api.setNeeds(0, 0.5, 0)
+  state.teamUnitsByDefs = {701, 702}
+  api.placeForNeeds(2000)
+  assertEqual(state.lastOrder, nil, 'a moderate need does not place')
+
+  -- a row of 45: the builder stands at the west end, the only open side is at the east end
+  state.teamUnitsByDefs = {}
+  for i = 1, 45 do
+    local unitID = 800 + i
+    state.teamUnitsByDefs[i] = unitID
+    state.defIDs[unitID] = 7
+    state.health[unitID] = {health = 100, maxHealth = 100, build = 1}
+    state.positions[unitID] = {1000 + 48 * i, 0, 1000}
+  end
+  state.positions[110] = {1000, 0, 1000}
+  state.openSpots = {['3208,1000'] = true}
+  api.setNeeds(0, 0.95, 0)
+  api.placeForNeeds(2500)
+  assertEqual(state.lastOrder and state.lastOrder.params[4], 3208, 'the open side at the far edge of a long cluster is found')
+  state.lastOrder = nil
+
+  -- build power: a nano turret next to the existing one, but only while the builders there are busy
+  -- and the resources feed more build power than the team has
+  UnitDefs[11] = unitDef({name = 'armnanotc', buildSpeed = 200, canAssist = true, canMove = false, isBuilder = true})
+  UnitDefs[10].buildOptions = {8, 9, 11}
+  initialize({110}, {[110] = 10, [901] = 11, [902] = 8})
+  state.teamUnitsByDefs = {901}
+  state.health = {[901] = {health = 100, maxHealth = 100, build = 1}}
+  state.positions = {[110] = {5000, 0, 5100}, [901] = {5000, 0, 5000}}
+  state.openSpots = {['5032,5000'] = true}
+  -- 400 build points per second on a fusion costing 0.1 metal and 1 energy per build point
+  api.setAssignedTargetBuildSpeed({[902] = 400})
+  api.setTotalBuildSpeed(400)
+  state.teamResources.metal = {5000, 10000, 40, 70, 40, 0, 0, 0}
+  state.teamResources.energy = {5000, 10000, 400, 2000, 400, 0, 0, 0}
+  api.setNeeds(1, 0, 0)
+  api.setBuildPowerUtilization(0.3)
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder, nil, 'no turret while most build power is idle')
+  api.setBuildPowerUtilization(0.9)
+  state.teamResources.metal = {5000, 10000, 40, 40, 40, 0, 0, 0}
+  api.placeForNeeds(100)
+  assertEqual(state.lastOrder, nil, 'no turret while the metal is spoken for')
+  state.teamResources.metal = {5000, 10000, 40, 70, 40, 0, 0, 0}
+  api.placeForNeeds(400)
+  assertEqual(state.lastOrder and state.lastOrder.params[2], -11, 'a turret once the existing build power is busy and fed')
+  state.lastOrder = nil
+  state.teamResources.metal = nil
+  state.teamResources.energy = nil
+  api.setAssignedTargetBuildSpeed({})
+  api.setTotalBuildSpeed(0)
+  UnitDefs[11] = nil
+
+  api.setNeeds(0, 0.95, 0)
+  local savedGetTeamUnitDefCount = Spring.GetTeamUnitDefCount
+  Spring.GetTeamUnitDefCount = function() error('boom') end
+  state.echoes = {}
+  api.runPlacement(3000)
+  assertEqual(#state.echoes, 1, 'a fault inside placement is reported, not raised')
+  Spring.GetTeamUnitDefCount = savedGetTeamUnitDefCount
+  api.runPlacement(4000)
+  assertEqual(state.lastOrder, nil, 'and placement stays off for the rest of the game')
+
+  state.openSpots = nil
+  state.featureSpots = nil
+  state.teamUnitsByDefs = {}
+  state.health = {}
+  state.positions = {}
+  UnitDefs[7], UnitDefs[8], UnitDefs[9], UnitDefs[10] = nil, nil, nil, nil
+end)
+
 test('resources are sampled on a fixed frame cadence independent of the builder roster', function()
   initialize()
   widget:GameFrame(30)
@@ -633,6 +1056,20 @@ test('a nano turret keeps the FIGHT order that a mobile builder loses over a fin
   local _, turretCount = api.getPurgedUnitCommands(102)
   assertEqual(turretCount, 1, 'nano turret FIGHT stays')
   assertEqual(state.removeOrderBatches, 1, 'no removal issued for the turret')
+
+  state.health[602] = {health = 40, maxHealth = 100, build = 1}
+  state.outOfRange = {[602] = true}
+  local walkedOff = {{id = CMD.REPAIR, params = {602}, tag = 2}}
+  state.commands[101] = walkedOff
+  state.commands[102] = walkedOff
+  api.beginFrame()
+  _, mobileCount = api.getPurgedUnitCommands(101)
+  assertEqual(mobileCount, 1, 'a mobile builder keeps a repair order beyond its range: it can walk')
+  _, turretCount = api.getPurgedUnitCommands(102)
+  assertEqual(turretCount, 0, 'a turret loses a repair order it can never reach')
+  assertEqual(state.removeOrderBatches, 2, 'one more removal, for the turret')
+  state.outOfRange = nil
+  state.health[602] = nil
 
   state.unitsInCylinder = nil
   state.health[601] = nil

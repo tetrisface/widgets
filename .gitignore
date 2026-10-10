@@ -2,3 +2,4 @@
 Widgets/manifests.json
 **/*/AGENTS.md
 Widgets/modlobby_escape.lua
+**/*.pyc

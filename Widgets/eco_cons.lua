@@ -1,4 +1,4 @@
--- luacheck: globals ECO_CONS_TEST IsInBuildRange
+-- luacheck: globals ECO_CONS_TEST IsInBuildRange pcall
 -- luacheck: no self
 
 function widget:GetInfo()
@@ -80,6 +80,19 @@ local BATCH_ORDER_INTERVAL = 4         -- frames between BatchOrder() calls
 local REMOVE_RESEND_FRAMES = 15        -- a REMOVE needs a few frames to reach its unit; resend only if the command outlives this
 local MIN_ASSIGN_SECONDS = 1           -- a target its current builders finish sooner gets nobody else: the order would land on a finished unit
 
+-- placement (see "Placement" below)
+local PLACE_NEED = 0.9                 -- a need at or above this with nothing to assist may place a building
+local PLACE_COOLDOWN_FRAMES = 300      -- per eco type, from when a round was last under way: lets what was finished show in the need
+local PLACE_ANCHOR_TRIES = 40          -- outermost anchors tried for an open adjacent spot
+local PLACE_BATCH_MAX = 6              -- buildings placed per round at most
+local PLACE_QUEUE_SCAN_DEPTH = 200     -- orders read per builder when collecting what is already queued
+local PLACE_AFFORD_SECONDS = 20        -- a round costs no more metal than is stored plus this much income
+local PLACE_MAX_INTERRUPTION = 3       -- who may place: 1 only builders with nothing to do, 2 also guarding ones, 3 also ones on their own build queue
+local PLACE_POWER_UTILIZATION = 0.75   -- build power is only placed while at least this share of the existing one is building
+-- Spring.TestBuildOrder never returns the documented 3 (open): the engine folds it into 2
+-- (reclaimable) for backward compatibility, and a feature in the way comes back as a second value.
+local BUILD_SPOT_OPEN = 2
+
 local function applyResponsivenessSpeed(speed)
   responsivenessSpeed = speed
   frameStaggeringModuloMultiplier = 1 / speed
@@ -98,6 +111,22 @@ local ecoBuildDefIds
 local ecoBuildingTypeDefIds
 -- static per-unitDef eco scores, filled once in Initialize
 local defBuildPowerScore = {}
+-- Placement (see the section below); one table, since the file is near Lua's 200-local limit.
+local Placement = {
+  familyDefIds = {},          -- family -> {unitDefID...}: a building in every faction's and the scavengers' version
+  familyEcoType = {},         -- family -> 'energy' | 'mMM' | 'power'
+  placeableByBuilderDef = {}, -- builder unitDefID -> family -> the unitDefID it builds for that family
+  lastFrame = {},             -- eco type -> frame a round of it was last placed or still under way
+  pending = {},               -- eco type -> {builderId, unitDefID} of the round its builder still has to work off
+  enabled = true,             -- cleared for the rest of the game when placement faults
+  utilization = 0,            -- share of the roster's build power that is building something, from Builders()
+  -- advisor seam: an outside widget may judge a due round before it is placed (see placeOrAwaitAdvice)
+  openRounds = {},            -- eco type -> frame its round became due
+  advice = {},                -- eco type -> {frame, family, place} from the advisor
+  advisorMode = nil,          -- 'act': a due round waits ADVICE_WAIT_FRAMES for advice
+  ADVICE_WAIT_FRAMES = 90,
+  ADVICE_MAX_AGE_FRAMES = 150
+}
 local defEnergyScore = {}
 local defMetalMMScore = {}
 
@@ -398,6 +427,26 @@ local function MetalAndMMScore(unitDef)
   return Clamp01(math.max(extractScore, metalMakeScore, metalMakerEfficiencyScore))
 end
 
+-- armfus, corfus and legfus_scav are one family: the same building in another faction's or the
+-- scavengers' version. Anchors are matched by family; the builder places its own version.
+function Placement.familyKey(unitName)
+  local name = unitName:gsub('_scav$', '')
+  name = name:gsub('^arm', '')
+  name = name:gsub('^cor', '')
+  name = name:gsub('^leg', '')
+  return name
+end
+
+function Placement.isScavVersion(unitName)
+  return unitName:sub(-5) == '_scav'
+end
+
+-- Anything immobile, which includes nano turrets (the engine does not flag those as buildings).
+-- Extractors and geothermal need a spot, so they are never placed.
+function Placement.isPlaceable(unitDef)
+  return not unitDef.canMove and (unitDef.extractsMetal or 0) == 0 and not (unitDef.customParams or {}).geothermal
+end
+
 function widget:Initialize()
   if Spring.GetSpectatingState() or Spring.IsReplay() then
     widgetHandler:RemoveWidget()
@@ -428,6 +477,16 @@ function widget:Initialize()
   defBuildPowerScore = {}
   defEnergyScore = {}
   defMetalMMScore = {}
+  Placement.familyDefIds = {}
+  Placement.familyEcoType = {}
+  Placement.placeableByBuilderDef = {}
+  Placement.lastFrame = {}
+  Placement.pending = {}
+  Placement.enabled = true
+  Placement.utilization = 0
+  Placement.openRounds = {}
+  Placement.advice = {}
+  Placement.advisorMode = nil
 
   local myUnits = GetTeamUnits(myTeamId)
   for _, unitID in ipairs(myUnits) do
@@ -458,19 +517,38 @@ function widget:Initialize()
      then
       ecoBuildDefIds[unitDefID] = true
 
+      local ecoType = 'mMM'
       if unitDef.isBuilder or (unitDef.buildSpeed and unitDef.buildSpeed > 0) then
-        ecoBuildingTypeDefIds['power'].map[unitDefID] = true
-        table.insert(ecoBuildingTypeDefIds['power'].list, unitDefID)
+        ecoType = 'power'
       elseif EnergyMakeDef(unitDef) > 0 then
-        ecoBuildingTypeDefIds['energy'].map[unitDefID] = true
-        table.insert(ecoBuildingTypeDefIds['energy'].list, unitDefID)
-      elseif
-        unitDef.extractsMetal or MetalMakingEfficiencyDef(unitDef) > 0 or (unitDef.metalMake and unitDef.metalMake > 0)
-       then
-        -- log('adding mMM', unitDef.translatedHumanName, MetalMakingEfficiencyDef(unitDef))
-        ecoBuildingTypeDefIds['mMM'].map[unitDefID] = true
-        table.insert(ecoBuildingTypeDefIds['mMM'].list, unitDefID)
+        ecoType = 'energy'
       end
+      ecoBuildingTypeDefIds[ecoType].map[unitDefID] = true
+      table.insert(ecoBuildingTypeDefIds[ecoType].list, unitDefID)
+
+      if Placement.isPlaceable(unitDef) then
+        local family = Placement.familyKey(unitDef.name)
+        Placement.familyDefIds[family] = Placement.familyDefIds[family] or {}
+        table.insert(Placement.familyDefIds[family], unitDefID)
+        Placement.familyEcoType[family] = ecoType
+      end
+    end
+  end
+
+  for unitDefID, unitDef in pairs(UnitDefs) do
+    if unitDef.isBuilder and unitDef.canMove and unitDef.buildOptions then
+      local byFamily = {}
+      for _, optionDefID in ipairs(unitDef.buildOptions) do
+        local option = UnitDefs[optionDefID]
+        local family = option and Placement.familyKey(option.name)
+        if family and Placement.familyEcoType[family] then
+          local current = byFamily[family]
+          if not current or (Placement.isScavVersion(option.name) and not Placement.isScavVersion(UnitDefs[current].name)) then
+            byFamily[family] = optionDefID
+          end
+        end
+      end
+      Placement.placeableByBuilderDef[unitDefID] = byFamily
     end
   end
 
@@ -480,6 +558,9 @@ function widget:Initialize()
       applyResponsivenessSpeed(math.max(0.25, math.min(4, value)))
     end,
     setDecisionSink = function(sink) decisionSink = sink end,
+    getAdvisorContext = function() return Placement.advisorContext(Spring.GetGameFrame()) end,
+    setAdvisorMode = function(mode) Placement.advisorMode = mode end,
+    setAdvice = function(ecoType, advice) Placement.advice[ecoType] = advice end,
     ecoTypeOf = function(unitDefID)
       for name, group in pairs(ecoBuildingTypeDefIds) do
         if group.map[unitDefID] then return name end
@@ -640,7 +721,7 @@ local function purgeRepairs(builderId, cmdQueue)
   -- BAR's ImmobileBuilder widget keeps nano turrets on a FIGHT order and answers an idle turret
   -- with an unshifted one, which also wipes whatever was ordered in between. Theirs stays.
   local builder = builders[builderId]
-  local keepsFightOrder = builder and not builder.def.canMove
+  local isImmobile = builder and not builder.def.canMove
   local gameFrame = Spring.GetGameFrame()
   local previousRemoveSentFrames = builder and builder.removeSentFrames or {}
   local removeSentFrames = {}
@@ -661,12 +742,16 @@ local function purgeRepairs(builderId, cmdQueue)
           reclaimTargets:Remove(targetId)
           reclaimTargetsPrev:Remove(targetId)
         end
+      elseif isImmobile and health ~= nil and #cmd.params == 1 and not IsInBuildRange(builderId, targetId) then
+        -- e.g. a damaged unit that walked off: the engine keeps the order and the turret waits on it forever
+        shouldRemove = true
+        purgeKind = 'purge_unreachable'
       end
     elseif cmd.id == CMD.RECLAIM then -- 90
       if #cmd.params == 1 then
         reclaimTargets:Add(targetId)
       end
-    elseif cmd.id < 0 or (cmd.id == CMD.FIGHT and not keepsFightOrder) then
+    elseif cmd.id < 0 or (cmd.id == CMD.FIGHT and not isImmobile) then
       purgeKind = cmd.id < 0 and 'purge_build' or 'purge_fight'
       local buildQueueUnits = GetUnitsInCylinder(cmd.params[1], cmd.params[3], 5, myTeamId)
       if buildQueueUnits and #buildQueueUnits > 0 then
@@ -766,6 +851,7 @@ local function readResourceSnapshot(resourceType)
     shareSlider = shareSlider or 0,
     sent = sent or 0,
     received = received or 0,
+    supply = income + (received or 0), -- own income plus what allies hand over: all that expense may draw on
     localDelta = localDelta,
     level = level,
     runwaySeconds = runwaySeconds,
@@ -802,10 +888,13 @@ local function readConversionSnapshot()
 end
 
 local function recomputePowerNeed(metalSnapshot, energySnapshot)
+  -- at or past break-even, more build power (assisted or placed) only turns the surplus into a stall
+  local shortfall = Placement.buildPowerShortfall()
   if
     not needPower or isMetalStalling or isEnergyStalling or
       metalSnapshot.runwaySeconds < POWER_RUNWAY_SECONDS or
-      energySnapshot.runwaySeconds < POWER_RUNWAY_SECONDS
+      energySnapshot.runwaySeconds < POWER_RUNWAY_SECONDS or
+      (shortfall and shortfall <= 0)
    then
     powerNeed = 0
     return
@@ -1786,6 +1875,465 @@ local function BatchOrder(gameFrame)
 end
 
 -- ============================================================
+-- Placement: when a need has nothing to assist, extend the player's own cluster of that type
+-- with one more building, directly adjacent to an existing one, in the builder's own version.
+-- ============================================================
+function Placement.halfExtents(unitDef, facing)
+  local rotated = facing % 2 == 1
+  local halfX = (rotated and unitDef.zsize or unitDef.xsize) * 4
+  local halfZ = (rotated and unitDef.xsize or unitDef.zsize) * 4
+  return halfX, halfZ
+end
+
+-- The four positions whose footprint touches the anchor's.
+function Placement.adjacentPositions(anchorX, anchorZ, anchorHalfX, anchorHalfZ, halfX, halfZ)
+  return {
+    {anchorX + anchorHalfX + halfX, anchorZ},
+    {anchorX - anchorHalfX - halfX, anchorZ},
+    {anchorX, anchorZ + anchorHalfZ + halfZ},
+    {anchorX, anchorZ - anchorHalfZ - halfZ}
+  }
+end
+
+-- What one building of the type gives per second: energy made, energy a converter can use up, build power.
+function Placement.perBuilding(ecoType, unitDef)
+  if ecoType == 'energy' then
+    return EnergyMakeDef(unitDef)
+  end
+  if ecoType == 'mMM' then
+    return tonumber((unitDef.customParams or {}).energyconv_capacity) or 0
+  end
+  return unitDef.buildSpeed or 0
+end
+
+-- What a round of the type should cover, in the unit of perBuilding; 0 where that cannot be told.
+function Placement.shortfall(ecoType)
+  local energy = readResourceSnapshot('energy')
+  if ecoType == 'energy' then
+    return math.max(energy.expenseWanted, energy.expenseActual) - energy.supply
+  end
+  if ecoType == 'mMM' then
+    return energy.supply - energy.expenseActual
+  end
+  return Placement.buildPowerShortfall() or 0
+end
+
+-- Build power the resources can feed on top of what the team has; nil while nothing is under
+-- construction, since then nothing tells what a build point costs. One build point of the current
+-- targets costs a known amount of metal and energy, so each resource's surplus says how many more
+-- build points per second it could feed, and the tighter one rules. Storage is no supply: build
+-- power that lives off it stalls once that is empty. Negative while the resources are the bottleneck.
+function Placement.buildPowerShortfall()
+  local busy, metalDrain, energyDrain = 0, 0, 0
+  for targetId, buildSpeed in pairs(assignedTargetBuildSpeed) do
+    local def = UnitIdDef(targetId)
+    if def then
+      busy = busy + buildSpeed
+      metalDrain = metalDrain + buildSpeed * def.metalCost / def.buildTime
+      energyDrain = energyDrain + buildSpeed * def.energyCost / def.buildTime
+    end
+  end
+  if busy <= 0 then
+    return nil
+  end
+  local metal, energy = readResourceSnapshot('metal'), readResourceSnapshot('energy')
+  local feedable = busy * math.min(
+    SafeDivide(metal.supply - metal.expenseActual, metalDrain, math.huge),
+    SafeDivide(energy.supply - energy.expenseActual, energyDrain, math.huge)
+  )
+  return feedable - (totalBuildSpeed - busy)
+end
+
+-- Every family of the type the team owns, as {family, unit, owned, investment, cost, perBuilding},
+-- described by the version it owns the most of.
+function Placement.ownedFamilies(ecoType)
+  local families = {}
+  for family, familyType in pairs(Placement.familyEcoType) do
+    if familyType == ecoType then
+      local owned, investment, mostOwned, mostOwnedDefID = 0, 0, 0, nil
+      for _, unitDefID in ipairs(Placement.familyDefIds[family]) do
+        local count = Spring.GetTeamUnitDefCount(myTeamId, unitDefID) or 0
+        owned = owned + count
+        investment = investment + count * UnitCost(UnitDefs[unitDefID])
+        if count > mostOwned then
+          mostOwned, mostOwnedDefID = count, unitDefID
+        end
+      end
+      if owned > 0 then
+        local unitDef = UnitDefs[mostOwnedDefID]
+        families[#families + 1] = {
+          family = family,
+          unit = unitDef.name,
+          owned = owned,
+          investment = investment,
+          cost = UnitCost(unitDef),
+          perBuilding = Placement.perBuilding(ecoType, unitDef)
+        }
+      end
+    end
+  end
+  return families
+end
+
+-- The family the player has put the most resources into (units x cost). Counting units alone
+-- would keep extending whatever was spammed early, long after the player moved up a tier.
+function Placement.mostInvested(families)
+  local best
+  for _, family in ipairs(families) do
+    if not best or family.investment > best.investment then
+      best = family
+    end
+  end
+  return best and best.family
+end
+
+function Placement.dominantFamily(ecoType)
+  return Placement.mostInvested(Placement.ownedFamilies(ecoType))
+end
+
+-- Every standing building of the family as a footprint {x, z, halfX, halfZ, facing}.
+function Placement.standingAnchors(family)
+  local anchors = {}
+  local unitIds = Spring.GetTeamUnitsByDefs(myTeamId, Placement.familyDefIds[family])
+  for i = 1, #unitIds do
+    local unitId = unitIds[i]
+    local x, _, z = GetUnitBasePosition(unitId)
+    if x then
+      local facing = Spring.GetUnitBuildFacing(unitId) or 0
+      local halfX, halfZ = Placement.halfExtents(UnitDefs[GetUnitDefID(unitId)], facing)
+      anchors[#anchors + 1] = {x = x, z = z, halfX = halfX, halfZ = halfZ, facing = facing}
+    end
+  end
+  return anchors
+end
+
+-- Build orders still waiting in the mobile builders' queues, as footprints that also carry their
+-- unitDefID. The engine's build test knows nothing of these: to it a queued spot is open ground.
+function Placement.queuedFootprints()
+  local footprints = {}
+  for i = 1, builderUnitIds.count do
+    local builderId = builderUnitIds.list[i]
+    local builder = builders[builderId]
+    if builder and builder.def.canMove and #builder.def.buildOptions > 0 then
+      local queue = GetUnitCommands(builderId, PLACE_QUEUE_SCAN_DEPTH) or {}
+      for j = 1, #queue do
+        local command = queue[j]
+        local unitDef = command.id < 0 and UnitDefs[-command.id]
+        if unitDef and command.params[3] then
+          local facing = command.params[4] or 0
+          local halfX, halfZ = Placement.halfExtents(unitDef, facing)
+          footprints[#footprints + 1] = {
+            x = command.params[1],
+            z = command.params[3],
+            halfX = halfX,
+            halfZ = halfZ,
+            facing = facing,
+            unitDefID = -command.id
+          }
+        end
+      end
+    end
+  end
+  return footprints
+end
+
+-- The cluster to extend: the standing buildings plus the queued ones of the same family, so that
+-- a round goes to the edge of what the player has planned, not into it.
+function Placement.withQueuedAnchors(anchors, family, queued)
+  local isFamilyDef = {}
+  for _, unitDefID in ipairs(Placement.familyDefIds[family]) do
+    isFamilyDef[unitDefID] = true
+  end
+  local cluster = {}
+  for i = 1, #anchors do
+    cluster[i] = anchors[i]
+  end
+  for _, footprint in ipairs(queued) do
+    if isFamilyDef[footprint.unitDefID] then
+      cluster[#cluster + 1] = footprint
+    end
+  end
+  return cluster
+end
+
+-- The unitDefID this mobile builder places for the family, and how much of an interruption that
+-- is to it: 1 nothing of its own to do, 2 guarding, 3 on its own build queue. The order is
+-- inserted ahead of its queue, so it goes back to either afterwards. Never a builder that is
+-- selected, moving or reclaiming, and never one that would leave a frame only it works on: an
+-- abandoned frame starts to decay.
+function Placement.placementDefFor(builderId, builder, family, gameFrame)
+  local byFamily = builder.def.canMove and Placement.placeableByBuilderDef[builder.defID]
+  local unitDefID = byFamily and byFamily[family]
+  if not unitDefID or selectedUnits[builderId] or not AllowBuilderOrder(builderId, gameFrame) then
+    return
+  end
+  -- no queue: the builder died since the last roster rescan
+  local queue = GetUnitCommands(builderId, 2)
+  local first = queue and queue[1]
+  if not queue or (first and (first.id == CMD.MOVE or first.id == CMD.RECLAIM)) then
+    return
+  end
+  local interruption = 1
+  if hasOwnBuildOrder(queue) then
+    local othersBuildSpeed = (assignedTargetBuildSpeed[builder.targetId] or 0) - builder.def.buildSpeed
+    if builder.targetId and othersBuildSpeed <= 0 then
+      return
+    end
+    interruption = 3
+  elseif first and first.id == CMD.GUARD then
+    interruption = 2
+  end
+  if interruption > PLACE_MAX_INTERRUPTION then
+    return
+  end
+  return unitDefID, interruption
+end
+
+-- The builder it interrupts least, and among those the one nearest an anchor.
+function Placement.leastBusyBuilder(family, anchors, gameFrame)
+  local bestId, bestDefID, bestInterruption, bestDistanceSq
+  for i = 1, builderUnitIds.count do
+    local builderId = builderUnitIds.list[i]
+    local builder = builders[builderId]
+    local unitDefID, interruption, x, _, z
+    if builder then
+      unitDefID, interruption = Placement.placementDefFor(builderId, builder, family, gameFrame)
+    end
+    if unitDefID then
+      x, _, z = GetUnitBasePosition(builderId)
+    end
+    if x then
+      for _, anchor in ipairs(anchors) do
+        local deltaX, deltaZ = anchor.x - x, anchor.z - z
+        local distanceSq = deltaX * deltaX + deltaZ * deltaZ
+        if
+          not bestId or interruption < bestInterruption or
+            (interruption == bestInterruption and distanceSq < bestDistanceSq)
+         then
+          bestId, bestDefID, bestInterruption, bestDistanceSq = builderId, unitDefID, interruption, distanceSq
+        end
+      end
+    end
+  end
+  return bestId, bestDefID
+end
+
+-- How many to place in one round: enough to cover the shortfall the need stands for, one where
+-- that cannot be told, at most PLACE_BATCH_MAX and no more than can be paid for soon. A single
+-- wind turbine does nothing for a stall; three fusions at once would start a metal stall instead.
+-- Build power rounds down and may be none: one turret over break-even is a stall.
+function Placement.batchSize(ecoType, unitDef)
+  local perBuilding, shortfall = Placement.perBuilding(ecoType, unitDef), Placement.shortfall(ecoType)
+  local isPower = ecoType == 'power'
+  if perBuilding <= 0 or shortfall <= 0 then
+    return isPower and 0 or 1
+  end
+  local metal = readResourceSnapshot('metal')
+  local affordable = math.floor((metal.current + metal.income * PLACE_AFFORD_SECONDS) / UnitCost(unitDef))
+  if isPower then
+    return math.min(PLACE_BATCH_MAX, affordable, math.floor(shortfall / perBuilding))
+  end
+  return math.max(1, math.min(PLACE_BATCH_MAX, affordable, math.ceil(shortfall / perBuilding)))
+end
+
+-- Up to `count` open spots as {x, y, z, facing, halfX, halfZ}, each touching an anchor or a spot
+-- chosen before it, none overlapping another or a queued building. Anchors are footprints and are
+-- tried outermost first: inside a packed cluster every side is taken, the open sides are at its edge.
+function Placement.openAdjacentSpots(unitDefID, anchors, count, queued)
+  local centerX, centerZ = 0, 0
+  for i = 1, #anchors do
+    centerX = centerX + anchors[i].x / #anchors
+    centerZ = centerZ + anchors[i].z / #anchors
+  end
+  local outermostFirst = {}
+  for i = 1, #anchors do
+    local anchor = anchors[i]
+    local deltaX, deltaZ = anchor.x - centerX, anchor.z - centerZ
+    outermostFirst[i] = {anchor = anchor, distanceSq = deltaX * deltaX + deltaZ * deltaZ}
+  end
+  table.sort(outermostFirst, function(a, b) return a.distanceSq > b.distanceSq end)
+
+  local unitDef = UnitDefs[unitDefID]
+  local spots = {}
+  local function overlapsAny(footprints, x, z, halfX, halfZ)
+    for _, footprint in ipairs(footprints) do
+      if math.abs(x - footprint.x) < halfX + footprint.halfX and math.abs(z - footprint.z) < halfZ + footprint.halfZ then
+        return true
+      end
+    end
+    return false
+  end
+  local function takeOpenSpotsAround(aroundX, aroundZ, aroundHalfX, aroundHalfZ, facing)
+    local halfX, halfZ = Placement.halfExtents(unitDef, facing)
+    for _, position in ipairs(Placement.adjacentPositions(aroundX, aroundZ, aroundHalfX, aroundHalfZ, halfX, halfZ)) do
+      local x, z = position[1], position[2]
+      if #spots < count and not overlapsAny(spots, x, z, halfX, halfZ) then
+        local y = Spring.GetGroundHeight(x, z)
+        local status, blockingFeatureID = Spring.TestBuildOrder(unitDefID, x, y, z, facing)
+        if status == BUILD_SPOT_OPEN and not blockingFeatureID then
+          if overlapsAny(queued, x, z, halfX, halfZ) then
+            emitDecision('avoided_queued_spot')
+          else
+            spots[#spots + 1] = {x = x, y = y, z = z, facing = facing, halfX = halfX, halfZ = halfZ}
+          end
+        end
+      end
+    end
+  end
+
+  for i = 1, math.min(#outermostFirst, PLACE_ANCHOR_TRIES) do
+    if #spots >= count then break end
+    local anchor = outermostFirst[i].anchor
+    takeOpenSpotsAround(anchor.x, anchor.z, anchor.halfX, anchor.halfZ, anchor.facing)
+  end
+  -- still short: grow outward from the spots chosen so far
+  local grownFrom = 1
+  while #spots < count and grownFrom <= #spots do
+    local spot = spots[grownFrom]
+    takeOpenSpotsAround(spot.x, spot.z, spot.halfX, spot.halfZ, spot.facing)
+    grownFrom = grownFrom + 1
+  end
+  return spots
+end
+
+function Placement.PlaceOne(ecoType, gameFrame, advisedFamily)
+  local isAdvised = Placement.familyEcoType[advisedFamily] == ecoType
+  local family = isAdvised and advisedFamily or Placement.dominantFamily(ecoType)
+  if not family then return emitDecision('noplace_family') end
+  if isAdvised then emitDecision('advised_family') end
+  local anchors = Placement.standingAnchors(family)
+  if #anchors == 0 then return emitDecision('noplace_anchor') end
+  local builderId, unitDefID = Placement.leastBusyBuilder(family, anchors, gameFrame)
+  if not builderId then return emitDecision('noplace_builder') end
+  local unitDef = UnitDefs[unitDefID]
+  local wanted = Placement.batchSize(ecoType, unitDef)
+  if wanted == 0 then
+    Placement.lastFrame[ecoType] = gameFrame
+    return emitDecision('noplace_batch')
+  end
+  -- read the queues only now that a builder is found: it is the costly part of a round
+  local queued = Placement.queuedFootprints()
+  local spots = Placement.openAdjacentSpots(unitDefID, Placement.withQueuedAnchors(anchors, family, queued), wanted, queued)
+  if #spots == 0 then return emitDecision('noplace_spot') end
+  if #spots < wanted then emitDecision('short_of_spots') end
+
+  for position, spot in ipairs(spots) do
+    GiveOrderToUnit(builderId, CMD.INSERT, {position - 1, -unitDefID, 0, spot.x, spot.y, spot.z, spot.facing}, {'alt'})
+    emitDecision('place_' .. ecoType .. ':' .. unitDef.name, builderId)
+  end
+  InvalidatePurgedUnitCommands(builderId)
+  SetBuilderLastOrder(builderId)
+  Placement.lastFrame[ecoType] = gameFrame
+  Placement.pending[ecoType] = {builderId = builderId, unitDefID = unitDefID}
+  AddObjectSpotlight('unit', 'me', builderId, {0, 0.5, 1, 1}, {duration = 25, radius = 2, heightCoefficient = 5})
+end
+
+-- True while a round of the type is still being worked off: its builder holds one of the build
+-- orders (it may still be walking there), or any building of the type is unfinished. This looks at
+-- every unfinished one; the assist candidates leave out those about to finish.
+function Placement.isUnderWay(ecoType)
+  local pending = Placement.pending[ecoType]
+  if pending then
+    local queue = GetUnitCommands(pending.builderId, 20) or {}
+    for i = 1, #queue do
+      if queue[i].id == -pending.unitDefID then
+        return true
+      end
+    end
+    Placement.pending[ecoType] = nil
+  end
+  local unitIds = Spring.GetTeamUnitsByDefs(myTeamId, ecoBuildingTypeDefIds[ecoType].list)
+  for i = 1, #unitIds do
+    local build = select(5, GetUnitHealth(unitIds[i]))
+    if build and build < 1 then
+      return true
+    end
+  end
+  return false
+end
+
+-- One round per type at a time, and the next only once nothing of the type has been under way
+-- for the cooldown: a building that just finished gets to show in the need before more is added.
+-- The power need only says metal is piling up. More build power is the answer to that only while
+-- the builders already there are busy; with most of them idle, what is missing is something to build.
+function Placement.PlaceForNeeds(gameFrame)
+  local needs = {{'energy', energyNeed}, {'mMM', mMMNeed}, {'power', powerNeed}}
+  for _, need in ipairs(needs) do
+    local ecoType, value = need[1], need[2]
+    local isDue = false
+    if value >= PLACE_NEED and (ecoType ~= 'power' or Placement.utilization >= PLACE_POWER_UTILIZATION) then
+      if Placement.isUnderWay(ecoType) then
+        Placement.lastFrame[ecoType] = gameFrame
+      else
+        isDue = gameFrame - (Placement.lastFrame[ecoType] or -PLACE_COOLDOWN_FRAMES) >= PLACE_COOLDOWN_FRAMES
+      end
+    end
+    if isDue then
+      -- stays set through the tick after placing, so an advisor that only watches still sees the round
+      Placement.openRounds[ecoType] = Placement.openRounds[ecoType] or gameFrame
+      Placement.placeOrAwaitAdvice(ecoType, gameFrame)
+    else
+      Placement.openRounds[ecoType] = nil
+    end
+  end
+end
+
+-- With an advisor acting, a due round waits a moment for its advice. Without one, or when the
+-- advice does not come in time, the round goes ahead on the heuristics: the advisor can change
+-- which family is extended or call the round off, never stall placement.
+function Placement.placeOrAwaitAdvice(ecoType, gameFrame)
+  local advice = Placement.advice[ecoType]
+  if advice and gameFrame - advice.frame > Placement.ADVICE_MAX_AGE_FRAMES then
+    advice = nil
+  end
+  local waitedFrames = gameFrame - Placement.openRounds[ecoType]
+  if Placement.advisorMode == 'act' and not advice and waitedFrames < Placement.ADVICE_WAIT_FRAMES then
+    return emitDecision('await_advice')
+  end
+  Placement.advice[ecoType] = nil
+  if advice and advice.place == false then
+    Placement.lastFrame[ecoType] = gameFrame
+    return emitDecision('advised_against')
+  end
+  Placement.PlaceOne(ecoType, gameFrame, advice and advice.family)
+end
+
+-- What an advisor needs to judge the due rounds: plain numbers and names, no engine handles.
+function Placement.advisorContext(gameFrame)
+  local rounds = {}
+  for ecoType, openFrame in pairs(Placement.openRounds) do
+    local families = Placement.ownedFamilies(ecoType)
+    rounds[#rounds + 1] = {
+      ecoType = ecoType,
+      openFrame = openFrame,
+      shortfall = Placement.shortfall(ecoType),
+      heuristicFamily = Placement.mostInvested(families),
+      families = families
+    }
+  end
+  return {
+    frame = gameFrame,
+    metal = readResourceSnapshot('metal'),
+    energy = readResourceSnapshot('energy'),
+    conversion = conversionSnapshot or readConversionSnapshot(),
+    buildSpeed = totalBuildSpeed,
+    utilization = Placement.utilization,
+    rounds = rounds
+  }
+end
+
+-- Placement is the one part that acts on the map. A fault in it switches placement off for the
+-- rest of the game instead of taking the widget, and with it all assisting, down.
+function Placement.run(gameFrame)
+  if not Placement.enabled then return end
+  local ok, fault = pcall(Placement.PlaceForNeeds, gameFrame)
+  if not ok then
+    Placement.enabled = false
+    Spring.Echo('eco cons: placement disabled after error: ' .. tostring(fault))
+  end
+end
+
+-- ============================================================
 -- Main per-frame loop
 -- ============================================================
 local function beginFrame()
@@ -1903,6 +2451,7 @@ end
 
 local function Builders(gameFrame)
   beginFrame()
+  local busyBuildSpeed = 0
   local i = 1
   while i <= builderUnitIds.count do
     local builderID = builderUnitIds.list[i]
@@ -1912,6 +2461,7 @@ local function Builders(gameFrame)
       if builder.targetId then
         assignedTargetBuildSpeed[builder.targetId] =
           (assignedTargetBuildSpeed[builder.targetId] or 0) + builder.def.buildSpeed
+        busyBuildSpeed = busyBuildSpeed + builder.def.buildSpeed
       end
       i = i + 1
     else
@@ -1935,6 +2485,7 @@ local function Builders(gameFrame)
       RemoveBuilder(builderID)
     end
   end
+  Placement.utilization = totalBuildSpeed > 0 and busyBuildSpeed / totalBuildSpeed or 0
 
   RefreshSelectedUnits()
 
@@ -2035,6 +2586,7 @@ function widget:GameFrame(gameFrame)
   if gameFrame % RESOURCE_SAMPLE_INTERVAL == 0 then
     UpdateResourceNeeds()
     SendNudgedMetalMakerLevel()
+    Placement.run(gameFrame)
   end
 
   gameFrameModulo = GameFrameModulo()
@@ -2194,6 +2746,14 @@ if ECO_CONS_TEST then
     getCandidateAlternatives = getCandidateAlternatives,
     normalizedPositiveNeeds = NormalizedPositiveNeeds,
     setAssignedTargetBuildSpeed = function(speeds) assignedTargetBuildSpeed = speeds end,
+    setTotalBuildSpeed = function(speed) totalBuildSpeed = speed end,
+    buildPowerShortfall = Placement.buildPowerShortfall,
+    familyKey = Placement.familyKey,
+    adjacentPositions = Placement.adjacentPositions,
+    placeForNeeds = Placement.PlaceForNeeds,
+    batchSize = Placement.batchSize,
+    runPlacement = Placement.run,
+    setBuildPowerUtilization = function(utilization) Placement.utilization = utilization end,
     scanNearbyBuildables = scanNearbyBuildables,
     beginFrame = beginFrame,
     getPurgedUnitCommands = GetPurgedUnitCommands,

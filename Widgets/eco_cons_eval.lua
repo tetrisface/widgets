@@ -4,7 +4,7 @@
 function widget:GetInfo()
   return {
     name = 'eco cons eval',
-    desc = 'Logs eco cons decisions next to their resource outcomes to infolog as [eco_eval] lines, and reloads eco cons and itself when their files change',
+    desc = 'Logs eco cons decisions next to their resource outcomes to infolog as [eco_eval] lines, and reloads eco cons, its Jev advisor and itself when their files change',
     author = 'tetrisface',
     date = '2026-10-01',
     license = 'Public Domain',
@@ -41,6 +41,7 @@ local RELOAD_POLL_SECONDS = 2
 -- Dev loop: a widget whose file changed on disk is reloaded, so an edit takes effect in the running game.
 local WATCHED = {
   {name = 'eco cons', file = 'LuaUI/Widgets/eco_cons.lua'},
+  {name = 'eco cons jev', file = 'LuaUI/Widgets/eco_cons_jev.lua'},
   {name = 'eco cons eval', file = 'LuaUI/Widgets/eco_cons_eval.lua'}
 }
 
@@ -312,6 +313,7 @@ local lineDecisions = {}
 local lastTargets = {}
 local ecoConsTargets = {} -- builderID -> the unit eco cons last sent it to
 local pendingOrders = {} -- builderID -> {targetID, frame}: orders whose outcome is not judged yet
+local describedDefs = {} -- unit names of placed buildings already described in the log
 local sinkOwner -- the WG.eco_cons table holding our sink
 local summaryPrinted = false
 local secondsSinceReloadPoll = 0
@@ -365,8 +367,25 @@ local function settleOrders(frame)
   end
 end
 
+-- Logs once what a building eco cons placed is, so its batch sizing can be checked against real numbers.
+local function describePlacedDef(kind)
+  local name = kind:match('^place_%a+:(.+)$')
+  local unitDef = name and not describedDefs[name] and UnitDefNames[name]
+  if not unitDef then return end
+  describedDefs[name] = true
+  local customParams = unitDef.customParams or {}
+  log(string.format(
+    'placed def %s: cost %s energyMake %s energyUpkeep %s metalMake %s makesMetal %s conv %s/%s size %sx%s',
+    name, tostring(unitDef.metalCost), tostring(unitDef.energyMake), tostring(unitDef.energyUpkeep),
+    tostring(unitDef.metalMake), tostring(unitDef.makesMetal),
+    tostring(customParams.energyconv_capacity), tostring(customParams.energyconv_efficiency),
+    tostring(unitDef.xsize), tostring(unitDef.zsize)
+  ))
+end
+
 local function onDecision(kind, builderID, targetID)
   count(kind)
+  describePlacedDef(kind)
   if not (builderID and targetID) then return end
   ecoConsTargets[builderID] = targetID
   if not DIRECTING[kind] then return end

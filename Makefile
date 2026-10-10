@@ -4,7 +4,7 @@ KEYBIND_SCRIPT := ./scripts/Repair-BarKeybinds.ps1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help links sync-widget-links preview-widget-links keybinds preview-keybinds
+.PHONY: help links sync-widget-links preview-widget-links keybinds preview-keybinds jev-bridge jev-bridge-mock
 
 help:
 	@echo "Widget workspace commands:"
@@ -13,6 +13,8 @@ help:
 	@echo "  make links                 Short alias for sync-widget-links"
 	@echo "  make keybinds              Point every BAR write dir's uikeys.txt at this repo"
 	@echo "  make preview-keybinds      Show the keybind link/cfg changes without applying them"
+	@echo "  make jev-bridge            Run the local bridge the eco cons Jev advisor talks to (needs TYPESAFE_API_KEY)"
+	@echo "  make jev-bridge-mock       Same bridge with canned answers and no network"
 
 links: sync-widget-links
 
@@ -29,3 +31,9 @@ keybinds:
 
 preview-keybinds:
 	$(POWERSHELL) -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(KEYBIND_SCRIPT)" -DryRun
+
+jev-bridge:
+	python scripts/jev_bridge.py
+
+jev-bridge-mock:
+	python scripts/jev_bridge.py --mock
